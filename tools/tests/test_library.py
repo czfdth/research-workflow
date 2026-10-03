@@ -217,6 +217,16 @@ class TestBuildIndex(LibraryTests):
 
         self.assertEqual(search_index(self.root, "Sample")["results"][0]["path"], "")
 
+    def test_path_is_an_output_field_never_a_search_term(self):
+        self._build_sample()
+        self._write("papers/sample.pdf", "not a real pdf")
+
+        hit = search_index(self.root, "Sample")["results"]
+
+        self.assertEqual(hit[0]["path"], "papers/sample.pdf")
+        self.assertEqual(search_index(self.root, "sample.pdf")["results"], [])
+        self.assertEqual(search_index(self.root, "papers")["results"], [])
+
     def test_rebuild_replaces_the_index_atomically_without_temporary_file(self):
         self._build_sample()
         original = self.root / "index.db"
@@ -524,13 +534,13 @@ class TestMain(LibraryTests):
             "venue",
             "abstract",
             "notes",
-            "path",
         ):
             with self.subTest(field=field):
                 self.assertIn(field, help_text)
         self.assertIn("不含 PDF 全文", normalized)
         self.assertIn("新鲜度只对 refs.bib 与 notes 负责", normalized)
-        self.assertIn("path 是查询期事实", normalized)
+        self.assertIn("path 是结果字段、不参与检索", normalized)
+
 
     def test_check_command_reports_problems_with_exit_one(self):
         self._write_bib()

@@ -14,8 +14,10 @@ literal LIKE fallback because the trigram tokenizer cannot match two-character
 terms. The index contains metadata and notes, not PDF full text.
 
 Freshness is tracked only for ``refs.bib`` and ``notes/*.md``. The ``path``
-field is a query-time fact: it is resolved from ``papers/<key>.pdf`` when a
-search runs, so adding or deleting a PDF does not make the index stale.
+column is a reserved placeholder written as an empty string; the ``path`` in
+search results is a query-time fact, resolved from ``papers/<key>.pdf`` when a
+search runs, so adding or deleting a PDF does not make the index stale. The
+``path`` field is therefore an output field, never a searchable one.
 """
 
 from __future__ import annotations
@@ -313,7 +315,7 @@ def _search_rows(
 ) -> tuple[str, list[tuple]]:
     if len(query) <= 2:
         pattern = f"%{_escape_like(query)}%"
-        columns = ("key", "title", "authors", "year", "venue", "abstract", "notes", "path")
+        columns = ("key", "title", "authors", "year", "venue", "abstract", "notes")
         where = " OR ".join(f"{column} LIKE ? ESCAPE '\\'" for column in columns)
         rows = connection.execute(
             f"SELECT {_RESULT_COLUMNS} FROM papers WHERE {where} LIMIT ?",
@@ -384,9 +386,10 @@ def build_parser() -> argparse.ArgumentParser:
         "search",
         help="检索索引字段，不包含 PDF 全文",
         description=(
-            "检索 key/title/authors/year/venue/abstract/notes/path；"
-            "索引不含 PDF 全文。新鲜度只对 refs.bib 与 notes 负责，"
-            "path 是查询期事实，按 papers/<key>.pdf 当前是否存在解析。"
+            "检索 key/title/authors/year/venue/abstract/notes；"
+            "索引不含 PDF 全文。新鲜度只对 refs.bib 与 notes 负责；"
+            "path 是结果字段、不参与检索，按 papers/<key>.pdf "
+            "当前是否存在在查询期解析。"
         ),
     )
     search.add_argument("query")
