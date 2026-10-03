@@ -161,14 +161,29 @@ class TestDueReport(MilestoneTests):
             {problem["code"] for problem in report["problems"]},
         )
 
-    def test_checkpoint_reached_by_advanced_stage_has_no_gate_gap(self):
+    def test_passed_checkpoint_has_empty_due_and_no_gate_gap(self):
         self._write_state(deadline="2027-05-01", stage="submission-check")
 
         report = due_report(self.paper_root, date(2027, 4, 17))
 
-        self.assertEqual([item["checkpoint"] for item in report["due"]], ["T-14"])
+        self.assertEqual(report["due"], [])
         self.assertEqual(report["missing_gates"], [])
         self.assertEqual(report["problems"], [])
+
+    def test_t7_checkpoint_points_to_internal_review(self):
+        self._write_state(deadline="2027-05-01", stage="writing")
+
+        report = due_report(self.paper_root, date(2027, 4, 24))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-7")
+        self.assertEqual(report["due"][0]["stage"], "internal-review")
+        self.assertEqual(report["due"][0]["gate"], "review_cleared")
+        self.assertTrue(
+            any(
+                "review_cleared" in problem["message"]
+                for problem in report["problems"]
+            )
+        )
 
 
 class TestMilestonesMain(MilestoneTests):
@@ -207,6 +222,71 @@ class TestMilestonesMain(MilestoneTests):
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(stdout)["due"][0]["checkpoint"], "T-14")
         self.assertIn("milestone-gate-missing", stderr)
+
+    def test_due_t3_submission_check_exits_one_with_package_gap(self):
+        self._write_state(deadline="2027-05-01", stage="submission-check")
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-04-28",
+            ]
+        )
+
+        report = json.loads(stdout)
+        self.assertEqual(code, 1)
+        self.assertEqual(report["due"][0]["checkpoint"], "T-3")
+        self.assertTrue(
+            any("package_ready" in problem["message"] for problem in report["problems"])
+        )
+        self.assertIn("package_ready", stderr)
+
+    def test_due_t14_internal_review_exits_one_with_review_gap(self):
+        self._write_state(deadline="2027-05-01", stage="internal-review")
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-04-17",
+            ]
+        )
+
+        report = json.loads(stdout)
+        self.assertEqual(code, 1)
+        self.assertEqual(report["due"][0]["checkpoint"], "T-14")
+        self.assertTrue(
+            any(
+                "review_cleared" in problem["message"]
+                for problem in report["missing_gates"]
+            )
+        )
+        self.assertIn("review_cleared", stderr)
+
+    def test_due_passed_t3_checkpoint_exits_zero_with_empty_due(self):
+        self._write_state(deadline="2027-05-01", stage="submitted")
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-04-28",
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout)["due"], [])
+        self.assertEqual(stderr, "")
 
     def test_invalid_deadline_exits_one(self):
         self._write_state(deadline="bad-date", stage="idea")

@@ -17,7 +17,7 @@ from ccfa.stages import gate_for, stages_for
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _CHECKPOINT_STAGES = {
     "T-14": "internal-review",
-    "T-7": "submission-check",
+    "T-7": "internal-review",
     "T-3": "submission-check",
 }
 _SEQUENTIAL_ADVISORY = "无投稿目标日，按顺序推进"
@@ -83,10 +83,10 @@ def _gate_problems(
     stages = stages_for(mode)
     current_index = stages.index(current)
     target_index = stages.index(target)
-    if current_index >= target_index:
+    if current_index > target_index:
         return []
     problems: list[dict] = []
-    for stage in stages[current_index:target_index]:
+    for stage in stages[current_index : target_index + 1]:
         gate = gate_for(mode, stage)
         problems.append(
             _problem(
@@ -196,14 +196,20 @@ def due_report(paper_root: Path, today: date) -> dict:
         )
         if checkpoint is not None:
             target_stage = _CHECKPOINT_STAGES[checkpoint]
-            due.append(
-                _due_item(
-                    checkpoint,
-                    checkpoint_dates[checkpoint],
-                    mode,
-                    target_stage,
-                )
+            stages = stages_for(mode)
+            target_passed = (
+                stage_known
+                and stages.index(current) > stages.index(target_stage)
             )
+            if not target_passed:
+                due.append(
+                    _due_item(
+                        checkpoint,
+                        checkpoint_dates[checkpoint],
+                        mode,
+                        target_stage,
+                    )
+                )
             if stage_known:
                 missing_gates = _gate_problems(
                     mode,
