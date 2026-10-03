@@ -1,0 +1,13 @@
+tools/.venv/
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+library/papers/*.pdf
+!library/papers/.gitkeep
+__pycache__/
+*.pyc
