@@ -346,10 +346,16 @@ class TestDefaultRunner(QueueTests):
     def test_default_runner_streams_output_before_child_exits(self):
         from ccfa.queue import _default_runner
 
+        ready = self.root / "first-flushed"
+        go_ahead = self.root / "child-may-finish"
         script = (
-            "import time\n"
+            "import pathlib, time\n"
             "print('FIRST', flush=True)\n"
-            "time.sleep(1.5)\n"
+            f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+            "deadline = time.monotonic() + 30\n"
+            f"while not pathlib.Path({str(go_ahead)!r}).exists() "
+            "and time.monotonic() < deadline:\n"
+            "    time.sleep(0.02)\n"
             "print('SECOND', flush=True)\n"
         )
         stderr = StringIO()
@@ -364,15 +370,18 @@ class TestDefaultRunner(QueueTests):
                 )
 
         worker = threading.Thread(target=invoke)
-        started = time.monotonic()
         worker.start()
-        deadline = started + 1.35
-        while time.monotonic() < deadline and "FIRST" not in stderr.getvalue():
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not ready.exists():
             time.sleep(0.02)
-        elapsed = time.monotonic() - started
 
+        self.assertTrue(ready.exists(), "child never signalled its first flush")
+        # The child is still parked on go_ahead, so FIRST can only be here if
+        # the runner forwarded it while the child was still running.
+        self.assertTrue(worker.is_alive())
         self.assertIn("FIRST", stderr.getvalue())
-        self.assertLess(elapsed, 1.35)
+        self.assertNotIn("SECOND", stderr.getvalue())
+        go_ahead.write_text("go", encoding="utf-8")
         worker.join(timeout=5)
         self.assertFalse(worker.is_alive())
         self.assertEqual(result["code"], 0)
