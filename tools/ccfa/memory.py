@@ -152,14 +152,25 @@ def _entry_problems(
     entry: object,
     kind: str,
     duplicate_ids: set[str],
+    position: int,
 ) -> list[Problem]:
+    if isinstance(entry, dict):
+        entry_id = entry.get("id")
+        locator = (
+            f"条目 {entry_id}"
+            if isinstance(entry_id, str) and entry_id.strip()
+            else f"第 {position} 条"
+        )
+    else:
+        locator = f"第 {position} 条"
+
     if not isinstance(entry, dict):
         return [
             Problem(
                 "memory-entry-not-mapping",
                 str(path),
                 None,
-                "记忆条目必须是映射",
+                f"{locator}: 记忆条目必须是映射",
             )
         ]
 
@@ -171,7 +182,7 @@ def _entry_problems(
                     "memory-missing-field",
                     str(path),
                     None,
-                    f"记忆条目缺少非空字段: {field}",
+                    f"{locator}: 记忆条目缺少非空字段: {field}",
                 )
             )
 
@@ -182,7 +193,7 @@ def _entry_problems(
                 "memory-invalid-date",
                 str(path),
                 None,
-                f"date 必须匹配 YYYY-MM-DD: {date_value!r}",
+                f"{locator}: date 必须匹配 YYYY-MM-DD: {date_value!r}",
             )
         )
 
@@ -195,7 +206,7 @@ def _entry_problems(
                 "memory-invalid-id",
                 str(path),
                 None,
-                f"id 必须匹配 (I|DE)[1-9][0-9]*: {entry_id!r}",
+                f"{locator}: id 必须匹配 (I|DE)[1-9][0-9]*: {entry_id!r}",
             )
         )
     if isinstance(entry_id, str) and entry_id in duplicate_ids:
@@ -204,7 +215,7 @@ def _entry_problems(
                 "memory-duplicate-id",
                 str(path),
                 None,
-                f"同一记忆文件内 id 重复: {entry_id}",
+                f"{locator}: 同一记忆文件内 id 重复: {entry_id}",
             )
         )
 
@@ -214,7 +225,7 @@ def _entry_problems(
                 "memory-invalid-status",
                 str(path),
                 None,
-                f"idea status 非法: {entry.get('status')!r}",
+                f"{locator}: idea status 非法: {entry.get('status')!r}",
             )
         )
 
@@ -226,7 +237,7 @@ def _entry_problems(
                         "memory-missing-field",
                         str(path),
                         None,
-                        f"dead-end 缺少非空字段: {field}",
+                        f"{locator}: dead-end 缺少非空字段: {field}",
                     )
                 )
         reopen_if = entry.get("reopen_if")
@@ -236,7 +247,7 @@ def _entry_problems(
                     "deadend-missing-reopen-if",
                     str(path),
                     None,
-                    "dead-end 缺少非空 reopen_if",
+                    f"{locator}: dead-end 缺少非空 reopen_if",
                 )
             )
     return problems
@@ -265,23 +276,25 @@ def check_memory(paper_root: Path) -> list[Problem]:
     idea_duplicates = _duplicate_ids(ideas)
     problems.extend(
         problem
-        for entry in ideas
+        for position, entry in enumerate(ideas, start=1)
         for problem in _entry_problems(
             ideas_path,
             entry,
             "ideas",
             idea_duplicates,
+            position,
         )
     )
     dead_end_duplicates = _duplicate_ids(dead_ends)
     problems.extend(
         problem
-        for entry in dead_ends
+        for position, entry in enumerate(dead_ends, start=1)
         for problem in _entry_problems(
             dead_ends_path,
             entry,
             "dead-ends",
             dead_end_duplicates,
+            position,
         )
     )
     return problems
@@ -323,8 +336,14 @@ def search_memory(paper_root: Path, query: str) -> dict:
         ),
     ):
         duplicate_ids = _duplicate_ids(entries)
-        for entry in entries:
-            problems = _entry_problems(path, entry, kind, duplicate_ids)
+        for position, entry in enumerate(entries, start=1):
+            problems = _entry_problems(
+                path,
+                entry,
+                kind,
+                duplicate_ids,
+                position,
+            )
             if problems:
                 entry_id = (
                     entry.get("id")
@@ -334,7 +353,7 @@ def search_memory(paper_root: Path, query: str) -> dict:
                 )
                 skipped.append(
                     {
-                        "file": kind,
+                        "file": path.relative_to(paper_root).as_posix(),
                         "id": entry_id,
                         "codes": [problem.code for problem in problems],
                     }

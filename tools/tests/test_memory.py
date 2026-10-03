@@ -353,10 +353,14 @@ class TestMemoryCheck(MemoryTests):
             "  evidence: evidence.csv\n",
         )
 
-        self.assertIn(
-            "deadend-missing-reopen-if",
-            self._codes(check_memory(self.paper_root)),
-        )
+        problems = check_memory(self.paper_root)
+        missing = [
+            problem
+            for problem in problems
+            if problem.code == "deadend-missing-reopen-if"
+        ]
+        self.assertEqual(len(missing), 1)
+        self.assertTrue(missing[0].message.startswith("条目 DE1:"))
 
     def test_dead_end_reason_and_evidence_are_revalidated(self):
         cases = (
@@ -401,10 +405,38 @@ class TestMemoryCheck(MemoryTests):
             "  notes: null\n",
         )
 
-        codes = self._codes(check_memory(self.paper_root))
+        problems = check_memory(self.paper_root)
+        codes = self._codes(problems)
 
         self.assertIn("memory-entry-not-mapping", codes)
         self.assertIn("memory-invalid-date", codes)
+        not_mapping = [
+            problem
+            for problem in problems
+            if problem.code == "memory-entry-not-mapping"
+        ]
+        self.assertEqual(len(not_mapping), 1)
+        self.assertTrue(not_mapping[0].message.startswith("第 1 条:"))
+
+    def test_non_mapping_locator_uses_actual_position(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: first entry\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- not a mapping\n",
+        )
+
+        not_mapping = [
+            problem
+            for problem in check_memory(self.paper_root)
+            if problem.code == "memory-entry-not-mapping"
+        ]
+
+        self.assertEqual(len(not_mapping), 1)
+        self.assertTrue(not_mapping[0].message.startswith("第 2 条:"))
 
     def test_two_problems_in_one_pass_are_both_reported(self):
         self._write(
@@ -492,7 +524,7 @@ class TestMemorySearch(MemoryTests):
 
         self.assertEqual(result["skipped_invalid"], 1)
         self.assertEqual(len(result["skipped"]), 1)
-        self.assertEqual(result["skipped"][0]["file"], "ideas")
+        self.assertEqual(result["skipped"][0]["file"], "memory/ideas.md")
         self.assertIsNone(result["skipped"][0]["id"])
         self.assertIn(
             "memory-entry-not-mapping",
@@ -522,7 +554,10 @@ class TestMemorySearch(MemoryTests):
         self.assertEqual(len(result["skipped"]), 2)
         self.assertEqual(
             [(item["file"], item["id"]) for item in result["skipped"]],
-            [("ideas", "I1"), ("ideas", "I1")],
+            [
+                ("memory/ideas.md", "I1"),
+                ("memory/ideas.md", "I1"),
+            ],
         )
         for item in result["skipped"]:
             self.assertIn("memory-duplicate-id", item["codes"])
@@ -542,11 +577,23 @@ class TestMemorySearch(MemoryTests):
         self.assertEqual(result["dead_ends"], [])
         self.assertEqual(result["skipped_invalid"], 1)
         self.assertEqual(len(result["skipped"]), 1)
-        self.assertEqual(result["skipped"][0]["file"], "dead-ends")
+        self.assertEqual(result["skipped"][0]["file"], "memory/dead-ends.md")
         self.assertEqual(result["skipped"][0]["id"], "DE1")
         self.assertIn(
             "deadend-missing-reopen-if",
             result["skipped"][0]["codes"],
+        )
+
+    def test_skipped_records_use_relative_paths_for_both_files(self):
+        self._write(IDEAS_FILE, "- not a mapping\n")
+        self._write(DEAD_ENDS_FILE, "- not a mapping\n")
+
+        result = search_memory(self.paper_root, "anything")
+
+        self.assertEqual(result["skipped_invalid"], 2)
+        self.assertEqual(
+            [item["file"] for item in result["skipped"]],
+            ["memory/ideas.md", "memory/dead-ends.md"],
         )
 
     def test_search_rejects_empty_and_non_string_queries(self):

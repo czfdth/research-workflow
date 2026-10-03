@@ -254,7 +254,7 @@ class KnowledgeLayerEndToEnd(unittest.TestCase):
         code, stdout, stderr = self._memory("check")
 
         self.assertEqual(code, 1)
-        self.assertIn("dead-ends.md", stderr)
+        self.assertIn("DE1", stderr)
         self.assertIn("deadend-missing-reopen-if", stderr)
         self.assertIn(
             "deadend-missing-reopen-if",
@@ -267,7 +267,7 @@ class KnowledgeLayerEndToEnd(unittest.TestCase):
         result = self._json(stdout)
         self.assertEqual(result["skipped_invalid"], 1)
         self.assertEqual(len(result["skipped"]), 1)
-        self.assertEqual(result["skipped"][0]["file"], "dead-ends")
+        self.assertEqual(result["skipped"][0]["file"], "memory/dead-ends.md")
         self.assertEqual(result["skipped"][0]["id"], "DE1")
         self.assertIn(
             "deadend-missing-reopen-if",
