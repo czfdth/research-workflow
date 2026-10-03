@@ -6,7 +6,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -16,11 +16,17 @@ from ccfa.stages import gate_for, stages_for
 
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _CHECKPOINT_STAGES = {
+    "T-90": "experiment-design",
+    "T-60": "experiments-running",
+    "T-30": "results-ready",
+    "T-21": "writing",
     "T-14": "internal-review",
     "T-7": "internal-review",
     "T-3": "submission-check",
+    "T-1": "submission-check",
 }
 _SEQUENTIAL_ADVISORY = "无投稿目标日，按顺序推进"
+_RUN_STARTED_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def parse_deadline(value: object) -> date | None:
@@ -43,11 +49,16 @@ def parse_deadline(value: object) -> date | None:
 
 
 def checkpoints(deadline: date) -> dict[str, date]:
-    """Return the T-14, T-7 and T-3 checkpoint dates."""
+    """Return all eight checkpoint dates relative to the deadline."""
     return {
+        "T-90": deadline - timedelta(days=90),
+        "T-60": deadline - timedelta(days=60),
+        "T-30": deadline - timedelta(days=30),
+        "T-21": deadline - timedelta(days=21),
         "T-14": deadline - timedelta(days=14),
         "T-7": deadline - timedelta(days=7),
         "T-3": deadline - timedelta(days=3),
+        "T-1": deadline - timedelta(days=1),
     }
 
 
@@ -72,6 +83,83 @@ def _problem(
     message: str,
 ) -> dict:
     return dict(Problem(code, str(path), None, message)._asdict())
+
+
+def _parse_run_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, _RUN_STARTED_FORMAT).date()
+    except ValueError:
+        return None
+
+
+def _scan_t30_runs(
+    paper_root: Path,
+    t30: date,
+) -> tuple[list[dict], list[dict]]:
+    """Find runs started after T-30 without letting one bad record stop the scan."""
+    log_dir = paper_root / "experiments" / "log"
+    problems: list[dict] = []
+    advisories: list[dict] = []
+    if not log_dir.is_dir():
+        return problems, advisories
+
+    for path in sorted(log_dir.glob("*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            advisories.append(
+                _problem(
+                    "t30-scan-skipped",
+                    path,
+                    f"运行记录不可读，已跳过: {exc}",
+                )
+            )
+            continue
+        if not isinstance(record, dict):
+            advisories.append(
+                _problem(
+                    "t30-scan-skipped",
+                    path,
+                    "运行记录不是对象，已跳过",
+                )
+            )
+            continue
+
+        started = _parse_run_date(record.get("started_at"))
+        if started is None:
+            advisories.append(
+                _problem(
+                    "t30-scan-skipped",
+                    path,
+                    "运行记录缺少可解析的 started_at，已跳过: "
+                    f"{record.get('started_at')!r}",
+                )
+            )
+            continue
+
+        run_id = record.get("run_id")
+        if not isinstance(run_id, str) or not run_id.strip():
+            advisories.append(
+                _problem(
+                    "t30-scan-skipped",
+                    path,
+                    "运行记录缺少 run_id，已跳过",
+                )
+            )
+            continue
+
+        if started > t30:
+            problems.append(
+                _problem(
+                    "t30-new-experiment",
+                    path,
+                    f"T-30 ({t30.isoformat()}) 后出现新实验记录 "
+                    f"{run_id}，开始于 {started.isoformat()}",
+                )
+            )
+    return problems, advisories
 
 
 def _gate_problems(
@@ -151,6 +239,7 @@ def due_report(paper_root: Path, today: date) -> dict:
             "missing_gates": [],
             "problems": problems,
             "advisory": None,
+            "advisories": [],
         }
 
     if deadline is None:
@@ -172,6 +261,9 @@ def due_report(paper_root: Path, today: date) -> dict:
 
     due = []
     missing_gates: list[dict] = []
+    checkpoint_dates = checkpoints(deadline)
+    advisories: list[dict] = []
+
     if today > deadline:
         due.append(_due_item("overdue", deadline, mode, "submission-check"))
         problems.append(
@@ -190,7 +282,6 @@ def due_report(paper_root: Path, today: date) -> dict:
             )
             problems.extend(missing_gates)
     else:
-        checkpoint_dates = checkpoints(deadline)
         checkpoint = next(
             (
                 name
@@ -224,6 +315,13 @@ def due_report(paper_root: Path, today: date) -> dict:
                 )
                 problems.extend(missing_gates)
 
+    if today > checkpoint_dates["T-30"]:
+        t30_problems, advisories = _scan_t30_runs(
+            paper_root,
+            checkpoint_dates["T-30"],
+        )
+        problems.extend(t30_problems)
+
     return {
         "mode": "countdown",
         "deadline": deadline.isoformat(),
@@ -231,6 +329,7 @@ def due_report(paper_root: Path, today: date) -> dict:
         "missing_gates": missing_gates,
         "problems": problems,
         "advisory": None,
+        "advisories": advisories,
     }
 
 
@@ -296,6 +395,11 @@ def main(argv: list[str]) -> int:
     for problem in report["problems"]:
         print(
             f"{problem['path']}: {problem['code']}: {problem['message']}",
+            file=sys.stderr,
+        )
+    for advisory in report.get("advisories", []):
+        print(
+            f"{advisory['path']}: {advisory['code']}: {advisory['message']}",
             file=sys.stderr,
         )
     return 1 if report["problems"] else 0

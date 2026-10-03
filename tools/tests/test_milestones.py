@@ -49,6 +49,18 @@ class MilestoneTests(unittest.TestCase):
             code = main(argv)
         return code, stdout.getvalue(), stderr.getvalue()
 
+    def _write_run(self, run_id, started_at, *, raw=None):
+        log_dir = self.paper_root / "experiments" / "log"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / f"{run_id}.json"
+        if raw is None:
+            raw = json.dumps(
+                {"run_id": run_id, "started_at": started_at},
+                ensure_ascii=False,
+            )
+        path.write_text(raw, encoding="utf-8")
+        return path
+
 
 class TestDeadlineAndCheckpoints(MilestoneTests):
     def test_parse_deadline_accepts_none_empty_and_valid_dates(self):
@@ -76,14 +88,140 @@ class TestDeadlineAndCheckpoints(MilestoneTests):
         self.assertEqual(
             checkpoints(date(2027, 5, 1)),
             {
+                "T-90": date(2027, 1, 31),
+                "T-60": date(2027, 3, 2),
+                "T-30": date(2027, 4, 1),
+                "T-21": date(2027, 4, 10),
                 "T-14": date(2027, 4, 17),
                 "T-7": date(2027, 4, 24),
                 "T-3": date(2027, 4, 28),
+                "T-1": date(2027, 4, 30),
             },
         )
 
 
 class TestDueReport(MilestoneTests):
+    def test_t90_checkpoint_points_to_experiment_design(self):
+        self._write_state(deadline="2027-05-01", stage="idea")
+
+        report = due_report(self.paper_root, date(2027, 1, 31))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-90")
+        self.assertEqual(report["due"][0]["stage"], "experiment-design")
+        self.assertEqual(report["due"][0]["gate"], "design_frozen")
+
+    def test_t60_checkpoint_points_to_experiments_running(self):
+        self._write_state(deadline="2027-05-01", stage="experiment-design")
+
+        report = due_report(self.paper_root, date(2027, 3, 2))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-60")
+        self.assertEqual(report["due"][0]["stage"], "experiments-running")
+        self.assertEqual(report["due"][0]["gate"], "results_recorded")
+
+    def test_t30_checkpoint_points_to_results_ready(self):
+        self._write_state(deadline="2027-05-01", stage="experiments-running")
+
+        report = due_report(self.paper_root, date(2027, 4, 1))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-30")
+        self.assertEqual(report["due"][0]["stage"], "results-ready")
+        self.assertEqual(report["due"][0]["gate"], "claims_supported")
+
+    def test_t21_checkpoint_points_to_writing(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+
+        report = due_report(self.paper_root, date(2027, 4, 10))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-21")
+        self.assertEqual(report["due"][0]["stage"], "writing")
+        self.assertEqual(report["due"][0]["gate"], "draft_complete")
+
+    def test_t1_checkpoint_points_to_submission_check(self):
+        self._write_state(deadline="2027-05-01", stage="writing")
+
+        report = due_report(self.paper_root, date(2027, 4, 30))
+
+        self.assertEqual(report["due"][0]["checkpoint"], "T-1")
+        self.assertEqual(report["due"][0]["stage"], "submission-check")
+        self.assertEqual(report["due"][0]["gate"], "package_ready")
+
+    def test_t30_new_run_is_a_problem_with_run_id_and_date(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("20270402T120000-01", "2027-04-02T12:00:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        problem = next(
+            item
+            for item in report["problems"]
+            if item["code"] == "t30-new-experiment"
+        )
+        self.assertIn("20270402T120000-01", problem["message"])
+        self.assertIn("2027-04-02", problem["message"])
+
+    def test_t30_older_run_has_no_problem(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("20270331T120000-01", "2027-03-31T12:00:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+
+    def test_t30_same_day_run_is_not_after_the_freeze(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("20270401T235900-01", "2027-04-01T23:59:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+
+    def test_t30_scan_does_not_run_on_the_exact_checkpoint_day(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("20270402T120000-01", "2027-04-02T12:00:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 1))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+
+    def test_bad_run_record_is_advisory_and_other_records_are_still_scanned(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        bad_path = self._write_run("bad", None, raw="{not-json")
+        self._write_run("20270402T120000-01", "2027-04-02T12:00:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 3))
+
+        self.assertIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+        self.assertEqual(
+            [advisory["code"] for advisory in report["advisories"]],
+            ["t30-scan-skipped"],
+        )
+        self.assertEqual(report["advisories"][0]["path"], str(bad_path))
+
+    def test_t30_scan_is_not_run_in_sequential_mode(self):
+        self._write_state(include_deadline=False, stage="results-ready")
+        self._write_run("20270402T120000-01", "2027-04-02T12:00:00Z")
+
+        report = due_report(self.paper_root, date(2027, 4, 3))
+
+        self.assertEqual(report["mode"], "sequential")
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+
     def test_t14_checkpoint_reports_gate_gaps(self):
         self._write_state(deadline="2027-05-01", stage="idea")
         today = date(2027, 5, 1) - timedelta(days=14)
@@ -311,6 +449,47 @@ class TestMilestonesMain(MilestoneTests):
             any("package_ready" in problem["message"] for problem in report["problems"])
         )
         self.assertIn("package_ready", stderr)
+
+    def test_due_t30_new_run_exits_one(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("20270402T120000-01", "2027-04-02T12:00:00Z")
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-04-02",
+            ]
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in json.loads(stdout)["problems"]},
+        )
+        self.assertIn("t30-new-experiment", stderr)
+
+    def test_due_t30_bad_record_advisory_exits_zero(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run("bad", None, raw="{not-json")
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-04-02",
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout)["problems"], [])
+        self.assertIn("t30-scan-skipped", stderr)
 
     def test_due_t14_internal_review_exits_one_with_review_gap(self):
         self._write_state(deadline="2027-05-01", stage="internal-review")
