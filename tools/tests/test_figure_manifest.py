@@ -81,9 +81,12 @@ class TestCheckManifest(unittest.TestCase):
 
     def test_generator_hash_mismatch_is_reported(self):
         (self.figures / "plot.png").write_bytes(PNG)
+        self._write_generator()
         item = self._item(generator_hash="sha256:deadbeef")
         problems, _ = check_manifest([item], self.root)
         self.assertIn("figure-hash", [p.code for p in problems])
+        self.assertIn("哈希不符", problems[0].message)
+        self.assertNotIn("不存在", problems[0].message)
 
     def test_missing_generator_script_is_reported(self):
         (self.figures / "plot.png").write_bytes(PNG)
