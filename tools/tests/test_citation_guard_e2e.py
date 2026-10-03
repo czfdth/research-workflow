@@ -40,7 +40,22 @@ class TestCitationGuardEndToEnd(unittest.TestCase):
     def _write_clean_inputs(self):
         self.bib.write_text("@misc{good, doi = {10.1/ok}}\n", encoding="utf-8")
         self.ledger.write_text(
-            json.dumps({"version": 1, "entries": {"good": {"status": "verified"}}}),
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {
+                        "good": {
+                            "status": "verified",
+                            "evidence": {
+                                "body_sha256": "sha256:" + "a" * 64,
+                                "retrieved_at": "2026-10-04T00:00:00Z",
+                                "matched_title": "Sample Title",
+                                "source": "crossref",
+                            },
+                        }
+                    },
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -84,6 +99,28 @@ class TestCitationGuardEndToEnd(unittest.TestCase):
 
         result = self._run()
         self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_verified_without_evidence_exits_one(self):
+        self.bib.write_text("@misc{good, doi = {10.1/ok}}\n", encoding="utf-8")
+        self.ledger.write_text(
+            json.dumps(
+                {"version": 1, "entries": {"good": {"status": "verified"}}}
+            ),
+            encoding="utf-8",
+        )
+        (self.root / "manuscript" / "main.tex").write_text(
+            r"\cite{good}",
+            encoding="utf-8",
+        )
+
+        result = self._run()
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertIn(
+            "citation-self-asserted",
+            [problem["code"] for problem in payload["problems"]],
+        )
 
     def test_malformed_bib_exits_two_with_clean_stdout(self):
         # C8: a parse failure is a tool error (2). The parser's diagnostic must

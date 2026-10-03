@@ -1,6 +1,8 @@
 """Report citations that cannot be trusted.
 
-Read-only. Never edits the manuscript or the bibliography.
+The manuscript and bibliography are never edited. ``--verify-online``
+performs the DOI lookups and rewrites the citation ledger with the fetched
+evidence; without it the tool is read-only.
 """
 
 from __future__ import annotations
@@ -9,8 +11,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from ccfa.bib import load_entries
-from ccfa.citation_ledger import load_ledger
+from ccfa.bib import load_entries, normalize_doi
+from ccfa.citation_ledger import (
+    LedgerEvidence,
+    LedgerRecord,
+    load_ledger,
+    save_ledger,
+)
 from ccfa.cli import Problem, emit, tool_error
 from ccfa.doi_lookup import lookup
 from ccfa.texscan import find_cited_keys, iter_tex_files
@@ -31,6 +38,44 @@ def check(
 
     problems: list[Problem] = []
     advisories: list[Problem] = []
+
+    if verify_online:
+        refreshed = dict(ledger)
+        for key in sorted(entries):
+            entry = entries[key]
+            if not entry.doi:
+                continue
+            result = lookup(entry.doi, expected_title=entry.title)
+            if result.found and result.evidence is not None:
+                refreshed[key] = LedgerRecord(
+                    key=key,
+                    doi=normalize_doi(entry.doi),
+                    status="verified",
+                    verified_at=result.evidence.retrieved_at,
+                    source=result.evidence.source,
+                    evidence=LedgerEvidence(**result.evidence._asdict()),
+                    evidence_error="",
+                )
+            else:
+                refreshed[key] = LedgerRecord(
+                    key=key,
+                    doi=normalize_doi(entry.doi),
+                    status="failed",
+                    verified_at="",
+                    source=result.source or "",
+                    evidence=None,
+                    evidence_error="",
+                )
+                problems.append(
+                    Problem(
+                        "doi-not-found",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的 DOI {entry.doi} 无法解析（{result.detail}）",
+                    )
+                )
+        save_ledger(Path(ledger_path), refreshed)
+        ledger = refreshed
 
     for key, locations in sorted(cited.items()):
         if key not in entries:
@@ -54,6 +99,17 @@ def check(
                     str(bib_path),
                     None,
                     f"条目未通过检索期核验（{reason}）: {key}",
+                )
+            )
+        elif record.evidence is None:
+            reason = record.evidence_error or "evidence 缺失或非法"
+            problems.append(
+                Problem(
+                    "citation-self-asserted",
+                    str(bib_path),
+                    None,
+                    f"条目 {key} 声明 verified 但没有可核验的响应体证据"
+                    f"（{reason}）；请运行 citation_guard --verify-online 重新核验",
                 )
             )
 
@@ -83,22 +139,6 @@ def check(
                 )
             )
 
-    if verify_online:
-        for key in sorted(entries):
-            doi = entries[key].doi
-            if not doi:
-                continue
-            result = lookup(doi)
-            if not result.found:
-                problems.append(
-                    Problem(
-                        "doi-not-found",
-                        str(bib_path),
-                        None,
-                        f"条目 {key} 的 DOI {doi} 无法解析（{result.detail}）",
-                    )
-                )
-
     return problems, advisories
 
 
@@ -107,7 +147,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--manuscript", required=True)
     parser.add_argument("--bib", required=True)
     parser.add_argument("--ledger", required=True)
-    parser.add_argument("--verify-online", action="store_true")
+    parser.add_argument(
+        "--verify-online",
+        action="store_true",
+        help=(
+            "在线核验 DOI，并把响应体证据（sha256、时间、标题、来源）"
+            "写入 --ledger；会改写台账文件"
+        ),
+    )
     args = parser.parse_args(argv[1:])
 
     try:

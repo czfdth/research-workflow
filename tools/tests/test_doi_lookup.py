@@ -1,6 +1,18 @@
+import hashlib
+import json
 import unittest
 
-from ccfa.doi_lookup import lookup
+from ccfa.doi_lookup import lookup, title_similarity
+
+
+def _crossref_body(doi="10.1/x", title="Sample Paper"):
+    return json.dumps({"message": {"DOI": doi, "title": [title]}})
+
+
+def _datacite_body(doi="10.1/x", title="Sample Paper"):
+    return json.dumps(
+        {"data": {"attributes": {"doi": doi, "titles": [{"title": title}]}}}
+    )
 
 
 def _fetcher(responses):
@@ -18,18 +30,130 @@ def _fetcher(responses):
 
 class TestLookup(unittest.TestCase):
     def test_crossref_hit_does_not_consult_datacite(self):
-        fetch, calls = _fetcher({"crossref.org": (200, "{}")})
+        body = _crossref_body()
+        fetch, calls = _fetcher({"crossref.org": (200, body)})
+
         result = lookup("10.1/x", fetch=fetch)
+
         self.assertTrue(result.found)
         self.assertEqual(result.source, "crossref")
         self.assertEqual(len(calls), 1)
+        self.assertEqual(result.evidence.source, "crossref")
+        self.assertEqual(result.evidence.matched_title, "Sample Paper")
+        self.assertEqual(
+            result.evidence.body_sha256,
+            "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        )
+        self.assertRegex(
+            result.evidence.retrieved_at,
+            r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+            r"[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+        )
 
     def test_datacite_is_tried_when_crossref_misses(self):
-        fetch, calls = _fetcher({"api.datacite.org": (200, "{}")})
+        fetch, calls = _fetcher(
+            {
+                "crossref.org": (404, ""),
+                "api.datacite.org": (200, _datacite_body()),
+            }
+        )
+
         result = lookup("10.1/x", fetch=fetch)
+
         self.assertTrue(result.found)
         self.assertEqual(result.source, "datacite")
+        self.assertEqual(result.evidence.source, "datacite")
         self.assertEqual(len(calls), 2)
+
+    def test_doi_mismatch_is_not_found(self):
+        fetch, _ = _fetcher(
+            {"crossref.org": (200, _crossref_body(doi="10.1/other"))}
+        )
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertFalse(result.found)
+        self.assertIsNone(result.evidence)
+        self.assertEqual(result.detail, "doi mismatch")
+
+    def test_missing_doi_in_body_is_a_mismatch(self):
+        body = json.dumps({"message": {"title": ["Sample Paper"]}})
+        fetch, _ = _fetcher({"crossref.org": (200, body)})
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertFalse(result.found)
+        self.assertEqual(result.detail, "doi mismatch")
+
+    def test_bad_json_is_not_found_with_detail(self):
+        fetch, _ = _fetcher(
+            {
+                "crossref.org": (200, "not json"),
+                "api.datacite.org": (200, "not json"),
+            }
+        )
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertFalse(result.found)
+        self.assertIn("JSON", result.detail)
+
+    def test_title_mismatch_is_not_found(self):
+        fetch, _ = _fetcher(
+            {"crossref.org": (200, _crossref_body(title="Cooking With Gas"))}
+        )
+
+        result = lookup(
+            "10.1/x",
+            fetch=fetch,
+            expected_title="Attention Is All You Need",
+        )
+
+        self.assertFalse(result.found)
+        self.assertEqual(result.detail, "title mismatch")
+        self.assertIsNone(result.evidence)
+
+    def test_title_match_tolerates_case_and_punctuation(self):
+        fetch, _ = _fetcher(
+            {
+                "crossref.org": (
+                    200,
+                    _crossref_body(title="Attention, Is All You Need!"),
+                )
+            }
+        )
+
+        result = lookup(
+            "10.1/x",
+            fetch=fetch,
+            expected_title="attention is all you need",
+        )
+
+        self.assertTrue(result.found)
+        self.assertEqual(
+            result.evidence.matched_title,
+            "Attention, Is All You Need!",
+        )
+
+    def test_title_similarity_uses_normalized_sequence_ratio(self):
+        self.assertEqual(
+            title_similarity(
+                "Attention Is All You Need",
+                "attention is all you need",
+            ),
+            1.0,
+        )
+        self.assertLess(
+            title_similarity(
+                "Attention Is All You Need",
+                "Cooking With Gas",
+            ),
+            0.9,
+        )
+        self.assertGreaterEqual(
+            title_similarity("A Study of X", "A Study of X."),
+            0.9,
+        )
 
     def test_both_miss_reports_not_found(self):
         fetch, _ = _fetcher({})
@@ -47,17 +171,23 @@ class TestLookup(unittest.TestCase):
         self.assertIn("connection reset", result.detail)
 
     def test_doi_is_normalized_before_the_request(self):
-        fetch, calls = _fetcher({"crossref.org": (200, "{}")})
+        fetch, calls = _fetcher(
+            {"crossref.org": (200, _crossref_body(doi="10.1/mixed"))}
+        )
         lookup("https://doi.org/10.1/MiXeD", fetch=fetch)
         self.assertIn("10.1%2Fmixed", calls[0])
 
     def test_empty_doi_is_not_found_without_a_request(self):
-        fetch, calls = _fetcher({"crossref.org": (200, "{}")})
+        fetch, calls = _fetcher({"crossref.org": (200, _crossref_body())})
         result = lookup("", fetch=fetch)
         self.assertFalse(result.found)
         self.assertEqual(calls, [])
 
     def test_url_uses_the_crossref_endpoint(self):
-        fetch, calls = _fetcher({"crossref.org": (200, "{}")})
+        fetch, calls = _fetcher({"crossref.org": (200, _crossref_body())})
         lookup("10.1/x", fetch=fetch)
         self.assertTrue(calls[0].startswith("https://api.crossref.org/works/"))
+
+
+if __name__ == "__main__":
+    unittest.main()
