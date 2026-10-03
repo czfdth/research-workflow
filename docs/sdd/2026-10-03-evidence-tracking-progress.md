@@ -1748,3 +1748,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 控制器收尾（`7e95e98`）：README「论文工作台（P0）」补建 venv（`py -3.12`）+ `app/requirements.txt` + 启动 + headless `QT_QPA_PLATFORM=offscreen` 说明；`GENERATED_README_PATH_PREFIXES` 增加 `app/.venv`（前缀严格、`app/.venv-other` 不豁免）并同步对抗断言。**fresh checkout 验证**：`git archive 7e95e98` 解到临时目录（无任何 venv）跑 `test_docs_consistency` → 15 tests OK。
 - 终态：app **53 tests OK**、tools **819 tests OK**；工作树干净。
 - 最终全分支评审：新派 `Poincare the 2nd`，review-8747928..7e95e98.diff（6 commits）；重点 E57 字节级密钥红线、E58 import 图、E59 独立复跑截图、集成与 DoD、fresh checkout。
+
+## workbench P0 终审：Merge readiness = Ready
+
+- 终审者 `Poincare the 2nd`：**Ready**，无 Critical/Important。独立证据：
+  - E57：自造 `sk-INDEP-FAKE-KEY-...` 走 GUI 保存 → `settings.json` 无 key、无 key 字段；`save_settings(key=...)` → `TypeError`；注入 `NoKeyringError` → `SecretStoreUnavailable` 且消息含"未降级为明文存储"。
+  - E58：`ccfa_core` 零 PySide6；独立 meta_path 阻断下导入核心 + 最小路径通过，`PY_SIDE6_LOADED=[]`。
+  - E59：独立复跑截图 `INDEP_SCREENSHOT_RATIO=0.8464 / BYTES=5575`（与套件 0.7457/7505 差异因 fixture 不同，属预期）；清空中央控件 → `CLEARED_RATIO=0.0001` 断言失败。
+  - 集成：坏项标红 `#ff0000` + tooltip、好项正常；validate/milestones 真跑；凭据状态两态。
+  - DoD：app 53 OK、tools 819 OK；fresh checkout（`git archive 7e95e98`，无 venv）docs 测试 15 OK。
+- 终审 Minor 处置：
+  1. **要修**：`settings_dialog.save()` 改名 + 留空 key 时凭据失联（旧 key_name 被换掉）→ 修复轮 `fix: keep provider credentials linked across renames`（改名且留空 key 时沿用旧 key_name；补两条用例 + 判别力），交 `Confucius` 实施、`Kierkegaard` 验证。
+  2. `app/README.md` 本机绝对路径示例 → 同一修复轮内改成通用占位。
+- 终审残余风险（挂账）：真实 Windows 凭据管理器后端未做端到端（用注入 fake）；keyring 非 `NoKeyringError` 异常会外抛（未覆盖异常面）；像素阈值 0.02 对"部分清空"不敏感；app venv 依赖随接入模块增加需补充；打包与聊天/工具注册表按 P0 边界未实现。
