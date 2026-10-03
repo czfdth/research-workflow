@@ -23,6 +23,10 @@ class SourceError(Exception):
     """A tag's source could not be read, parsed, or navigated."""
 
 
+class ToolEnvironmentError(Exception):
+    """The tool environment is missing a required dependency."""
+
+
 def resolve_within_base_dir(source_path: str, base_dir: Path | None) -> Path:
     if Path(source_path).is_absolute():
         raise SourceError(f"source path must be relative: {source_path}")
@@ -47,7 +51,7 @@ def load_source(path: Path) -> tuple[str, object]:
             raise SourceError(f"JSON 解析失败: {exc}") from exc
     if suffix in (".yaml", ".yml"):
         if yaml is None:
-            raise SourceError("PyYAML 未安装，无法读取 YAML 源")
+            raise ToolEnvironmentError("PyYAML 未安装，无法读取 YAML 源")
         try:
             return "yaml", yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as exc:

@@ -11,7 +11,13 @@ from pathlib import Path
 from typing import Iterable
 
 from ccfa.cli import Problem, emit, tool_error
-from ccfa.datasource import SourceError, load_source, navigate, resolve_within_base_dir
+from ccfa.datasource import (
+    SourceError,
+    ToolEnvironmentError,
+    load_source,
+    navigate,
+    resolve_within_base_dir,
+)
 from ccfa.dataval import Tag, find_tags, find_untagged
 from ccfa.datavalue import values_match
 
@@ -101,6 +107,8 @@ def main(argv: list[str]) -> int:
     try:
         docs = _documents(args.docs)
         base_dir = Path(args.base_dir) if args.base_dir else None
+        if base_dir is not None and not base_dir.is_dir():
+            raise ValueError(f"--base-dir 不存在或不是目录: {base_dir}")
         problems, advisories = check(
             docs,
             base_dir,
@@ -108,7 +116,7 @@ def main(argv: list[str]) -> int:
             args.rel_tolerance,
             untagged=args.untagged,
         )
-    except ValueError as exc:
+    except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
 
     return emit(problems, advisories)

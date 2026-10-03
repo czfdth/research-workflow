@@ -6,6 +6,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from ccfa import datasource
 from ccfa.trace_claims import check, main
 
 
@@ -104,6 +105,38 @@ class TestMain(BaseCase):
                     str(self.root),
                 ]
             )
+        self.assertEqual(code, 2)
+
+    def test_invalid_base_dir_exits_two(self):
+        self.write_doc("No numbers here.")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(
+                [
+                    "trace_claims.py",
+                    "--doc",
+                    str(self.doc),
+                    "--base-dir",
+                    str(self.root / "missing"),
+                ]
+            )
+        self.assertEqual(code, 2)
+
+    def test_missing_yaml_dependency_exits_two(self):
+        self.write_doc("\\dataval{results.yaml:summary.lcoe}{0.143}")
+        out, err = io.StringIO(), io.StringIO()
+        # Patch yaml to simulate a real venv without PyYAML.
+        with mock.patch.object(datasource, "yaml", None):
+            with redirect_stdout(out), redirect_stderr(err):
+                code = main(
+                    [
+                        "trace_claims.py",
+                        "--doc",
+                        str(self.doc),
+                        "--base-dir",
+                        str(self.root),
+                    ]
+                )
         self.assertEqual(code, 2)
 
     def test_unreadable_document_exits_two(self):
