@@ -118,6 +118,23 @@ cd <仓库根>
 
 生成结果必须与 `checklists/conference.md` 和 `checklists/journal.md` 保持一致。
 
+## 从零搭建
+
+依赖清单固定在 `tools/requirements.txt`。需要 Python 3.12（本仓库实测 3.12.14）。`tools/.venv` 已被 gitignore，不会随克隆提供。在仓库根执行：
+
+```powershell
+cd <仓库根>
+python -m venv tools/.venv
+& tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.txt
+```
+
+如果 `python` 不是 3.12，可用 `py -3.12 -m venv tools/.venv`。`scripts/*.ps1` 包装器固定调用 `tools/.venv/Scripts/python.exe`，因此必须安装在默认路径。装完后从仓库根运行：
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path tools).Path
+& tools/.venv/Scripts/python.exe -m unittest discover -s tools/tests -t tools -v
+```
+
 ## 跑测试
 
 ```powershell
