@@ -56,6 +56,11 @@ class TestReadConfig(BaseCase):
         self.assertEqual(entry["content"], {"epochs": 5})
         self.assertTrue(entry["sha256"].startswith("sha256:"))
 
+    def test_relative_config_path_resolves_against_paper_root(self):
+        entry = read_config(Path("configs/a.yaml"), paper_root=self.root)
+        self.assertEqual(entry["path"], "configs/a.yaml")
+        self.assertEqual(entry["content"], {"epochs": 5})
+
     def test_missing_config_is_a_tool_error(self):
         with self.assertRaises(ValueError):
             read_config(self.root / "nope.yaml", paper_root=self.root)

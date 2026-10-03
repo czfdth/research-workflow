@@ -85,7 +85,8 @@ def read_config(path: Path, *, paper_root: Path) -> dict:
     path = Path(path)
     root = Path(paper_root)
     try:
-        resolved = path.resolve()
+        resolved = path if path.is_absolute() else root / path
+        resolved = resolved.resolve()
         relative = resolved.relative_to(root.resolve()).as_posix()
         raw = resolved.read_bytes()
     except (OSError, ValueError) as exc:
