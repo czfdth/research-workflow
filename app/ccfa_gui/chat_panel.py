@@ -216,7 +216,7 @@ class ChatPanel(QWidget):
             self._set_hint(f"凭据后端不可用: {exc}")
             return
         except Exception as exc:
-            self._set_hint(f"无法读取凭据: {exc}")
+            self._set_hint(f"无法读取凭据（{type(exc).__name__}）")
             return
         if not isinstance(value, str) or not value.strip():
             self._set_hint("未配置 API key：请在设置中保存密钥")
@@ -348,7 +348,7 @@ class ChatPanel(QWidget):
             self._set_hint(f"凭据后端不可用: {exc}")
             return None
         except Exception as exc:
-            self._set_hint(f"无法读取凭据: {exc}")
+            self._set_hint(f"无法读取凭据（{type(exc).__name__}）")
             return None
         if not isinstance(value, str) or not value.strip():
             self._set_hint("未配置 API key：请在设置中保存密钥")

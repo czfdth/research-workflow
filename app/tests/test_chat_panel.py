@@ -409,6 +409,33 @@ class ChatPanelTests(unittest.TestCase):
         self.assertIn("凭据后端不可用", panel.hint_label.text())
         self.assertNotIn("engines", self.created)
 
+    def test_credential_errors_never_leak_secret_text(self):
+        self._configure_provider()
+        leak = "sk-CHAT-LEAK-9999"
+
+        class ExplodingStore:
+            def get(self, key_name):
+                raise RuntimeError(leak)
+
+        panel = self._panel(store=ExplodingStore())
+
+        hint = panel.hint_label.text()
+        self.assertNotIn(leak, hint)
+        self.assertNotIn(leak.encode("utf-8"), hint.encode("utf-8"))
+        self.assertIn("RuntimeError", hint)
+
+        panel.refresh_status()
+        hint = panel.hint_label.text()
+        self.assertNotIn(leak, hint)
+        self.assertNotIn(leak.encode("utf-8"), hint.encode("utf-8"))
+        self.assertIn("RuntimeError", hint)
+
+        self.assertIsNone(panel._prepare_engine())
+        hint = panel.hint_label.text()
+        self.assertNotIn(leak, hint)
+        self.assertNotIn(leak.encode("utf-8"), hint.encode("utf-8"))
+        self.assertIn("RuntimeError", hint)
+
     def test_codex_engine_does_not_require_provider(self):
         engine = FakeEngine(reply_text="codex ok")
         factory = self._factory(engines={"codex": engine})

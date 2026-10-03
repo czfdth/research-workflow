@@ -197,7 +197,7 @@ TOOL_DEFINITIONS: tuple[Tool, ...] = (
     Tool(
         name="library_search",
         description=(
-            "在 project/library/index.db 中检索文献元数据（只读，"
+            "在共享文献库 <repo>/library/index.db 中检索文献元数据（只读，"
             "不含 PDF 全文）。"
         ),
         risk=READ,

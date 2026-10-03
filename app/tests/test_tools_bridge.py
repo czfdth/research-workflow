@@ -124,6 +124,9 @@ class ToolBridgeTests(unittest.TestCase):
             {tool.name for tool in TOOL_DEFINITIONS},
             EXPECTED_TOOLS,
         )
+        description = tools["library_search"]["function"]["description"]
+        self.assertIn("共享文献库", description)
+        self.assertNotIn("project/library/index.db", description)
 
     def test_run_log_execution_is_not_exposed(self):
         names = {item["function"]["name"] for item in openai_tools()}
