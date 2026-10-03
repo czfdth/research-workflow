@@ -9,7 +9,13 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from ccfa.library import SCHEMA_VERSION, build_index, main, search_index
+from ccfa.library import (
+    SCHEMA_VERSION,
+    build_index,
+    check_library,
+    main,
+    search_index,
+)
 from ccfa.bib import load_entries, load_records
 
 SAMPLE_BIB = r"""
@@ -184,20 +190,32 @@ class TestBuildIndex(LibraryTests):
 
         self.assertEqual([item["key"] for item in result["results"]], ["sample"])
 
-    def test_path_column_is_relative_for_pdf_and_empty_without_pdf(self):
+    def test_search_path_is_empty_when_index_was_built_without_pdf(self):
+        self._build_sample()
+
+        result = search_index(self.root, "Sample")
+
+        self.assertEqual(result["results"][0]["path"], "")
+
+    def test_search_path_appears_after_pdf_is_added_without_rebuild(self):
+        self._build_sample()
+        self._write("papers/sample.pdf", "not a real pdf")
+
+        result = search_index(self.root, "Sample")
+
+        self.assertEqual(result["results"][0]["path"], "papers/sample.pdf")
+
+    def test_search_path_disappears_after_pdf_is_deleted_without_rebuild(self):
         self._build_sample()
         pdf = self._write("papers/sample.pdf", "not a real pdf")
-        build_index(self.root)
-
-        with_pdf = search_index(self.root, "Sample")
-        without_pdf = search_index(self.root, "注意力")
-
         self.assertEqual(
-            [item["path"] for item in with_pdf["results"]],
-            ["papers/sample.pdf"],
+            search_index(self.root, "Sample")["results"][0]["path"],
+            "papers/sample.pdf",
         )
-        self.assertEqual(without_pdf["results"][0]["path"], "")
-        self.assertTrue(pdf.is_file())
+
+        pdf.unlink()
+
+        self.assertEqual(search_index(self.root, "Sample")["results"][0]["path"], "")
 
     def test_rebuild_replaces_the_index_atomically_without_temporary_file(self):
         self._build_sample()
@@ -315,6 +333,149 @@ class TestSearchIndex(LibraryTests):
         self.assertEqual(len(result["results"]), 2)
 
 
+class TestLibraryCheck(LibraryTests):
+    def _codes(self, problems):
+        return [problem.code for problem in problems]
+
+    def test_clean_index_has_no_problems(self):
+        self._build_sample({"sample": "a clean note"})
+
+        self.assertEqual(check_library(self.root), [])
+
+    def test_missing_index_reports_index_missing(self):
+        self._write_bib()
+
+        problems = check_library(self.root)
+
+        self.assertIn("index-missing", self._codes(problems))
+
+    def test_stale_refs_report_index_stale(self):
+        self._build_sample()
+        self._write_bib(SAMPLE_BIB.replace("2021", "2022"))
+
+        problems = check_library(self.root)
+
+        self.assertIn("index-stale", self._codes(problems))
+
+    def test_stale_notes_report_index_stale(self):
+        self._build_sample({"sample": "first note"})
+        self._write("notes/sample.md", "changed note")
+
+        problems = check_library(self.root)
+
+        self.assertIn("index-stale", self._codes(problems))
+
+    def test_refs_key_missing_from_index_is_reported(self):
+        self._build_sample()
+        connection = sqlite3.connect(self.root / "index.db")
+        try:
+            connection.execute("DELETE FROM papers WHERE key = 'sample'")
+            connection.commit()
+        finally:
+            connection.close()
+
+        problems = check_library(self.root)
+
+        missing = [p for p in problems if p.code == "index-entry-missing"]
+        self.assertEqual(len(missing), 1)
+        self.assertIn("sample", missing[0].message)
+
+    def test_index_key_missing_from_refs_is_reported(self):
+        self._build_sample()
+        connection = sqlite3.connect(self.root / "index.db")
+        try:
+            connection.execute(
+                "INSERT INTO papers (key, title) VALUES (?, ?)",
+                ("extra", "Extra entry"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        problems = check_library(self.root)
+
+        extra = [p for p in problems if p.code == "index-entry-extra"]
+        self.assertEqual(len(extra), 1)
+        self.assertIn("extra", extra[0].message)
+
+    def test_duplicate_bib_key_is_reported(self):
+        self._write_bib(
+            "@misc{dup, title={First}}\n"
+            "@misc{dup, title={Second}}\n"
+        )
+        build_index(self.root)
+
+        problems = check_library(self.root)
+
+        duplicate = [p for p in problems if p.code == "duplicate-bib-key"]
+        self.assertEqual(len(duplicate), 1)
+        self.assertIn("dup", duplicate[0].message)
+
+    def test_note_without_entry_is_reported(self):
+        self._write_bib("@misc{sample, title={Sample}}\n")
+        self._write("notes/stray.md", "note without a key")
+        with redirect_stderr(StringIO()):
+            build_index(self.root)
+
+        problems = check_library(self.root)
+
+        stray = [p for p in problems if p.code == "note-without-entry"]
+        self.assertEqual(len(stray), 1)
+        self.assertIn("stray", stray[0].message)
+
+    def test_unsupported_index_schema_version_is_reported(self):
+        self._build_sample()
+        connection = sqlite3.connect(self.root / "index.db")
+        try:
+            connection.execute("UPDATE meta SET schema_version = 2")
+            connection.commit()
+        finally:
+            connection.close()
+
+        problems = check_library(self.root)
+
+        self.assertIn("index-schema-version", self._codes(problems))
+
+    def test_two_problems_are_both_reported_without_early_return(self):
+        self._write_bib("@misc{sample, title={Sample}}\n")
+        build_index(self.root)
+        self._write_bib(
+            "@misc{sample, title={Sample}}\n"
+            "@misc{sample, title={Duplicate}}\n"
+        )
+
+        codes = self._codes(check_library(self.root))
+
+        self.assertIn("index-stale", codes)
+        self.assertIn("duplicate-bib-key", codes)
+
+    def test_check_is_read_only(self):
+        self._build_sample({"sample": "a note"})
+        refs = self.root / "refs.bib"
+        note = self.root / "notes" / "sample.md"
+        index = self.root / "index.db"
+        before = (refs.read_bytes(), note.read_bytes(), index.read_bytes())
+
+        check_library(self.root)
+
+        after = (refs.read_bytes(), note.read_bytes(), index.read_bytes())
+        self.assertEqual(after, before)
+
+    def test_missing_or_broken_refs_cannot_be_audited(self):
+        missing_dir = self.root / "missing"
+        with self.assertRaises(ValueError):
+            check_library(missing_dir)
+
+        broken_dir = self.root / "broken"
+        broken_dir.mkdir()
+        (broken_dir / "refs.bib").write_text(
+            "@article{broken, title={unterminated",
+            encoding="utf-8",
+        )
+        with redirect_stderr(StringIO()), self.assertRaises(ValueError):
+            check_library(broken_dir)
+
+
 class TestMain(LibraryTests):
     def test_index_and_search_commands_emit_json_and_exit_zero(self):
         self._write_bib()
@@ -345,6 +506,44 @@ class TestMain(LibraryTests):
         self.assertEqual(raised.exception.code, 0)
         self.assertIn("派生数据", stdout.getvalue())
         self.assertIn("可重建", stdout.getvalue())
+
+    def test_search_help_lists_fields_and_explains_freshness_boundary(self):
+        stdout = StringIO()
+
+        with redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
+            main(["library", "search", "--help"])
+
+        help_text = stdout.getvalue()
+        normalized = " ".join(help_text.split())
+        self.assertEqual(raised.exception.code, 0)
+        for field in (
+            "key",
+            "title",
+            "authors",
+            "year",
+            "venue",
+            "abstract",
+            "notes",
+            "path",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, help_text)
+        self.assertIn("不含 PDF 全文", normalized)
+        self.assertIn("新鲜度只对 refs.bib 与 notes 负责", normalized)
+        self.assertIn("path 是查询期事实", normalized)
+
+    def test_check_command_reports_problems_with_exit_one(self):
+        self._write_bib()
+        stdout = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            code = main(["library", "--dir", str(self.root), "check"])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["problems"][0]["code"],
+            "index-missing",
+        )
 
     def test_search_without_index_is_a_tool_error(self):
         self._write_bib()

@@ -12,6 +12,10 @@ CREATE VIRTUAL TABLE papers USING fts5(
 Queries of three or more characters use an FTS5 phrase. Shorter queries use a
 literal LIKE fallback because the trigram tokenizer cannot match two-character
 terms. The index contains metadata and notes, not PDF full text.
+
+Freshness is tracked only for ``refs.bib`` and ``notes/*.md``. The ``path``
+field is a query-time fact: it is resolved from ``papers/<key>.pdf`` when a
+search runs, so adding or deleting a PDF does not make the index stale.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ccfa.bib import BibRecord, load_records
-from ccfa.cli import tool_error
+from ccfa.cli import Problem, emit, tool_error
 
 SCHEMA_VERSION = 1
 
@@ -75,7 +79,6 @@ def _insert_index(
     notes_sha256: str,
     records: dict[str, BibRecord],
     notes: dict[str, str],
-    library_dir: Path,
 ) -> None:
     connection = sqlite3.connect(temporary)
     try:
@@ -109,7 +112,7 @@ def _insert_index(
                     record.venue,
                     record.abstract,
                     notes.get(key, ""),
-                    _pdf_relative(library_dir, key),
+                    "",
                 ),
             )
         connection.commit()
@@ -142,7 +145,6 @@ def build_index(library_dir: Path) -> dict:
             notes_sha256,
             parsed.records,
             note_text,
-            library_dir,
         )
         os.replace(temporary, library_dir / "index.db")
     except (OSError, sqlite3.Error) as exc:
@@ -195,6 +197,104 @@ def _assert_fresh(library_dir: Path, meta: tuple) -> None:
         raise ValueError("索引已过期：请先运行 library index 重建")
 
 
+def _index_keys(index_path: Path) -> list[str]:
+    try:
+        connection = sqlite3.connect(index_path)
+        try:
+            return [
+                row[0]
+                for row in connection.execute("SELECT key FROM papers").fetchall()
+            ]
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise ValueError(f"无法读取索引 {index_path}: {exc}") from exc
+
+
+def check_library(library_dir: Path) -> list[Problem]:
+    """Read-only audit of index.db against refs.bib and notes/*.md."""
+    library_dir = Path(library_dir)
+    refs_path = library_dir / "refs.bib"
+    parsed = load_records(refs_path)
+    refs_sha256 = hashlib.sha256(_read_bytes(refs_path, "BibTeX")).hexdigest()
+    note_entries, notes_sha256 = _notes_snapshot(library_dir)
+
+    problems: list[Problem] = []
+    index_path = library_dir / "index.db"
+    if not index_path.is_file():
+        problems.append(
+            Problem(
+                "index-missing",
+                str(index_path),
+                None,
+                "索引不存在；请先运行 library index",
+            )
+        )
+    else:
+        meta = _load_meta(index_path)
+        if meta[0] != SCHEMA_VERSION:
+            problems.append(
+                Problem(
+                    "index-schema-version",
+                    str(index_path),
+                    None,
+                    f"索引 schema_version 不受支持: {meta[0]!r}",
+                )
+            )
+        if meta[1] != refs_sha256 or meta[2] != notes_sha256:
+            problems.append(
+                Problem(
+                    "index-stale",
+                    str(index_path),
+                    None,
+                    "索引已过期：来源 refs.bib 或 notes 已变更",
+                )
+            )
+
+        index_keys = set(_index_keys(index_path))
+        records = parsed.records
+        for key in sorted(set(records) - index_keys):
+            problems.append(
+                Problem(
+                    "index-entry-missing",
+                    str(refs_path),
+                    None,
+                    f"refs.bib 的 key 不在索引中: {key}",
+                )
+            )
+        for key in sorted(index_keys - set(records)):
+            problems.append(
+                Problem(
+                    "index-entry-extra",
+                    str(index_path),
+                    None,
+                    f"索引中的 key 不在 refs.bib 中: {key}",
+                )
+            )
+
+    for key in dict.fromkeys(parsed.duplicate_keys):
+        problems.append(
+            Problem(
+                "duplicate-bib-key",
+                str(refs_path),
+                None,
+                f"refs.bib 包含重复 key: {key}",
+            )
+        )
+
+    for stem, _text, relative in note_entries:
+        if stem not in parsed.records:
+            problems.append(
+                Problem(
+                    "note-without-entry",
+                    str(library_dir / relative),
+                    None,
+                    f"note 没有对应的 refs.bib key: {stem}",
+                )
+            )
+    return problems
+
+
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -203,7 +303,7 @@ def _fts_phrase(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-_RESULT_COLUMNS = "key, title, year, venue, path"
+_RESULT_COLUMNS = "key, title, year, venue"
 
 
 def _search_rows(
@@ -258,7 +358,7 @@ def search_index(library_dir: Path, query: str, limit: int = 20) -> dict:
             "title": row[1],
             "year": row[2],
             "venue": row[3],
-            "path": row[4],
+            "path": _pdf_relative(library_dir, row[0]),
         }
         for row in rows
     ]
@@ -282,10 +382,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     search = subparsers.add_parser(
         "search",
-        help="检索标题、作者、年份、venue、摘要和 notes；不包含 PDF 全文",
+        help="检索索引字段，不包含 PDF 全文",
+        description=(
+            "检索 key/title/authors/year/venue/abstract/notes/path；"
+            "索引不含 PDF 全文。新鲜度只对 refs.bib 与 notes 负责，"
+            "path 是查询期事实，按 papers/<key>.pdf 当前是否存在解析。"
+        ),
     )
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=20)
+    subparsers.add_parser(
+        "check",
+        help="只读审计 index.db 与 refs.bib/notes 的一致性",
+        description=(
+            "只读审计 index.db 与 refs.bib/notes 的一致性；本命令不写盘。"
+        ),
+    )
     return parser
 
 
@@ -296,6 +408,8 @@ def main(argv: list[str]) -> int:
             summary = build_index(Path(args.dir))
             print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
             return 0
+        if args.command == "check":
+            return emit(check_library(Path(args.dir)))
         result = search_index(Path(args.dir), args.query, limit=args.limit)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
