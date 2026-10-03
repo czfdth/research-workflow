@@ -67,7 +67,7 @@ def validate_yaml(path: Path) -> list[str]:
             except ValueError:
                 problems.append(
                     f"target_venue.deadline 非法: {venue.get('deadline')!r}，"
-                    "应为 YYYY-MM-DD"
+                    "必须是 YYYY-MM-DD 日期字符串"
                 )
     elif "target_venue" in data:
         problems.append("target_venue 必须是映射")

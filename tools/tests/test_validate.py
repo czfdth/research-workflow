@@ -91,3 +91,14 @@ class TestValidateYaml(unittest.TestCase):
                     any("deadline" in problem for problem in problems),
                     problems,
                 )
+
+    def test_datetime_deadline_is_reported_not_silently_accepted(self):
+        broken = VALID.replace(
+            '  mode: "conference"\n',
+            '  mode: "conference"\n'
+            "  deadline: 2027-05-01T00:00:00Z\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(any("deadline" in problem for problem in problems), problems)

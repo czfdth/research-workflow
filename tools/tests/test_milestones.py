@@ -3,7 +3,7 @@ import re
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
@@ -61,6 +61,15 @@ class TestDeadlineAndCheckpoints(MilestoneTests):
         for value in ("2027-5-1", "2027-13-01", "2027-02-30", 20270501):
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
+                    parse_deadline(value)
+
+    def test_parse_deadline_rejects_date_and_datetime_objects(self):
+        for value in (date(2027, 5, 1), datetime(2027, 5, 1, 0, 0, 0)):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "必须是 YYYY-MM-DD 日期字符串",
+                ):
                     parse_deadline(value)
 
     def test_checkpoints_are_relative_to_deadline(self):
@@ -322,6 +331,33 @@ class TestMilestonesMain(MilestoneTests):
         self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn("工具错误", stderr)
+
+    def test_datetime_deadline_is_a_tool_error_without_traceback(self):
+        (self.paper_root / "ccfa.yaml").write_text(
+            "target_venue:\n"
+            "  name: Smoke\n"
+            "  mode: conference\n"
+            "  deadline: 2027-05-01T00:00:00Z\n"
+            "stage:\n"
+            "  current: writing\n",
+            encoding="utf-8",
+        )
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "due",
+                "--paper-root",
+                str(self.paper_root),
+                "--today",
+                "2027-05-02",
+            ]
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("工具错误", stderr)
+        self.assertNotIn("Traceback", stderr)
 
         (self.paper_root / "ccfa.yaml").write_text(
             "target_venue: [broken\n",

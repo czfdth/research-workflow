@@ -27,10 +27,10 @@ def parse_deadline(value: object) -> date | None:
     """Parse an optional YYYY-MM-DD deadline."""
     if value is None:
         return None
-    if isinstance(value, date):
-        return value
     if not isinstance(value, str):
-        raise ValueError(f"deadline 非法: {value!r}，应为 YYYY-MM-DD")
+        raise ValueError(
+            f"deadline 必须是 YYYY-MM-DD 日期字符串: {value!r}"
+        )
     text = value.strip()
     if not text:
         return None
@@ -139,6 +139,8 @@ def due_report(paper_root: Path, today: date) -> dict:
     try:
         deadline = parse_deadline(raw_deadline)
     except ValueError as exc:
+        if raw_deadline is not None and not isinstance(raw_deadline, str):
+            raise
         problems.append(
             _problem("deadline-invalid", state_path, str(exc))
         )
