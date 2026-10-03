@@ -1798,3 +1798,14 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 ## workbench P1 待办
 
 - `Kierkegaard` 定向验证 `fb20f77`（进行中）→ P1 最终全分支评审（base `d4c4bee`，新评审者）→ 账本结项、README/边界复核。
+
+## P1 定向验证与终审修复（结局）
+
+- `fb20f77` 定向验证（`Kierkegaard`）：**ADDRESSED**。传递链 window→panel→bridge→`ToolContext.library_dir` 核实无隐式猜路径；判别力独立复现（改回项目级 → `test_library_search_uses_the_explicit_shared_library` `ok False`）；app 139 / tools 820。
+- P1 终审（新派 `Ramanujan the 2nd`，review-d4c4bee..4dbda14.diff）：**Needs fixes**，1 Important + 2 Minor：
+  1. **Important（红线跨任务不一致）**：`chat_panel.refresh_status/_prepare_engine` 的 `except Exception as exc: hint=f"无法读取凭据: {exc}"` 会把 store 异常文本（可含 key）显示到界面；引擎侧已去 secret 化，面板漏了。对抗复现 `LEAKED=True`。
+  2. Minor：`library_search` 描述仍写 `project/library/index.db`（实现已用共享库）。
+  3. Minor（可接受偏离）：tools 测试 819→820（公开 `stage_report` 新增一致性用例），无行为变更。
+- 其余全部核实通过：E60 一等 codex 引擎（argv/stdin/超时/取消）；密钥红线四条路径字节断言；工具桥风险模型（10 工具、write 确认、`user-declined`、`run-log run` 未暴露、轮数 6、审计只存 digest）；后台线程 + GUI 线程确认（线程 id 相等）；offscreen 独立复跑 `0.7427/6935`；`git clone` fresh checkout app 139 / tools 820 全绿；README 边界与实现一致。
+- 修复 `59c2210`：面板两处只回显异常类型名（补对抗用例，两条路径字节断言）；`library_search` 描述改为共享库并加断言。判别力：恢复 `{exc}` → `'sk-CHAT-LEAK-9999' unexpectedly found in '无法读取凭据: sk-CHAT-LEAK-9999'`。app 140 / tools 820。
+- `Ramanujan the 2nd` 定向复评（进行中）→ 通过后 P1 结项。
