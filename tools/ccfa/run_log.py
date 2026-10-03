@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, time as datetime_time, timezone
 from pathlib import Path
 
 import yaml
@@ -23,6 +23,23 @@ def _now_iso() -> str:
 
 def _dump_record(record: dict) -> str:
     return json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {
+            key if isinstance(key, str) else str(key): _json_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (datetime, date, datetime_time)):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 
 def _save_record(path: Path, record: dict) -> None:
@@ -95,12 +112,18 @@ def read_config(path: Path, *, paper_root: Path) -> dict:
         content = yaml.safe_load(raw.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
         raise ValueError(f"无法解析配置 {path}: {exc}") from exc
+    content = _json_safe(content)
     digest = hashlib.sha256(raw).hexdigest()
     return {"path": relative, "sha256": f"sha256:{digest}", "content": content}
 
 
 def _subprocess_runner(argv: list[str], cwd: Path) -> tuple[int, str]:
-    completed = subprocess.run(list(argv), cwd=str(cwd), check=False)
+    completed = subprocess.run(
+        list(argv),
+        cwd=str(cwd),
+        check=False,
+        stdout=sys.stderr,
+    )
     return completed.returncode, ""
 
 
@@ -230,6 +253,16 @@ def check_runs(
             continue
         status = record.get("status")
         started = _parse_started(record.get("started_at"))
+        if status not in {"running", "completed", "failed"}:
+            problems.append(
+                Problem(
+                    "run-log-malformed",
+                    str(path),
+                    None,
+                    f"运行记录 status 非法: {status!r}",
+                )
+            )
+            continue
         if status == "running":
             if started is None:
                 problems.append(
@@ -251,7 +284,8 @@ def check_runs(
                 )
             continue
         if status == "completed":
-            if record.get("metrics") is None:
+            metrics = record.get("metrics")
+            if metrics is None:
                 problems.append(
                     Problem(
                         "run-log-metrics-pending",
@@ -260,7 +294,16 @@ def check_runs(
                         f"运行已完成但未登记指标: {record.get('run_id')}",
                     )
                 )
-            elif record.get("metrics") == {}:
+            elif not isinstance(metrics, dict):
+                problems.append(
+                    Problem(
+                        "run-log-malformed",
+                        str(path),
+                        None,
+                        f"运行记录的 metrics 不是对象: {record.get('run_id')}",
+                    )
+                )
+            elif metrics == {}:
                 problems.append(
                     Problem(
                         "run-log-empty-metrics",
@@ -346,7 +389,21 @@ def main(argv: list[str]) -> int:
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
 
-    print(run_id)
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "status": record["status"],
+                "exit_code": record["exit_code"],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    print(
+        f"运行 {run_id}: {record['status']} (exit_code={record['exit_code']})",
+        file=sys.stderr,
+    )
     if args.propagate_exit:
         return int(record["exit_code"])
     return 0

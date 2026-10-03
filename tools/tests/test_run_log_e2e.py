@@ -37,7 +37,17 @@ class TestRunLogEndToEnd(unittest.TestCase):
     def _run_successfully(self):
         result = self._run("run", "--", sys.executable, "-c", "print(1)")
         self.assertEqual(result.returncode, 0, result.stderr)
-        return result.stdout.strip().splitlines()[-1]
+        return json.loads(result.stdout)["run_id"]
+
+    def test_run_emits_json_stdout_and_summary_on_stderr(self):
+        result = self._run("run", "--", sys.executable, "-c", "print(1)")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertIsInstance(payload, dict)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["exit_code"], 0)
+        self.assertIn(payload["run_id"], result.stderr)
 
     def test_completed_run_without_metrics_is_reported(self):
         self._run_successfully()

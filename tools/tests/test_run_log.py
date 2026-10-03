@@ -122,6 +122,25 @@ class TestRunCommand(BaseCase):
         _, record = run_command(["python", "train.py"], self.log_dir, self.root, runner=run)
         self.assertEqual(record["cwd"], ".")
 
+    def test_date_config_is_normalized_and_run_completes(self):
+        self.config.write_text("date: 2026-10-03\n", encoding="utf-8")
+        run, _ = self.runner()
+        run_id, record = run_command(
+            ["python", "train.py"],
+            self.log_dir,
+            self.root,
+            config=self.config,
+            runner=run,
+        )
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual(record["config"]["content"]["date"], "2026-10-03")
+        self.assertEqual(
+            self._record(run_id)["config"]["content"]["date"],
+            "2026-10-03",
+        )
+        self.assertNotEqual(self._record(run_id), {})
+        self.assertEqual(len(list(self.log_dir.glob("*.json"))), 1)
+
     def test_unwritable_log_dir_is_a_tool_error(self):
         # A file used as a directory parent fails deterministically on every OS,
         # unlike a root-level path whose permissions vary by machine.
@@ -228,6 +247,11 @@ class TestCheckRuns(BaseCase):
         problems, _ = check_runs(self.log_dir)
         self.assertEqual(self._codes(problems), ["run-log-empty-metrics"])
 
+    def test_completed_with_non_object_metrics_is_malformed(self):
+        self._write_record("a", self._base(metrics=[1, 2]))
+        problems, _ = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+
     def test_a_failed_run_is_not_reported(self):
         self._write_record("a", self._base(status="failed", metrics=None, exit_code=3))
         problems, advisories = check_runs(self.log_dir)
@@ -236,6 +260,11 @@ class TestCheckRuns(BaseCase):
 
     def test_missing_status_is_malformed(self):
         self._write_record("a", {})
+        problems, _ = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+
+    def test_unknown_status_is_malformed(self):
+        self._write_record("a", self._base(status="metrics-pending", metrics=None))
         problems, _ = check_runs(self.log_dir)
         self.assertEqual(self._codes(problems), ["run-log-malformed"])
 
