@@ -148,9 +148,12 @@ def create_project(
             (target / rel).mkdir(parents=True, exist_ok=True)
 
         manuscript = target / "manuscript"
-        for entry in venue_dir.iterdir():
-            if entry.is_file():
-                shutil.copy2(entry, manuscript / entry.name)
+        shutil.copytree(
+            venue_dir,
+            manuscript,
+            dirs_exist_ok=True,
+            copy_function=shutil.copy2,
+        )
 
         shared_bib = TEMPLATE_ROOT / "library" / "refs.bib"
         bib_target = manuscript / "references.bib"

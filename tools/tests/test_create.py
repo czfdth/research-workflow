@@ -18,6 +18,15 @@ class TestCreateProject(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.papers = self.tmp / "papers"
         self.papers.mkdir()
+        self.templates_root = self.tmp / "templates"
+        self.templates_root.mkdir()
+        self._venue_template("NeurIPS")
+        patcher = mock.patch(
+            "newpaper.venues.templates_root",
+            return_value=self.templates_root,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _create(
         self,
@@ -39,7 +48,7 @@ class TestCreateProject(unittest.TestCase):
         )
 
     def _venue_template(self, name="fake-venue"):
-        template = self.tmp / name
+        template = self.templates_root / name
         template.mkdir()
         (template / "main.tex").write_text(
             "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
@@ -99,6 +108,152 @@ class TestCreateProject(unittest.TestCase):
         tex_files += list((root / "manuscript").glob("*.sty"))
         self.assertTrue(tex_files, "venue 模板文件未被复制到 manuscript/")
 
+    def test_copies_nested_venue_tree_preserving_relative_paths(self):
+        template = self.templates_root / "NestedVenue"
+        (template / "styles").mkdir(parents=True)
+        (template / "figs").mkdir()
+        (template / "empty").mkdir()
+        (template / "sections").mkdir()
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "styles" / "x.sty").write_text("% style\n", encoding="utf-8")
+        (template / "figs" / "f.pdf").write_bytes(b"%PDF-1.4 nested\n")
+        (template / "sections" / "intro.tex").write_text(
+            "% intro\n",
+            encoding="utf-8",
+        )
+
+        root = self._create(slug="nested-venue", venue="NestedVenue")
+
+        self.assertEqual(
+            (root / "manuscript" / "styles" / "x.sty").read_text(
+                encoding="utf-8"
+            ),
+            "% style\n",
+        )
+        self.assertEqual(
+            (root / "manuscript" / "figs" / "f.pdf").read_bytes(),
+            b"%PDF-1.4 nested\n",
+        )
+        self.assertEqual(
+            (root / "manuscript" / "sections" / "intro.tex").read_text(
+                encoding="utf-8"
+            ),
+            "% intro\n",
+        )
+        self.assertTrue((root / "manuscript" / "empty").is_dir())
+
+    def test_flat_venue_files_keep_landing_at_manuscript_root(self):
+        template = self._venue_template("FlatVenue")
+        (template / "venue.cls").write_text("% class\n", encoding="utf-8")
+
+        root = self._create(slug="flat-venue", venue="FlatVenue")
+
+        self.assertTrue((root / "manuscript" / "main.tex").is_file())
+        self.assertEqual(
+            (root / "manuscript" / "venue.cls").read_text(encoding="utf-8"),
+            "% class\n",
+        )
+        self.assertFalse((root / "manuscript" / "FlatVenue").exists())
+
+    def test_nested_main_tex_is_found_and_recorded(self):
+        template = self.templates_root / "NestedMain"
+        nested = template / "src" / "paper"
+        nested.mkdir(parents=True)
+        (nested / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+
+        root = self._create(slug="nested-main", venue="NestedMain")
+
+        from ccfa.texdoc import find_main_tex
+
+        main = find_main_tex(root / "manuscript")
+        self.assertEqual(
+            main.relative_to(root).as_posix(),
+            "manuscript/src/paper/main.tex",
+        )
+        data = yaml.safe_load((root / "ccfa.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(
+            data["artifacts"]["manuscript"],
+            "manuscript/src/paper/main.tex",
+        )
+
+    def test_copy_failure_cleans_target_and_propagates_oserror(self):
+        template = self.templates_root / "BrokenVenue"
+        (template / "styles").mkdir(parents=True)
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "styles" / "x.sty").write_text("% style\n", encoding="utf-8")
+
+        with mock.patch(
+            "newpaper.create.shutil.copy2",
+            side_effect=OSError("copy failed"),
+        ):
+            with self.assertRaises(OSError):
+                self._create(slug="copy-failure", venue="BrokenVenue")
+
+        self.assertFalse((self.papers / "copy-failure").exists())
+
+    def test_main_reports_copy_failure_as_tool_error_and_cleans_target(self):
+        template = self.templates_root / "CliBrokenVenue"
+        (template / "styles").mkdir(parents=True)
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "styles" / "x.sty").write_text("% style\n", encoding="utf-8")
+        stderr = io.StringIO()
+
+        with mock.patch(
+            "newpaper.create.shutil.copy2",
+            side_effect=OSError("copy failed"),
+        ):
+            with contextlib.redirect_stderr(stderr):
+                code = create_module.main(
+                    [
+                        "create.py",
+                        "cli-copy-failure",
+                        "--venue",
+                        "CliBrokenVenue",
+                        "--year",
+                        "2027",
+                        "--mode",
+                        "conference",
+                        "--papers-root",
+                        str(self.papers),
+                    ]
+                )
+
+        self.assertEqual(code, 2)
+        self.assertIn("工具错误", stderr.getvalue())
+        self.assertFalse((self.papers / "cli-copy-failure").exists())
+
+    def test_recursive_copy_failure_leaves_project_retryable(self):
+        template = self.templates_root / "RetryVenue"
+        (template / "styles").mkdir(parents=True)
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "styles" / "x.sty").write_text("% style\n", encoding="utf-8")
+
+        with mock.patch(
+            "newpaper.create.shutil.copy2",
+            side_effect=OSError("copy failed"),
+        ):
+            with self.assertRaises(OSError):
+                self._create(slug="retry-nested", venue="RetryVenue")
+
+        root = self._create(slug="retry-nested", venue="RetryVenue")
+
+        self.assertTrue((root / "manuscript" / "styles" / "x.sty").is_file())
+
     def test_unknown_venue_propagates(self):
         with self.assertRaises(VenueNotFound):
             self._create(venue="NotAVenue2099")
@@ -149,12 +304,16 @@ class TestCreateProject(unittest.TestCase):
                     create_module.validate_slug(slug)
 
     def test_create_project_rejects_unsafe_slug_without_writing(self):
+        before = sorted(entry.name for entry in self.tmp.iterdir())
         for slug in ["..", "../escape", "a/b", "a\\b", "UPPER"]:
             with self.subTest(slug=slug):
                 with self.assertRaises(ValueError):
                     self._create(slug=slug)
         self.assertEqual(list(self.papers.iterdir()), [])
-        self.assertEqual([entry.name for entry in self.tmp.iterdir()], ["papers"])
+        self.assertEqual(
+            sorted(entry.name for entry in self.tmp.iterdir()),
+            before,
+        )
 
     def test_create_project_rechecks_target_containment(self):
         escape = str(self.tmp / "outside" / "paper")
