@@ -1741,3 +1741,10 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **Task 2 `ba01d2c`**（`Confucius`）：PySide6 壳（项目列表含坏项标红、阶段面板、运行 validate/milestones、设置对话框、凭据状态栏）；offscreen 真实渲染，`SCREENSHOT_RATIO=0.7457`、PNG 7505 bytes；清空布局 → 非空像素断言失败（判别力）。评审 `Kierkegaard`：**Approved**，独立复跑同比例/字节，对抗验证（坏项与好项并存、keyring 不可用时对话框报错不写盘）全过。
 - **Task 3 `ed02bf4`**（`Confucius`）：`test_workbench_e2e.py`（7 条，真实 NeurIPS 派生 + 真实 offscreen + 真实 validate/milestones + 密钥路径字节断言）；README 加「论文工作台（P0）」小节并如实标注边界（聊天/自定义 API 工具/安装包未接入）。app 53 tests OK；tools 819 不动；判别力：坏项跳过 → e2e 失败。
 - 待办：Task 3 评审（`Kierkegaard`）→ workbench P0 最终全分支评审（base `8747928`）。
+
+## workbench P0 结项准备（Task 3 评审 + 控制器收尾）
+
+- Task 3 评审（`Kierkegaard`）：**Approved**（1 条 Minor：README P0 小节不自包含——缺建 venv/装依赖/offscreen 说明）。独立证据：e2e 7 例 OK、GUI 12 例 OK、`SCREENSHOT_RATIO=0.7457/BYTES=7505`、清空布局判别力 `CLEARED_RATIO=0.0001`、坏项跳过判别力 `project bad not found`、app 53 OK、tools 819 OK。同轮第二节复验 Task 1 修复 **ADDRESSED**。
+- 控制器收尾（`7e95e98`）：README「论文工作台（P0）」补建 venv（`py -3.12`）+ `app/requirements.txt` + 启动 + headless `QT_QPA_PLATFORM=offscreen` 说明；`GENERATED_README_PATH_PREFIXES` 增加 `app/.venv`（前缀严格、`app/.venv-other` 不豁免）并同步对抗断言。**fresh checkout 验证**：`git archive 7e95e98` 解到临时目录（无任何 venv）跑 `test_docs_consistency` → 15 tests OK。
+- 终态：app **53 tests OK**、tools **819 tests OK**；工作树干净。
+- 最终全分支评审：新派 `Poincare the 2nd`，review-8747928..7e95e98.diff（6 commits）；重点 E57 字节级密钥红线、E58 import 图、E59 独立复跑截图、集成与 DoD、fresh checkout。
