@@ -10,6 +10,6 @@ tools/.venv/
 library/papers/*.pdf
 !library/papers/.gitkeep
 # Derived paper projects created by tools/newpaper land here.
-papers/
+/papers/
 __pycache__/
 *.pyc
