@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
+from ccfa.texcomment import strip_comment
+
 
 class Location(NamedTuple):
     path: str
@@ -17,8 +19,6 @@ class Location(NamedTuple):
 
 
 _CITE = re.compile(r"\\cite[a-zA-Z]*\s*(?:\[[^\]]*\]\s*)?\{([^}]*)\}")
-# A percent starts a comment only when it is not backslash-escaped.
-_COMMENT = re.compile(r"(?<!\\)%")
 
 
 def iter_tex_files(root: Path) -> list[Path]:
@@ -26,11 +26,6 @@ def iter_tex_files(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
     return sorted(root.rglob("*.tex"))
-
-
-def _strip_comment(line: str) -> str:
-    match = _COMMENT.search(line)
-    return line[: match.start()] if match else line
 
 
 def find_cited_keys(paths: Iterable[Path]) -> dict[str, list[Location]]:
@@ -42,7 +37,7 @@ def find_cited_keys(paths: Iterable[Path]) -> dict[str, list[Location]]:
         except OSError:
             continue
         for number, raw_line in enumerate(text.splitlines(), start=1):
-            line = _strip_comment(raw_line)
+            line = strip_comment(raw_line)
             for match in _CITE.finditer(line):
                 for key in match.group(1).split(","):
                     key = key.strip()

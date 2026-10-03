@@ -58,6 +58,10 @@ class TestFindCitedKeys(unittest.TestCase):
         keys, _ = self._scan("100\\% of \\cite{kept}")
         self.assertEqual(list(keys), ["kept"])
 
+    def test_literal_backslash_then_comment_hides_the_citation(self):
+        keys, _ = self._scan("line\\\\% \\cite{ghost}\n\\cite{real}")
+        self.assertEqual(list(keys), ["real"])
+
     def test_repeated_key_records_every_location(self):
         keys, path = self._scan("\\cite{a}\ntext\n\\cite{a}")
         locations = keys["a"]
