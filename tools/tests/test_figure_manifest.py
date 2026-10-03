@@ -170,6 +170,48 @@ class TestCheckManifest(unittest.TestCase):
                     self.assertIn("类型非法", matching[0].message)
                     self.assertIn(type(value).__name__, matching[0].message)
 
+    def test_non_string_generator_or_hash_has_no_secondary_hash_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for field in ("generator", "generator_hash"):
+            with self.subTest(field=field):
+                item = self._item(generator_hash=self._write_generator())
+                item[field] = {"id": "x"}
+                problems, _ = check_manifest([item], self.root)
+                self.assertEqual(
+                    [p.code for p in problems],
+                    ["figure-provenance-missing"],
+                )
+                self.assertIn("dict", problems[0].message)
+
+    def test_generator_outside_paper_root_is_reported_even_with_matching_hash(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        outside = self.root.parent / "outside.py"
+        outside.write_text("print('outside')\n", encoding="utf-8")
+        outside_hash = "sha256:" + hashlib.sha256(outside.read_bytes()).hexdigest()
+
+        for generator in ("../outside.py", str(outside)):
+            with self.subTest(generator=generator):
+                item = self._item(generator=generator, generator_hash=outside_hash)
+                problems, _ = check_manifest([item], self.root)
+                matching = [p for p in problems if p.code == "figure-hash"]
+                self.assertEqual(len(matching), 1)
+                self.assertIn("生成脚本必须在论文根内", matching[0].message)
+
+    def test_file_outside_paper_root_is_reported_as_figure_missing(self):
+        outside = self.root.parent / "outside.png"
+        outside.write_bytes(PNG)
+
+        for file_value in ("../outside.png", str(outside)):
+            with self.subTest(file=file_value):
+                item = self._item(
+                    file=file_value,
+                    generator_hash=self._write_generator(),
+                )
+                problems, _ = check_manifest([item], self.root)
+                matching = [p for p in problems if p.code == "figure-missing"]
+                self.assertEqual(len(matching), 1)
+                self.assertIn("交付图路径越出论文根", matching[0].message)
+
     def test_non_string_run_id_member_reports_provenance_problem(self):
         (self.figures / "plot.png").write_bytes(PNG)
         item = self._item(

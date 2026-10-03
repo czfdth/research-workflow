@@ -92,6 +92,11 @@ def check_manifest(
         figure, fallback_advisory = _resolve_figure(item, paper_root)
         if fallback_advisory is not None:
             advisories.append(fallback_advisory)
+        explicit_file = item.get("file")
+        file_outside = isinstance(explicit_file, str) and Path(explicit_file).is_absolute()
+        resolved_figure, figure_inside = _resolve_inside(paper_root, figure)
+        if file_outside:
+            figure_inside = False
 
         provenance_issues: list[str] = []
         for field in ("generator", "generator_hash"):
@@ -251,13 +256,27 @@ def check_manifest(
                     )
                 )
 
-        if not figure.is_file():
+        if not figure_inside:
             problems.append(
-                Problem("figure-missing", str(figure), None, f"条目 {name} 的交付图不存在")
+                Problem(
+                    "figure-missing",
+                    str(resolved_figure),
+                    None,
+                    f"条目 {name} 的交付图路径越出论文根",
+                )
+            )
+        elif not resolved_figure.is_file():
+            problems.append(
+                Problem(
+                    "figure-missing",
+                    str(resolved_figure),
+                    None,
+                    f"条目 {name} 的交付图不存在",
+                )
             )
         else:
             declared_raw = str(item.get("bytes_format", "")).lower().lstrip(".")
-            actual = sniff(figure)
+            actual = sniff(resolved_figure)
             if (
                 declared_raw
                 and actual is not None
@@ -275,27 +294,44 @@ def check_manifest(
 
         generator = item.get("generator")
         expected_hash = item.get("generator_hash")
-        if generator and expected_hash:
-            generator_path = paper_root / str(generator)
-            actual_hash = _sha256(generator_path)
-            if actual_hash is None:
+        generator_valid = isinstance(generator, str) and bool(generator.strip())
+        hash_valid = isinstance(expected_hash, str) and bool(expected_hash.strip())
+        if generator_valid and hash_valid:
+            generator_path = Path(generator)
+            resolved_generator, generator_inside = _resolve_inside(
+                paper_root,
+                paper_root / generator_path,
+            )
+            if generator_path.is_absolute() or not generator_inside:
                 problems.append(
                     Problem(
                         "figure-hash",
-                        str(generator_path),
+                        str(resolved_generator),
                         None,
-                        f"条目 {name} 的生成脚本不存在: {generator}",
+                        f"条目 {name} 的生成脚本必须在论文根内: {generator}",
                     )
                 )
-            elif actual_hash != str(expected_hash):
-                problems.append(
-                    Problem(
-                        "figure-hash",
-                        str(generator_path),
-                        None,
-                        f"条目 {name} 的生成脚本哈希不符（记录 {expected_hash}，实际 {actual_hash}）",
+            else:
+                actual_hash = _sha256(resolved_generator)
+                if actual_hash is None:
+                    problems.append(
+                        Problem(
+                            "figure-hash",
+                            str(resolved_generator),
+                            None,
+                            f"条目 {name} 的生成脚本不存在: {generator}",
+                        )
                     )
-                )
+                elif actual_hash != expected_hash:
+                    problems.append(
+                        Problem(
+                            "figure-hash",
+                            str(resolved_generator),
+                            None,
+                            f"条目 {name} 的生成脚本哈希不符"
+                            f"（记录 {expected_hash}，实际 {actual_hash}）",
+                        )
+                    )
 
         if not item.get("referenced_in"):
             advisories.append(
