@@ -9,7 +9,7 @@ The real NeurIPS guideline document references ``myfile.pdf`` without
 shipping that placeholder image, so ``latex_check`` reports
 ``missing-figure`` and exits 1 even though the document itself compiles.
 Compile-success evidence therefore uses ``compile_document`` on the resolved
-main file, while ``latex_check --main`` pins that known placeholder problem.
+main file, while ``latex_check --manuscript`` pins that known placeholder problem.
 """
 
 from __future__ import annotations
@@ -204,8 +204,6 @@ class DerivationEndToEnd(unittest.TestCase):
                 "latex_check.py",
                 "--manuscript",
                 str(root / "manuscript"),
-                "--main",
-                "neurips_2026.tex",
             ],
         )
         self.assertEqual(code, 1, stderr)
