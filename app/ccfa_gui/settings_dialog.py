@@ -110,6 +110,10 @@ class SettingsDialog(QDialog):
             return False
         key_name = name
         key_value = self.key_edit.text()
+        if not key_value and self._key_name:
+            # Keep the existing credential linked when the provider is
+            # renamed without entering a new key.
+            key_name = self._key_name
         if key_value:
             try:
                 self._secret_store.set(key_name, key_value)

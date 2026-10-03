@@ -12,8 +12,8 @@ py -3.12 -m venv app/.venv
 & app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
 ```
 
-若本机没有 `py`，改用某个 Python 3.12 解释器的完整路径；本机示例：
-`& 'C:/Users/best/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' -m venv app/.venv`。
+若本机没有 `py`，改用你机器上的 Python 3.12 解释器完整路径，例如：
+`<你机器上的 Python 3.12> -m venv app/.venv`。
 
 `app/.venv` 已被 gitignore。`ccfa_core` 直接 import 现有 `ccfa.*` 工具模块，
 因此测试时需要 `PYTHONPATH=tools`；app venv 中的 PyYAML 供这些模块使用。

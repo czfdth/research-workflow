@@ -19,6 +19,7 @@ from . import write_project
 
 APP = QApplication.instance() or QApplication([])
 FAKE_KEY = "sk-gui-FAKE-KEY-0987654321"
+NEW_KEY = "sk-gui-NEW-KEY-1357924680"
 
 
 class RecordingSecretStore:
@@ -225,6 +226,63 @@ class GuiSmokeTests(unittest.TestCase):
 
         self.assertTrue(dialog.error_label.text())
         self.assertFalse(self.settings_path.exists())
+        dialog.deleteLater()
+
+    def test_settings_dialog_rename_without_new_key_keeps_old_key_name(self):
+        save_settings(
+            self.settings_path,
+            Settings(
+                provider=ProviderSettings(
+                    name="old",
+                    base_url="https://api.example.test/v1",
+                    model="gpt-test",
+                    key_name="old",
+                    timeout_s=30.0,
+                )
+            ),
+        )
+        self.secrets.set("old", FAKE_KEY)
+
+        dialog = SettingsDialog(self.settings_path, self.secrets)
+        self.assertIn("已配置", dialog.key_status_label.text())
+        dialog.name_edit.setText("renamed")
+
+        self.assertTrue(dialog.save())
+
+        payload = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["provider"]["name"], "renamed")
+        self.assertEqual(payload["provider"]["key_name"], "old")
+        self.assertEqual(self.secrets.get("old"), FAKE_KEY)
+        self.assertIsNone(self.secrets.get("renamed"))
+        self.assertEqual(dialog.key_status_label.text(), "已配置")
+        dialog.deleteLater()
+
+    def test_settings_dialog_rename_with_new_key_uses_new_name(self):
+        save_settings(
+            self.settings_path,
+            Settings(
+                provider=ProviderSettings(
+                    name="old",
+                    base_url="https://api.example.test/v1",
+                    model="gpt-test",
+                    key_name="old",
+                    timeout_s=30.0,
+                )
+            ),
+        )
+        self.secrets.set("old", FAKE_KEY)
+
+        dialog = SettingsDialog(self.settings_path, self.secrets)
+        dialog.name_edit.setText("renamed")
+        dialog.key_edit.setText(NEW_KEY)
+
+        self.assertTrue(dialog.save())
+
+        payload = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["provider"]["key_name"], "renamed")
+        self.assertEqual(self.secrets.get("renamed"), NEW_KEY)
+        self.assertNotIn(NEW_KEY.encode("utf-8"), self.settings_path.read_bytes())
+        self.assertEqual(dialog.key_status_label.text(), "已配置")
         dialog.deleteLater()
 
     def test_credential_status_reports_available_and_unavailable(self):
