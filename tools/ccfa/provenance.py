@@ -44,6 +44,10 @@ def load_store(path: Path) -> dict:
         raise ValueError(f"store 不是合法 JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("store 顶层必须是对象")
+    if "version" not in data:
+        raise ValueError("store 缺少 version 字段")
+    if data["version"] != 1:
+        raise ValueError(f"store version 不支持: {data['version']}")
     files = data.get("files")
     if not isinstance(files, dict):
         raise ValueError("store 的 files 必须是对象")
@@ -52,13 +56,16 @@ def load_store(path: Path) -> dict:
 
 def save_store(path: Path, store: dict) -> None:
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(
+            json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
+    except OSError as exc:
+        raise ValueError(f"无法写入 store {path}: {exc}") from exc
 
 
 def add_entry(
@@ -88,11 +95,17 @@ def add_entry(
     if relpath in files and not force:
         raise ValueError(f"条目已存在: {relpath}（如需覆盖请显式使用 --force）")
 
+    try:
+        checksum = sha256_of(target)
+        size = target.stat().st_size
+    except OSError as exc:
+        raise ValueError(f"无法读取来源文件 {target}: {exc}") from exc
+
     entry = {
         "source": source,
         "classification": classification,
-        "sha256": sha256_of(target),
-        "size": target.stat().st_size,
+        "sha256": checksum,
+        "size": size,
         "recorded_at": _now_iso(),
     }
     for key, value in (("units", units), ("coverage", coverage), ("notes", notes)):

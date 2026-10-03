@@ -1,12 +1,16 @@
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from ccfa.provenance import (
     VALID_CLASSIFICATIONS,
     add_entry,
     load_store,
+    main,
     save_store,
     sha256_of,
 )
@@ -49,6 +53,16 @@ class TestStoreRoundTrip(BaseCase):
     def test_malformed_json_raises(self):
         self.store.write_text("{not json", encoding="utf-8")
         with self.assertRaises(ValueError):
+            load_store(self.store)
+
+    def test_missing_version_raises(self):
+        self.store.write_text(json.dumps({"files": {}}), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "store 缺少 version 字段"):
+            load_store(self.store)
+
+    def test_unsupported_version_raises(self):
+        self.store.write_text(json.dumps({"version": 2, "files": {}}), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "store version 不支持: 2"):
             load_store(self.store)
 
     def test_save_leaves_no_temporary_file_behind(self):
@@ -105,6 +119,30 @@ class TestAddEntry(BaseCase):
         self.assertEqual(
             VALID_CLASSIFICATIONS, ("real", "rescaled-real", "documented-substitute")
         )
+
+    def test_write_failure_returns_tool_error_without_stdout(self):
+        args = [
+            "provenance",
+            "--store",
+            str(self.store),
+            "--paper-root",
+            str(self.root),
+            "add",
+            "data/raw.csv",
+            "--source",
+            "internal export",
+            "--classification",
+            "real",
+        ]
+        stdout = StringIO()
+        with mock.patch(
+            "ccfa.provenance.os.replace",
+            side_effect=PermissionError("permission denied"),
+        ):
+            with redirect_stdout(stdout), redirect_stderr(StringIO()):
+                exit_code = main(args)
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
 
 
 if __name__ == "__main__":
