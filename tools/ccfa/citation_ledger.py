@@ -53,9 +53,12 @@ def load_ledger(path: Path) -> dict[str, LedgerRecord]:
             raise ValueError(
                 f"台账条目 {key} 的 status 非法: {status!r}，应为 {' / '.join(VALID_STATUSES)}"
             )
+        doi = value.get("doi")
+        if doi is not None and not isinstance(doi, str):
+            raise ValueError(f"台账条目 {key} 的 doi 必须是字符串或 null，实际是 {type(doi).__name__}")
         records[key] = LedgerRecord(
             key=key,
-            doi=normalize_doi(value.get("doi")),
+            doi=normalize_doi(doi),
             status=status,
             verified_at=str(value.get("verified_at", "")),
             source=str(value.get("source", "")),

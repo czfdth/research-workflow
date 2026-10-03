@@ -68,6 +68,12 @@ class TestLoadLedger(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_ledger(_ledger(payload))
 
+    def test_non_string_doi_raises_and_names_key(self):
+        payload = {"version": 1, "entries": {"k": {"status": "verified", "doi": 10.1}}}
+        with self.assertRaises(ValueError) as ctx:
+            load_ledger(_ledger(payload))
+        self.assertIn("k", str(ctx.exception))
+
     def test_all_declared_statuses_are_accepted(self):
         for status in VALID_STATUSES:
             with self.subTest(status=status):
