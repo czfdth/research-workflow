@@ -69,3 +69,25 @@ class TestValidateYaml(unittest.TestCase):
         )
         problems = validate_yaml(_write(broken))
         self.assertIn("target_venue 必须是映射", problems)
+
+    def test_missing_or_null_deadline_is_valid(self):
+        without = VALID
+        with_null = VALID.replace(
+            '  mode: "conference"\n',
+            '  mode: "conference"\n  deadline: null\n',
+        )
+        self.assertEqual(validate_yaml(_write(without)), [])
+        self.assertEqual(validate_yaml(_write(with_null)), [])
+
+    def test_invalid_deadline_format_and_calendar_are_reported(self):
+        for value in ("2027-5-1", "2027-02-30"):
+            with self.subTest(value=value):
+                broken = VALID.replace(
+                    '  mode: "conference"\n',
+                    f'  mode: "conference"\n  deadline: "{value}"\n',
+                )
+                problems = validate_yaml(_write(broken))
+                self.assertTrue(
+                    any("deadline" in problem for problem in problems),
+                    problems,
+                )

@@ -26,6 +26,7 @@ class TestCreateProject(unittest.TestCase):
         mode="conference",
         title="Demo Paper",
         year="2027",
+        deadline=None,
     ):
         return create_project(
             papers_root=self.papers,
@@ -34,6 +35,7 @@ class TestCreateProject(unittest.TestCase):
             year=year,
             mode=mode,
             title=title,
+            deadline=deadline,
         )
 
     def _venue_template(self, name="fake-venue"):
@@ -226,6 +228,35 @@ class TestCreateProject(unittest.TestCase):
         self.assertEqual(data["project"]["short_name"], "tricky-scalars")
         self.assertEqual(data["target_venue"]["name"], venue)
         self.assertEqual(data["target_venue"]["year"], year)
+
+    def test_create_records_optional_deadline(self):
+        root = self._create(deadline="2027-05-01")
+
+        data = yaml.safe_load((root / "ccfa.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(data["target_venue"]["deadline"], "2027-05-01")
+        self.assertEqual(validate_yaml(root / "ccfa.yaml"), [])
+
+    def test_create_rejects_invalid_deadline_without_debris(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = create_module.main(
+                [
+                    "create.py",
+                    "bad-deadline",
+                    "--venue",
+                    "NeurIPS",
+                    "--year",
+                    "2027",
+                    "--mode",
+                    "conference",
+                    "--deadline",
+                    "2027-02-30",
+                    "--papers-root",
+                    str(self.papers),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertFalse((self.papers / "bad-deadline").exists())
 
     def test_main_defaults_papers_root_to_repository_papers(self):
         captured = {}

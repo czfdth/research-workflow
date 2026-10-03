@@ -13,6 +13,7 @@ import yaml
 
 from ccfa.stages import gate_for
 from ccfa.texdoc import find_main_tex
+from ccfa.milestones import parse_deadline
 from newpaper.venues import resolve_venue
 
 TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
@@ -125,8 +126,10 @@ def create_project(
     year: str,
     mode: str,
     title: str,
+    deadline: str | None = None,
 ) -> Path:
     slug = validate_slug(slug)
+    deadline_date = parse_deadline(deadline)
     root = Path(papers_root).resolve()
     target = (root / slug).resolve()
     if not target.is_relative_to(root):
@@ -170,6 +173,9 @@ def create_project(
         state["target_venue"]["name"] = venue
         state["target_venue"]["year"] = str(year)
         state["target_venue"]["mode"] = mode
+        state["target_venue"]["deadline"] = (
+            deadline_date.isoformat() if deadline_date else None
+        )
         state["stage"]["updated_at"] = date
         state["artifacts"]["manuscript"] = main_rel
         rendered = yaml.dump(
@@ -205,6 +211,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--year", required=True)
     parser.add_argument("--mode", required=True, choices=["conference", "journal"])
     parser.add_argument("--title", default="")
+    parser.add_argument("--deadline")
     parser.add_argument(
         "--papers-root",
         default=str(DEFAULT_PAPERS_ROOT),
@@ -219,6 +226,7 @@ def main(argv: list[str]) -> int:
             year=args.year,
             mode=args.mode,
             title=args.title or args.slug,
+            deadline=args.deadline,
         )
     except (FileExistsError, InvalidSlugError) as exc:
         print(f"错误: {exc}", file=sys.stderr)

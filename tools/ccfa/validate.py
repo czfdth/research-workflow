@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from ccfa.milestones import parse_deadline
+
 REQUIRED_TOP_LEVEL = [
     "version",
     "project",
@@ -59,6 +61,14 @@ def validate_yaml(path: Path) -> list[str]:
             problems.append(
                 f"target_venue.mode 非法: {mode!r}，应为 {' 或 '.join(VALID_MODES)}"
             )
+        if "deadline" in venue and venue.get("deadline") is not None:
+            try:
+                parse_deadline(venue.get("deadline"))
+            except ValueError:
+                problems.append(
+                    f"target_venue.deadline 非法: {venue.get('deadline')!r}，"
+                    "应为 YYYY-MM-DD"
+                )
     elif "target_venue" in data:
         problems.append("target_venue 必须是映射")
 
