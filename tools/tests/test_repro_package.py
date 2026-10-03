@@ -109,6 +109,16 @@ class TestCreateBundle(BaseCase):
         self.assertFalse((self.out / "KEEP").is_file())
         self.assertTrue((self.out / MANIFEST_NAME).is_file())
 
+    def test_force_with_invalid_member_does_not_destroy_existing_bundle(self):
+        create_bundle(self.root, self.out, self.manifest())
+        keep = self.out / "KEEP"
+        keep.write_text("keep\n", encoding="utf-8")
+        bad = self.manifest()
+        bad["files"][0]["path"] = "src/gone.py"
+        with self.assertRaises(ValueError):
+            create_bundle(self.root, self.out, bad, force=True)
+        self.assertTrue(keep.is_file())
+
     def test_missing_manifest_version_is_rejected(self):
         bad = self.manifest()
         del bad["version"]

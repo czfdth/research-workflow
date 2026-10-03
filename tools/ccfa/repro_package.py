@@ -118,6 +118,16 @@ def create_bundle(
 
     paper_root = Path(paper_root)
     out_dir = Path(out_dir)
+
+    members: list[tuple[str, Path]] = []
+    try:
+        for item in items:
+            members.append(_resolve_member(paper_root, item["path"]))
+        if requirement is not None:
+            members.append(_resolve_member(paper_root, requirement["path"]))
+    except OSError as exc:
+        raise ValueError(f"无法构建 bundle {out_dir}: {exc}") from exc
+
     if out_dir.exists():
         if not force:
             raise ValueError(f"bundle 目录已存在: {out_dir}（如需覆盖请显式使用 --force）")
@@ -129,14 +139,7 @@ def create_bundle(
     try:
         files_dir = out_dir / FILES_DIR_NAME
         files_dir.mkdir(parents=True, exist_ok=True)
-        for item in items:
-            relative, source = _resolve_member(paper_root, item["path"])
-            destination = files_dir / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-
-        if requirement is not None:
-            relative, source = _resolve_member(paper_root, requirement["path"])
+        for relative, source in members:
             destination = files_dir / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
