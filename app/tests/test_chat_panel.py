@@ -436,6 +436,30 @@ class ChatPanelTests(unittest.TestCase):
         self.assertNotIn(leak.encode("utf-8"), hint.encode("utf-8"))
         self.assertIn("RuntimeError", hint)
 
+    def test_unavailable_keyring_errors_never_leak_secret_text(self):
+        self._configure_provider()
+        leak = "sk-CHAT-BACKEND-LEAK-9999"
+
+        class LeakyUnavailableStore:
+            def get(self, key_name):
+                raise SecretStoreUnavailable(leak)
+
+        panel = self._panel(store=LeakyUnavailableStore())
+
+        for name, action in (
+            ("refresh_status", panel.refresh_status),
+            ("prepare_engine", panel._prepare_engine),
+        ):
+            with self.subTest(path=name):
+                action()
+                hint = panel.hint_label.text()
+                self.assertNotIn(leak, hint)
+                self.assertNotIn(
+                    leak.encode("utf-8"),
+                    hint.encode("utf-8"),
+                )
+                self.assertIn("SecretStoreUnavailable", hint)
+
     def test_codex_engine_does_not_require_provider(self):
         engine = FakeEngine(reply_text="codex ok")
         factory = self._factory(engines={"codex": engine})
@@ -443,7 +467,11 @@ class ChatPanelTests(unittest.TestCase):
         panel.model_edit.setText("gpt-5-codex")
 
         self._send(panel, "hello")
-        self.assertTrue(self._wait_until(lambda: len(engine.calls) == 1))
+        self.assertTrue(
+            self._wait_until(
+                lambda: len(engine.calls) == 1 and panel._thread is None
+            )
+        )
 
         self.assertEqual(self.created["kind"], "codex")
         self.assertIsNone(self.created["settings"])

@@ -213,7 +213,7 @@ class ChatPanel(QWidget):
         try:
             value = self._secret_store.get(provider.key_name)
         except SecretStoreUnavailable as exc:
-            self._set_hint(f"凭据后端不可用: {exc}")
+            self._set_hint(f"凭据后端不可用（{type(exc).__name__}）")
             return
         except Exception as exc:
             self._set_hint(f"无法读取凭据（{type(exc).__name__}）")
@@ -345,7 +345,7 @@ class ChatPanel(QWidget):
         try:
             value = self._secret_store.get(provider.key_name)
         except SecretStoreUnavailable as exc:
-            self._set_hint(f"凭据后端不可用: {exc}")
+            self._set_hint(f"凭据后端不可用（{type(exc).__name__}）")
             return None
         except Exception as exc:
             self._set_hint(f"无法读取凭据（{type(exc).__name__}）")
