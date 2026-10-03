@@ -56,6 +56,13 @@ TOP_LEVEL_REPO_FILES = {
     "ccfa.yaml.template",
 }
 
+# Generated paths that README may name as setup/runtime instructions but that
+# intentionally do not exist in a fresh clone. Each prefix must be covered by
+# .gitignore; the test below enforces that.
+GENERATED_README_PATH_PREFIXES = (
+    "tools/.venv",
+)
+
 
 def _readme_text():
     return README_PATH.read_text(encoding="utf-8")
@@ -92,6 +99,41 @@ def _repo_paths_from_readme(text):
             continue
         paths.append(candidate)
     return paths
+
+
+def _is_generated_readme_path(path):
+    return any(
+        path == prefix or path.startswith(prefix + "/")
+        for prefix in GENERATED_README_PATH_PREFIXES
+    )
+
+
+def _missing_readme_paths(paths):
+    return [
+        path
+        for path in paths
+        if not _is_generated_readme_path(path)
+        and not (REPO_ROOT / path).exists()
+    ]
+
+
+def _assert_readme_paths_exist(paths):
+    missing = _missing_readme_paths(paths)
+    if missing:
+        raise AssertionError(
+            "README 路径不存在: " + ", ".join(missing)
+        )
+
+
+def _gitignore_patterns():
+    text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    patterns = []
+    for line in text.splitlines():
+        pattern = line.strip()
+        if not pattern or pattern.startswith("#") or pattern.startswith("!"):
+            continue
+        patterns.append(pattern.lstrip("/").rstrip("/"))
+    return patterns
 
 
 def _expected_checklist_bytes(mode, actual):
@@ -144,8 +186,37 @@ class TestReadmeInventory(unittest.TestCase):
         paths = _repo_paths_from_readme(_readme_text())
         self.assertTrue(paths, "README 没有点名任何仓库内路径")
         for path in paths:
+            if _is_generated_readme_path(path):
+                continue
             with self.subTest(path=path):
                 self.assertTrue((REPO_ROOT / path).exists(), f"README 路径不存在: {path}")
+
+    def test_generated_readme_paths_are_gitignored(self):
+        patterns = _gitignore_patterns()
+        for prefix in GENERATED_README_PATH_PREFIXES:
+            with self.subTest(prefix=prefix):
+                self.assertTrue(
+                    any(
+                        prefix == pattern
+                        or prefix.startswith(pattern + "/")
+                        for pattern in patterns
+                    ),
+                    f"生成路径 {prefix} 未被 .gitignore 覆盖",
+                )
+
+    def test_generated_path_exemption_is_prefix_scoped(self):
+        self.assertTrue(_is_generated_readme_path("tools/.venv"))
+        self.assertTrue(
+            _is_generated_readme_path("tools/.venv/Scripts/python.exe")
+        )
+        self.assertFalse(_is_generated_readme_path("tools/.venv-other"))
+        self.assertFalse(
+            _is_generated_readme_path("tools/ccfa/revision_ledger.py")
+        )
+
+    def test_nonexistent_committed_path_is_not_exempted(self):
+        with self.assertRaises(AssertionError):
+            _assert_readme_paths_exist(["tools/ccfa/does_not_exist.py"])
 
 
 class TestReadmeWorkflowGuidance(unittest.TestCase):
