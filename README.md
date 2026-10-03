@@ -120,6 +120,18 @@ cd <仓库根>
 
 生成结果必须与 `checklists/conference.md` 和 `checklists/journal.md` 保持一致。
 
+## 论文工作台（P0）
+
+一个本地 PySide6 桌面壳：查看 `papers/*` 项目的阶段门、运行确定性检查，并配置 OpenAI 兼容 API；核心 `app/ccfa_core/` 零 Qt，GUI 在 `app/ccfa_gui/`。
+
+```powershell
+cd app
+$env:PYTHONPATH = (Resolve-Path ../tools).Path
+& .venv/Scripts/python.exe -m ccfa_gui.main
+```
+
+P0 边界：尚未接入智能体聊天、自定义 API 工具注册表与安装包；本轮只证明"项目 → 阶段 → 检查 → 设置"的最窄链路。
+
 ## 从零搭建
 
 依赖清单固定在 `tools/requirements.txt`。需要 Python 3.12（本仓库实测 3.12.14）。`tools/.venv` 已被 gitignore，不会随克隆提供。在仓库根执行：
