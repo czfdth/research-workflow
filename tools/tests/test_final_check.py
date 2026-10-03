@@ -1,9 +1,13 @@
+import contextlib
 import hashlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from ccfa.final_check import check
+from ccfa.final_check import check, main
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 8
@@ -111,6 +115,53 @@ class TestCheck(BaseCase):
         codes = self.codes(problems)
         self.assertIn("figure-format", codes)
         self.assertIn("figure-manifest-format", codes)
+
+    def test_skipped_check_forces_exit_two(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        patcher = patch("ccfa.final_check.extract_text", return_value=None)
+        try:
+            patcher.start()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                    ]
+                )
+        finally:
+            patcher.stop()
+        self.assertEqual(code, 2)
+        payload = json.loads(stdout.getvalue())
+        self.assertIn(
+            "check-skipped",
+            [advisory["code"] for advisory in payload["advisories"]],
+        )
+
+    def test_pdf_stat_error_exits_two_with_empty_stdout(self):
+        real_stat = Path.stat
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        def failing_stat(path, *args, **kwargs):
+            if path.suffix.lower() == ".pdf":
+                raise OSError("simulated stat failure")
+            return real_stat(path, *args, **kwargs)
+
+        with patch.object(Path, "stat", failing_stat):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                    ]
+                )
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
 
 
 if __name__ == "__main__":

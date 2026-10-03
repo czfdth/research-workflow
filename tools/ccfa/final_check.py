@@ -21,12 +21,16 @@ _DECLARATION_KEYWORDS = ("limitation", "data availability", "局限性", "数据
 
 
 def _find_pdf(manuscript: Path) -> Path | None:
-    pdfs = sorted(
-        Path(manuscript).rglob("*.pdf"),
-        key=lambda path: path.stat().st_size,
-        reverse=True,
-    )
-    return pdfs[0] if pdfs else None
+    candidates: list[tuple[int, Path]] = []
+    for path in Path(manuscript).rglob("*.pdf"):
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        candidates.append((size, path))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 def _check_declarations(text: str, path: str) -> list[Problem]:
@@ -124,7 +128,10 @@ def main(argv: list[str]) -> int:
         )
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
-    return emit(problems, advisories)
+    code = emit(problems, advisories)
+    if any(item.code == "check-skipped" for item in advisories):
+        return 2
+    return code
 
 
 if __name__ == "__main__":
