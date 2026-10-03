@@ -82,6 +82,9 @@ def compile_project(
         bib_code, bib_out = _run(["bibtex", str(build_dir / stem)], main_tex.parent)
         result.steps.append(("bibtex", bib_code))
         transcript.append(bib_out)
+        if bib_code != 0:
+            result.log_tail = bib_out[-2000:]
+            return result
 
     for _ in range(2):
         code, out = _run(base, main_tex.parent)

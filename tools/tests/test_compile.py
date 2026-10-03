@@ -79,3 +79,21 @@ class TestCompileProject(unittest.TestCase):
         result = compile_project(self.tex, self.tmp / "build6")
         names = [name for name, _ in result.steps]
         self.assertNotIn("bibtex", names, "无引用时不应调用 bibtex")
+
+    def test_failed_bibtex_is_not_a_false_success(self):
+        self.tex.write_text(
+            r"""\documentclass{article}
+\begin{document}
+See \cite{vaswani2017attention}.
+\bibliographystyle{plain}
+\bibliography{ccfa_missing_refs}
+\end{document}
+""",
+            encoding="utf-8",
+        )
+        result = compile_project(self.tex, self.tmp / "build7")
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.pdf)
+        self.assertEqual(result.steps[-1][0], "bibtex")
+        self.assertNotEqual(result.steps[-1][1], 0)
+        self.assertIn("ccfa_missing_refs", result.log_tail)
