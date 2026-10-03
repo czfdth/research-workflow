@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from ccfa.stages import gate_for
+from ccfa.texdoc import find_main_tex
 from newpaper.venues import resolve_venue
 
 TEMPLATE_ROOT = Path(__file__).resolve().parents[2]
@@ -67,6 +68,9 @@ def create_project(
     else:
         bib_target.write_text("", encoding="utf-8")
 
+    main_tex = find_main_tex(manuscript)
+    main_rel = main_tex.relative_to(target).as_posix()
+
     date = dt.date.today().isoformat()
     template = (TEMPLATE_ROOT / "ccfa.yaml.template").read_text(encoding="utf-8")
     rendered = (
@@ -76,6 +80,7 @@ def create_project(
         .replace("__YEAR__", str(year))
         .replace("__MODE__", mode)
         .replace("__DATE__", date)
+        .replace('manuscript: "manuscript/main.tex"', f'manuscript: "{main_rel}"')
     )
     (target / "ccfa.yaml").write_text(rendered, encoding="utf-8")
 

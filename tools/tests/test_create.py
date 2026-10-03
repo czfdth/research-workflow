@@ -73,3 +73,12 @@ class TestCreateProject(unittest.TestCase):
     def test_unknown_venue_propagates(self):
         with self.assertRaises(VenueNotFound):
             self._create(venue="NotAVenue2099")
+
+    def test_records_detected_main_tex_in_ccfa_yaml(self):
+        from ccfa.texdoc import find_main_tex
+
+        root = self._create()
+        main = find_main_tex(root / "manuscript")
+        rel = main.relative_to(root).as_posix()
+        text = (root / "ccfa.yaml").read_text(encoding="utf-8")
+        self.assertIn(f'manuscript: "{rel}"', text)
