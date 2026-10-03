@@ -29,3 +29,20 @@ class TestScaffoldContract(unittest.TestCase):
         gitignore = (TEMPLATE_ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("!library/papers/.gitkeep", gitignore)
         self.assertTrue((TEMPLATE_ROOT / "library" / "papers" / ".gitkeep").is_file())
+
+    def test_contract_directories_are_non_empty(self):
+        required = [
+            "checklists",
+            "library",
+            "library/papers",
+            "tools/ccfa",
+            "tools/newpaper",
+            "tools/build",
+            "tools/tests",
+        ]
+        for rel in required:
+            with self.subTest(rel=rel):
+                self.assertTrue(
+                    any((TEMPLATE_ROOT / rel).iterdir()),
+                    f"目录为空,无法由 git 保留: {rel}",
+                )
