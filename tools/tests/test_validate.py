@@ -105,6 +105,53 @@ class TestValidateYaml(unittest.TestCase):
 
         self.assertTrue(any("deadline" in problem for problem in problems), problems)
 
+    def test_missing_history_is_valid(self):
+        self.assertEqual(validate_yaml(_write(VALID)), [])
+
+    def test_valid_history_is_accepted(self):
+        with_history = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: idea\n"
+            "      to: grounded\n"
+            '      at: "2026-10-03"\n'
+            "      reason: nearest neighbors recorded\n"
+            "      kind: advance\n",
+        )
+        self.assertEqual(validate_yaml(_write(with_history)), [])
+
+    def test_history_missing_field_is_problem(self):
+        broken = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: idea\n"
+            "      to: grounded\n"
+            '      at: "2026-10-03"\n'
+            "      kind: advance\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(any("history" in problem and "reason" in problem for problem in problems), problems)
+
+    def test_history_invalid_kind_is_problem(self):
+        broken = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: idea\n"
+            "      to: grounded\n"
+            '      at: "2026-10-03"\n'
+            "      reason: nearest neighbors recorded\n"
+            "      kind: rewind\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(any("kind" in problem for problem in problems), problems)
+
     def test_help_prints_usage_to_stdout_and_exits_zero(self):
         stdout = io.StringIO()
         stderr = io.StringIO()

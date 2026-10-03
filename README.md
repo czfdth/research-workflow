@@ -43,6 +43,7 @@
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
 | `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
+| `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 
 ## 阶段到命令速查
 

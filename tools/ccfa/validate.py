@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from ccfa.milestones import parse_deadline
+from ccfa.state import history_problems
 
 REQUIRED_TOP_LEVEL = [
     "version",
@@ -81,6 +82,7 @@ def validate_yaml(path: Path) -> list[str]:
             mode = venue.get("mode", "conference") if isinstance(venue, dict) else "conference"
             if mode in VALID_MODES and current not in stages_for(mode):
                 problems.append(f"stage.current 不适用于 {mode} 模式: {current!r}")
+        problems.extend(history_problems(stage.get("history", [])))
     elif "stage" in data:
         problems.append("stage 必须是映射")
 

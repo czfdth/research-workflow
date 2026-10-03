@@ -12,6 +12,7 @@ stage:
   current: "idea"
   gate: "scope_defined"
   updated_at: "__DATE__"
+  history: []
 artifacts:
   manuscript: "manuscript/main.tex"
   bibliography: "manuscript/references.bib"

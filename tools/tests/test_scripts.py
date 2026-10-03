@@ -30,6 +30,7 @@ CCFA_WRAPPERS = {
     "watch": "watch.ps1",
     "queue": "queue.ps1",
     "validate": "validate.ps1",
+    "state": "state.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"
