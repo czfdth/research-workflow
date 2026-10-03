@@ -1,5 +1,10 @@
 import ast
+import os
 import re
+import shlex
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -96,6 +101,21 @@ def _expected_checklist_bytes(mode, actual):
     return rendered
 
 
+def _common_command_lines():
+    match = re.search(
+        r"常用命令：\s*```powershell\s*\n(.*?)```",
+        _readme_text(),
+        flags=re.DOTALL,
+    )
+    if match is None:
+        return []
+    return [
+        line.strip()
+        for line in match.group(1).splitlines()
+        if line.strip().startswith("scripts/")
+    ]
+
+
 class TestReadmeInventory(unittest.TestCase):
     def test_every_ccfa_cli_module_is_named(self):
         readme = _readme_text()
@@ -164,6 +184,101 @@ class TestReadmeWorkflowGuidance(unittest.TestCase):
         self.assertIn("使用前自查许可与完整性", readme)
         self.assertIn("acl_natbib.bst", readme)
         self.assertIn("custom.bib", readme)
+
+
+class TestReadmeCommonCommands(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.paper_root = self.root / "paper"
+        self.library_dir = self.root / "library"
+        self.log_dir = self.root / "experiments" / "log"
+        self.paper_root.mkdir()
+        self.library_dir.mkdir()
+        self.log_dir.mkdir(parents=True)
+
+        (self.paper_root / "ccfa.yaml").write_text(
+            "target_venue:\n"
+            '  mode: "conference"\n'
+            "  deadline: null\n"
+            "stage:\n"
+            '  current: "idea"\n'
+            '  gate: "scope_defined"\n'
+            '  updated_at: "2026-10-03"\n',
+            encoding="utf-8",
+        )
+        (self.library_dir / "refs.bib").write_text(
+            "@misc{demo, title={Demo}}\n",
+            encoding="utf-8",
+        )
+        manuscript = self.paper_root / "manuscript"
+        (manuscript / "sections").mkdir(parents=True)
+        (manuscript / "sections" / "main.tex").write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "Demo\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        (manuscript / "references.bib").write_text("", encoding="utf-8")
+        (self.paper_root / "submission").mkdir()
+        (self.paper_root / "submission" / "final.pdf").write_bytes(b"%PDF-1.4\n")
+
+    def _expand_tokens(self, tokens):
+        replacements = {
+            "<paper-root>": str(self.paper_root),
+            "<library-dir>": str(self.library_dir),
+            "<log-dir>": str(self.log_dir),
+        }
+        expanded = []
+        for token in tokens:
+            if token == "<command...>":
+                expanded.extend([sys.executable, "-c", "print('ok')"])
+                continue
+            for placeholder, value in replacements.items():
+                token = token.replace(placeholder, value)
+            expanded.append(token)
+        return expanded
+
+    def test_common_commands_have_valid_argparse_shapes(self):
+        lines = _common_command_lines()
+        self.assertEqual(len(lines), 7, lines)
+        wrapper_modules = {
+            wrapper: module for module, wrapper in CLI_WRAPPERS.items()
+        }
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(REPO_ROOT / "tools")
+
+        for line in lines:
+            with self.subTest(command=line):
+                tokens = shlex.split(line)
+                wrapper = tokens.pop(0)
+                self.assertIn(wrapper, wrapper_modules)
+                args = self._expand_tokens(tokens)
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        f"ccfa.{wrapper_modules[wrapper]}",
+                        *args,
+                    ],
+                    cwd=str(REPO_ROOT),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=60,
+                )
+                stderr = result.stderr.lower()
+                self.assertIn(result.returncode, (0, 1, 2), result.stderr)
+                self.assertNotIn("unrecognized arguments", stderr, result.stderr)
+                self.assertNotIn(
+                    "the following arguments are required",
+                    stderr,
+                    result.stderr,
+                )
 
 
 class TestChecklistRegeneration(unittest.TestCase):

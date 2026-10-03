@@ -68,9 +68,9 @@
 ```powershell
 scripts/milestones.ps1 due --paper-root <paper-root>
 scripts/milestones.ps1 stage --paper-root <paper-root>
-scripts/library.ps1 search --query "keyword"
-scripts/memory.ps1 check --paper-root <paper-root>
-scripts/run-log.ps1 run --paper-root <paper-root> --log-dir <paper-root>/experiments/log
+scripts/library.ps1 --dir <library-dir> search "keyword"
+scripts/memory.ps1 --paper-root <paper-root> check
+scripts/run-log.ps1 --log-dir <log-dir> --paper-root <paper-root> run -- <command...>
 scripts/latex-check.ps1 --manuscript <paper-root>/manuscript --bib <paper-root>/manuscript/references.bib --main sections/main.tex --compile
 scripts/final-check.ps1 --manuscript <paper-root>/manuscript --pdf <paper-root>/submission/final.pdf
 ```

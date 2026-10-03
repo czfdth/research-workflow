@@ -196,6 +196,16 @@ class TestMain(BaseCase):
         finally:
             latex_check.find_engine = original
 
+    def test_main_without_compile_exits_two(self):
+        code, stdout, stderr = self.run_main(
+            "--main",
+            "venue-paper.tex",
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("--main 仅在 --compile 时生效", stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,6 +94,8 @@ def main(argv: list[str]) -> int:
         help="手稿目录下的相对主文件路径（默认: main.tex）",
     )
     args = parser.parse_args(argv[1:])
+    if args.main != "main.tex" and not args.compile:
+        return tool_error("--main 仅在 --compile 时生效")
     try:
         problems, advisories = check(
             Path(args.manuscript),
