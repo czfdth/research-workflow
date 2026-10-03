@@ -161,8 +161,13 @@ class TestVerifyBundle(BaseCase):
 
     def test_nonzero_rerun_is_reported(self):
         bundle = self._bundle()
+        install_runner = lambda argv, cwd, timeout: (0, "installed\n")
+        run_runner = lambda argv, cwd, timeout: (3, "boom\n")
         problems, _ = verify_bundle(
-            bundle, venv_factory=self._venv, runner=lambda a, c, t: (3, "boom\n")
+            bundle,
+            venv_factory=self._venv,
+            install_runner=install_runner,
+            runner=run_runner,
         )
         self.assertEqual(self._codes(problems), ["repro-rerun-failed"])
 
@@ -172,9 +177,34 @@ class TestVerifyBundle(BaseCase):
         def runner(argv, cwd, timeout):
             raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
 
-        problems, _ = verify_bundle(bundle, venv_factory=self._venv, runner=runner)
+        problems, _ = verify_bundle(
+            bundle,
+            venv_factory=self._venv,
+            install_runner=lambda argv, cwd, timeout: (0, "installed\n"),
+            runner=runner,
+        )
         self.assertEqual(self._codes(problems), ["repro-rerun-failed"])
         self.assertIn("超时", problems[0].message)
+
+    def test_install_failure_is_the_primary_finding(self):
+        bundle = self._bundle()
+        run_calls = []
+
+        def run_runner(argv, cwd, timeout):
+            run_calls.append(list(argv))
+            return 0, "ran\n"
+
+        problems, _ = verify_bundle(
+            bundle,
+            venv_factory=self._venv,
+            install_runner=lambda argv, cwd, timeout: (7, "missing dependency\n"),
+            runner=run_runner,
+        )
+
+        self.assertEqual(self._codes(problems), ["repro-install-failed"])
+        self.assertIn("missing dependency", problems[0].message)
+        self.assertIn("未尝试重跑", problems[0].message)
+        self.assertEqual(run_calls, [])
 
     def test_venv_creation_failure_is_a_tool_error(self):
         bundle = self._bundle()

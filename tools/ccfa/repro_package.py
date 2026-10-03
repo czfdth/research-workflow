@@ -307,6 +307,7 @@ def verify_bundle(
     keep: bool = False,
     venv_factory=None,
     runner=None,
+    install_runner=None,
 ) -> tuple[list[Problem], list[Problem]]:
     """Re-run a bundle in a fresh venv built from its declared requirements."""
     bundle_dir = Path(bundle_dir)
@@ -323,6 +324,7 @@ def verify_bundle(
 
     venv_factory = venv_factory or _default_venv_factory
     runner = runner or _default_runner
+    install_runner = install_runner or runner
     files_dir = bundle_dir / FILES_DIR_NAME
 
     temp_dir: Path | None = None
@@ -355,13 +357,13 @@ def verify_bundle(
             ]
             problem_path = f"{FILES_DIR_NAME}/{requirement['path']}"
             try:
-                code, output = runner(install_argv, files_dir, timeout)
+                code, output = install_runner(install_argv, files_dir, timeout)
             except subprocess.TimeoutExpired as exc:
                 install_problem = Problem(
                     "repro-install-failed",
                     problem_path,
                     None,
-                    f"安装依赖超时: {exc}",
+                    f"安装依赖超时: {exc}；未尝试重跑命令",
                 )
             except OSError as exc:
                 raise ValueError(f"无法安装依赖: {exc}") from exc
@@ -371,18 +373,21 @@ def verify_bundle(
                         "repro-install-failed",
                         problem_path,
                         None,
-                        f"安装依赖失败（退出码 {int(code)}）: {_tail(output)}",
+                        f"安装依赖失败（退出码 {int(code)}）: {_tail(output)}；未尝试重跑命令",
                     )
+
+        if install_problem is not None:
+            problems.append(install_problem)
+            return problems, advisories
 
         argv = list(manifest["command"])
         if argv and argv[0] == "{python}":
             argv[0] = str(venv_python)
 
-        rerun_problem: Problem | None = None
         try:
             code, output = runner(argv, files_dir, timeout)
         except subprocess.TimeoutExpired as exc:
-            rerun_problem = Problem(
+            problem = Problem(
                 "repro-rerun-failed",
                 str(bundle_dir),
                 None,
@@ -392,21 +397,17 @@ def verify_bundle(
             raise ValueError(f"无法重跑命令: {exc}") from exc
         else:
             if int(code) != 0:
-                rerun_problem = Problem(
+                problem = Problem(
                     "repro-rerun-failed",
                     str(bundle_dir),
                     None,
                     f"重跑失败（退出码 {int(code)}）: {_tail(output)}",
                 )
+            else:
+                problem = None
 
-        if rerun_problem is not None:
-            if install_problem is not None:
-                rerun_problem = rerun_problem._replace(
-                    message=f"{rerun_problem.message}；依赖安装也未成功"
-                )
-            problems.append(rerun_problem)
-        elif install_problem is not None:
-            problems.append(install_problem)
+        if problem is not None:
+            problems.append(problem)
     finally:
         if temp_dir is not None and not keep:
             shutil.rmtree(temp_dir, ignore_errors=True)
