@@ -31,6 +31,7 @@
 | `tools/ccfa/trace_claims.py` | 将正文数字标记与 JSON、CSV、YAML 源值机械比对 | `scripts/trace-claims.ps1` |
 | `tools/ccfa/latex_check.py` | 检查 LaTeX 结构、引用、图片，并可按 `--main` 指定主文件编译 | `scripts/latex-check.ps1` |
 | `tools/ccfa/final_check.py` | 对终稿执行未解析标记、图表与声明完整性检查 | `scripts/final-check.ps1` |
+| `tools/ccfa/revision_ledger.py` | 检查审稿意见矩阵的七列契约与承诺风险一致性 | `scripts/revision-ledger.ps1` |
 | `tools/ccfa/provenance.py` | 登记数据来源、分类与校验和，并可导出人读来源文档 | `scripts/provenance.ps1` |
 | `tools/ccfa/run_log.py` | 记录每次运行的配置、种子、commit、退出码与指标 | `scripts/run-log.ps1` |
 | `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |

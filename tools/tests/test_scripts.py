@@ -31,6 +31,7 @@ CCFA_WRAPPERS = {
     "queue": "queue.ps1",
     "validate": "validate.ps1",
     "state": "state.ps1",
+    "revision_ledger": "revision-ledger.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

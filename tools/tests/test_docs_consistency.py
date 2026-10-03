@@ -34,6 +34,7 @@ CLI_WRAPPERS = {
     "queue": "scripts/queue.ps1",
     "validate": "scripts/validate.ps1",
     "state": "scripts/state.ps1",
+    "revision_ledger": "scripts/revision-ledger.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"
