@@ -78,7 +78,9 @@ class TestFindUntagged(unittest.TestCase):
         self.assertEqual(self._scan("Published in 2024 and later."), [])
 
     def test_table_reference_is_skipped(self):
-        self.assertEqual(self._scan("See Table 3 for details."), [])
+        # Multi-digit on purpose: a single digit never matches _NUMBER, so
+        # "Table 3" would pass even with the _REF_CONTEXT filter deleted.
+        self.assertEqual(self._scan("See Table 12 for details."), [])
 
     def test_bracket_citation_is_skipped(self):
         self.assertEqual(self._scan("Prior work [12] showed this."), [])

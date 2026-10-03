@@ -23,6 +23,9 @@ class TestStripComment(unittest.TestCase):
     def test_percent_at_position_zero_yields_empty(self):
         self.assertEqual(strip_comment("% hidden"), "")
 
+    def test_percent_at_end_of_line_yields_the_prefix(self):
+        self.assertEqual(strip_comment("text %"), "text ")
+
 
 if __name__ == "__main__":
     unittest.main()
