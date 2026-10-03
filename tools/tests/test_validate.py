@@ -61,3 +61,11 @@ class TestValidateYaml(unittest.TestCase):
     def test_unparsable_yaml_raises_not_returns(self):
         with self.assertRaises(ValueError):
             validate_yaml(_write("version: [unclosed\n"))
+
+    def test_non_mapping_target_venue_reports_instead_of_crashing(self):
+        broken = VALID.replace(
+            'target_venue:\n  name: "NeurIPS"\n  year: "2027"\n  mode: "conference"\n',
+            'target_venue: "not-a-mapping"\n',
+        )
+        problems = validate_yaml(_write(broken))
+        self.assertIn("target_venue 必须是映射", problems)

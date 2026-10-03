@@ -68,7 +68,7 @@ def validate_yaml(path: Path) -> list[str]:
         if current:
             from ccfa.stages import stages_for
 
-            mode = (venue or {}).get("mode", "conference")
+            mode = venue.get("mode", "conference") if isinstance(venue, dict) else "conference"
             if mode in VALID_MODES and current not in stages_for(mode):
                 problems.append(f"stage.current 不适用于 {mode} 模式: {current!r}")
     elif "stage" in data:
