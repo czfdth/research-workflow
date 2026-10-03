@@ -1761,3 +1761,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   1. **要修**：`settings_dialog.save()` 改名 + 留空 key 时凭据失联（旧 key_name 被换掉）→ 修复轮 `fix: keep provider credentials linked across renames`（改名且留空 key 时沿用旧 key_name；补两条用例 + 判别力），交 `Confucius` 实施、`Kierkegaard` 验证。
   2. `app/README.md` 本机绝对路径示例 → 同一修复轮内改成通用占位。
 - 终审残余风险（挂账）：真实 Windows 凭据管理器后端未做端到端（用注入 fake）；keyring 非 `NoKeyringError` 异常会外抛（未覆盖异常面）；像素阈值 0.02 对"部分清空"不敏感；app venv 依赖随接入模块增加需补充；打包与聊天/工具注册表按 P0 边界未实现。
+
+## workbench P0 结项（2026-10-04）
+
+- 终审 Minor 修复 `e79164e`（`fix: keep provider credentials linked across renames`）：改名 + 留空 key 时沿用旧 `key_name`（凭据不失联、状态保持"已配置"）；改名 + 新 key 走新名称（旧条目保留不删，最小无损）；`app/README.md` 去掉具体用户路径。
+- 定向验证（`Poincare the 2nd`，即终审发现者）：**ADDRESSED**，无新 Critical/Important/Minor。独立走 GUI：`RENAME_BLANK_KEY_NAME=old`、`STATUS_IS_CONFIGURED=True`、旧凭据可取、新名下无值、白名单字段成立、settings 字节无 key 明文；判别力（改回旧实现）如预期失败。
+- 终态：app **55 tests OK**、tools **819 tests OK**；HEAD `e79164e`；工作树干净。
+  workbench P0: complete (commits 8747928..e79164e, review clean)
+
+## 工作台路线与挂账（P0 后）
+
+- **P1（下一步）**：智能体聊天面板 + 引擎适配器（OpenAI 兼容 HTTP 为主、`codex exec` 为可选）+ 六个核心工具的工具桥（milestones/state/library/memory/run-log/trace-claims）。
+- **P2**：自定义 API 工具注册表（HTTP 工具声明式接入 → 校验 → 注册 → 调用审计；Python handler 默认关闭、需显式授权与沙箱）。
+- **P3**：PyInstaller + Inno Setup 安装包、代码签名、更新与许可合规（含 codex CLI 再分发条款核实；对外售卖建议以 BYO API 为主）。
+- 工作台挂账：真实 Windows 凭据管理器未做 E2E（注入 fake 已覆盖契约）；keyring 非 `NoKeyringError` 异常面未覆盖；像素阈值对"部分清空"不敏感；改名换 key 时旧 keyring 条目保留（设计选择，后续可显式清理）。
