@@ -22,7 +22,10 @@ def check(
     ledger_path: Path,
     verify_online: bool = False,
 ) -> tuple[list[Problem], list[Problem]]:
-    cited = find_cited_keys(iter_tex_files(Path(manuscript)))
+    manuscript = Path(manuscript)
+    if not manuscript.is_dir():
+        raise ValueError(f"手稿目录不存在: {manuscript}")
+    cited = find_cited_keys(iter_tex_files(manuscript))
     entries = load_entries(Path(bib_path))
     ledger = load_ledger(Path(ledger_path))
 

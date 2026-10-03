@@ -84,3 +84,17 @@ class TestCitationGuardEndToEnd(unittest.TestCase):
 
         result = self._run()
         self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_malformed_bib_exits_two_with_clean_stdout(self):
+        # C8: a parse failure is a tool error (2). The parser's diagnostic must
+        # not reach stdout, so the machine-readable channel stays empty/clean.
+        self.bib.write_text("@misc{good, doi = {10.1/ok}\n", encoding="utf-8")
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {"good": {"status": "verified"}}}),
+            encoding="utf-8",
+        )
+        (self.root / "manuscript" / "main.tex").write_text(r"\cite{good}", encoding="utf-8")
+
+        result = self._run()
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")

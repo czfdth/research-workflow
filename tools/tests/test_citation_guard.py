@@ -167,6 +167,21 @@ class TestMain(BaseCase):
             )
         self.assertEqual(code, 2)
 
+    def test_missing_manuscript_exits_two(self):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            code = main(
+                [
+                    "citation_guard.py",
+                    "--manuscript",
+                    str(self.root / "nope"),
+                    "--bib",
+                    str(self.bib),
+                    "--ledger",
+                    str(self.ledger),
+                ]
+            )
+        self.assertEqual(code, 2)
+
 
 class TestVerifyOnline(BaseCase):
     def test_online_flag_is_off_by_default(self):
