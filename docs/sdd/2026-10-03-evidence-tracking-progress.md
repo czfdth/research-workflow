@@ -1853,3 +1853,12 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 ### 用户对 P1 方向的口头确认
 
 - 用户以"嗯嗯"回应"P0 之后紧接着做长任务安全（沙箱/GPU 预算/看门狗）与跨族评审"的提议：按**同意**处理，两项列入 evidence-integrity 之后的下一计划（长任务安全为最高优先）。
+
+## evidence-integrity 执行记录（Task 1a/2）
+
+- **Task 1a `a0531ee`**（`Confucius`）：`create.py` 自动 `git init` + 论文级 `.gitignore`（`*.pdf` 默认忽略，`submission/**` 与 `manuscript/figs/**` 保留）+ `git add -A` + 首提交（身份缺失仅命令级 `-c` fallback，不写全局）；`research_version` 三个子命令开头 `assert_own_repository`（toplevel realpath 必须等于论文根，无后门）；迁移文档落 `docs/migrations/migrate-paper-to-git.md`。评审（`Kierkegaard`，干净 worktree 833 tests OK）**Approved**，1 Minor：`assert_own_repository` 有一段不可达重复实现。
+- **Task 1a 清理 `6241b6f`**：纯删除 14 行不可达块，行为不变；`test_research_version` 21 条 OK。
+- **Task 2 `11239ad`**（`Meitner the 2nd`）：`claims_policy.py`（受保护区识别、`protected-untagged-number` problem、`waived-number` advisory 含理由、坏 waiver 报行号不中断、无 policy → `claims-policy-missing` advisory）+ `final_check` 接入 + `claims_coverage_report` 原子写 `submission/claims-coverage.json/.md` + `create.py` seed `data/claims.yaml` 并把 `checks.md` 声明改成指向机器报告。判别力实测：受保护区改回 advisory → `protected-untagged-number` 用例失败。
+  - **对示例论文的真实数字**（机制立刻命中了审计预言）：`tags=62, protected_total=8, bound=7, unbound=1`；唯一未绑定项 = `manuscript/main.tex:58` 的 `Coding 43`（摘要 "systematizes 43 works"）。口径说明：用户审计计 56/59 处标记，当前 HEAD 实测 62，属计数口径差异（`find_untagged` 逐行候选 vs 其它口径），已记录。
+  - 待办：Task 2 评审（`Kierkegaard`，干净 worktree）。
+- **Task 3 拆分**：3a（DOI/引用证据；不等 Ampere）本次派发；3b（cross-review 引文 + run-log `declared_purpose`/gate 证据化）待 Ampere 的 `cross_review.py`/`run_log.py`/`milestones.py` 落地后派。

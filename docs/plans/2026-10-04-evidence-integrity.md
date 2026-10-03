@@ -39,7 +39,11 @@
 
 ### Task 3: 去自证（E63）
 
-**Files:** Modify `tools/ccfa/doi_lookup.py`、`tools/ccfa/citation_guard.py`、`tools/ccfa/citation_ledger.py`、`tools/tests/test_citation_guard*.py`、`tools/tests/test_doi_lookup*.py`、`tools/ccfa/cross_review.py`、`tools/tests/test_cross_review.py`、`tools/ccfa/run_log.py`（purpose 标注）、`tools/ccfa/milestones.py`（gate 证据化）
+**并发避让（2026-10-04）**：`cross_review.py`、`run_log.py`、`milestones.py` 及其测试仍有 Ampere 的未提交改动。本任务拆为 **3a（DOI/引用证据，本次派发）** 与 **3b（cross-review 引文 + run-log purpose/gate，待 Ampere 落地后派）**。
+
+**Task 3a Files:** Modify `tools/ccfa/doi_lookup.py`、`tools/ccfa/citation_guard.py`、`tools/ccfa/citation_ledger.py`、`tools/tests/test_citation_guard*.py`、`tools/tests/test_doi_lookup*.py`。**不得触碰 cross_review.py / run_log.py / milestones.py 及其测试。**
+
+**Task 3b（待派）Files:** `tools/ccfa/cross_review.py`、`tools/tests/test_cross_review.py`、`tools/ccfa/run_log.py`（purpose → declared_purpose）、`tools/ccfa/milestones.py`（gate 证据化）
 
 - **DOI**：`lookup` 读响应体 JSON，校验返回 DOI == 请求 DOI（大小写归一），提取 title；`LookupResult` 增 `evidence`（body sha256、retrieved_at、matched_title）；title 与 bib 条目 title 做归一化相似度（≥0.9 视为匹配，低则 `found=False, detail="title mismatch"`）。`citation_guard --verify-online` 写台账时 `status=verified` 必须携带 evidence；无 evidence 的 verified 条目 → problem `citation-self-asserted`。
 - **run-log**：`purpose` 字段改 `declared_purpose`（并保留兼容读）；`check` 输出明确"declared 字段不构成证据"；milestones 的 `experiments-running` gate 证据改为"存在 run-log 记录且无 metrics-pending"（已可查），`submission-check` 要求 repro verify 记录存在。
