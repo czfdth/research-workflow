@@ -35,6 +35,14 @@ class TestBraces(unittest.TestCase):
     def test_literal_backslash_then_comment_is_ignored(self):
         self.assertEqual(check_braces(_write(self.root, "line\\\\% { unmatched")), [])
 
+    def test_double_backslash_before_brace_still_counts(self):
+        # Two backslashes are a line-break command, so the brace is a real opener.
+        problems = check_braces(_write(self.root, "a \\\\{ b"))
+        self.assertEqual([p.code for p in problems], ["unbalanced-brace"])
+
+    def test_triple_backslash_before_brace_is_escaped(self):
+        self.assertEqual(check_braces(_write(self.root, "a \\\\\\{ b")), [])
+
 
 class TestEnvironments(unittest.TestCase):
     def setUp(self):

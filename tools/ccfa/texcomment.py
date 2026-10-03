@@ -1,23 +1,26 @@
-"""Strip LaTeX line comments, respecting escaped percent signs.
+"""Escape-aware helpers for LaTeX line scanning.
 
-A percent begins a comment only when the backslashes immediately before it
-are even in number: an odd count means the last backslash escapes it.
-Checking only the previous character is wrong for a line containing a
-literal backslash, where the percent that follows is a real comment.
+A character is escaped when the run of backslashes immediately before it is
+odd in number. Counting the whole run, rather than looking at one preceding
+character, is what makes a literal backslash behave correctly: after two
+backslashes a following percent or brace is real, after one it is escaped.
 """
 
 from __future__ import annotations
 
 
+def is_escaped(text: str, index: int) -> bool:
+    """True when the character at *index* is escaped by an odd backslash run."""
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
+
+
 def strip_comment(line: str) -> str:
     for index, char in enumerate(line):
-        if char != "%":
-            continue
-        backslashes = 0
-        cursor = index - 1
-        while cursor >= 0 and line[cursor] == "\\":
-            backslashes += 1
-            cursor -= 1
-        if backslashes % 2 == 0:
+        if char == "%" and not is_escaped(line, index):
             return line[:index]
     return line

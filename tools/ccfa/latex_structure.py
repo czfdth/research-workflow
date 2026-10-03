@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from ccfa.cli import Problem
-from ccfa.texcomment import strip_comment
+from ccfa.texcomment import is_escaped, strip_comment
 
 _ENV = re.compile(r"\\(begin|end)\{([^}]+)\}")
 
@@ -33,18 +33,19 @@ def check_braces(path: Path) -> list[Problem]:
         index = 0
         while index < len(line):
             char = line[index]
-            if char == "\\" and index + 1 < len(line) and line[index + 1] in "{}":
-                index += 2
-                continue
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth < 0:
-                    problems.append(
-                        Problem("unbalanced-brace", str(path), number, "多余的 '}'")
-                    )
-                    depth = 0
+            if char in "{}":
+                if is_escaped(line, index):
+                    index += 1
+                    continue
+                if char == "{":
+                    depth += 1
+                else:
+                    depth -= 1
+                    if depth < 0:
+                        problems.append(
+                            Problem("unbalanced-brace", str(path), number, "多余的 '}'")
+                        )
+                        depth = 0
             index += 1
     if depth > 0:
         problems.append(

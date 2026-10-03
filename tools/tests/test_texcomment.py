@@ -1,6 +1,17 @@
 import unittest
 
-from ccfa.texcomment import strip_comment
+from ccfa.texcomment import is_escaped, strip_comment
+
+
+class TestIsEscaped(unittest.TestCase):
+    def test_single_backslash_escapes(self):
+        self.assertTrue(is_escaped("\\%", 1))
+
+    def test_two_backslashes_do_not_escape(self):
+        self.assertFalse(is_escaped("\\\\%", 2))
+
+    def test_character_at_the_start_is_not_escaped(self):
+        self.assertFalse(is_escaped("a", 0))
 
 
 class TestStripComment(unittest.TestCase):
