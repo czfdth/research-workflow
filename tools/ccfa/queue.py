@@ -3,6 +3,10 @@
 The injected runner contract is ``runner(argv, cwd, timeout_s) -> int``.
 It may raise ``subprocess.TimeoutExpired`` or ``TimeoutError``. The default
 runner uses ``subprocess.run(..., shell=False)`` and inherits stdio.
+
+Timeouts retry only when the manifest explicitly sets
+``retry_on_timeout: true``. A cwd 不存在 is a runtime error: that attempt still
+gets a failed run-log record, then the queue raises ValueError and exits 2.
 """
 
 from __future__ import annotations
@@ -84,6 +88,11 @@ def load_queue(path: Path) -> list[dict]:
             raise ValueError(
                 f"队列第 {index} 项 retry_exit_codes 必须是整数列表"
             )
+        retry_on_timeout = item.get("retry_on_timeout", False)
+        if not isinstance(retry_on_timeout, bool):
+            raise ValueError(
+                f"队列第 {index} 项 retry_on_timeout 必须是布尔值"
+            )
         max_attempts = item.get("max_attempts", 1)
         if type(max_attempts) is not int or max_attempts < 1:
             raise ValueError(f"队列第 {index} 项 max_attempts 必须是正整数")
@@ -94,6 +103,7 @@ def load_queue(path: Path) -> list[dict]:
                 "cwd": cwd,
                 "timeout_s": timeout_s,
                 "retry_exit_codes": list(retry_exit_codes),
+                "retry_on_timeout": retry_on_timeout,
                 "max_attempts": max_attempts,
             }
         )
@@ -193,7 +203,10 @@ def run_queue(
                 status = "timeout"
             else:
                 status = "failed"
-            retryable = timed_out or exit_code in item["retry_exit_codes"]
+            retryable = (
+                exit_code in item["retry_exit_codes"]
+                or (timed_out and item["retry_on_timeout"])
+            )
             if retryable and attempts < item["max_attempts"]:
                 continue
             if retryable and item["max_attempts"] > 1:
@@ -214,7 +227,12 @@ def run_queue(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="顺序运行实验队列")
+    parser = argparse.ArgumentParser(
+        description=(
+            "顺序运行实验队列。超时仅在 retry_on_timeout=true 时重试；"
+            "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
+        )
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     run = subparsers.add_parser("run", help="运行队列")
     run.add_argument("--queue", required=True)

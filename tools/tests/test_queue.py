@@ -7,7 +7,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from ccfa.queue import load_queue, main, run_queue
+from ccfa.queue import build_parser, load_queue, main, run_queue
 
 
 class FakeClock:
@@ -105,6 +105,7 @@ class TestLoadQueue(QueueTests):
         self.assertEqual(items[0]["name"], "one")
         self.assertEqual(items[0]["command"], ["python", "one.py"])
         self.assertEqual(items[0]["retry_exit_codes"], [])
+        self.assertIs(items[0]["retry_on_timeout"], False)
         self.assertEqual(items[0]["max_attempts"], 1)
 
     def test_load_queue_rejects_invalid_shape_and_version(self):
@@ -119,6 +120,16 @@ class TestLoadQueue(QueueTests):
                         "name": "bad",
                         "command": ["python"],
                         "max_attempts": 0,
+                    }
+                ],
+            },
+            {
+                "schema_version": 1,
+                "queue": [
+                    {
+                        "name": "bad-timeout-retry",
+                        "command": ["python"],
+                        "retry_on_timeout": "yes",
                     }
                 ],
             },
@@ -183,6 +194,7 @@ class TestRunQueue(QueueTests):
                     timeout_s=5,
                     retry_exit_codes=[],
                     max_attempts=2,
+                    retry_on_timeout=True,
                 )
             ]
         )
@@ -200,6 +212,30 @@ class TestRunQueue(QueueTests):
         self.assertEqual(result["runs"][0]["status"], "timeout")
         self.assertEqual(result["stopped"], "retries")
         self.assertTrue(self._records()[0]["metrics"]["timeout"])
+
+    def test_timeout_without_explicit_flag_does_not_retry(self):
+        self._write_queue(
+            [
+                self._item(
+                    timeout_s=5,
+                    max_attempts=2,
+                )
+            ]
+        )
+        runner = RecordingRunner(
+            [
+                subprocess.TimeoutExpired(["python"], 5),
+                0,
+            ],
+            log_dir=self.log_dir,
+        )
+
+        result = self._run(runner)
+
+        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(result["runs"][0]["attempts"], 1)
+        self.assertEqual(result["runs"][0]["status"], "timeout")
+        self.assertIsNone(result["stopped"])
 
     def test_timeout_with_default_attempt_limit_does_not_retry(self):
         self._write_queue([self._item(timeout_s=5)])
@@ -292,6 +328,36 @@ class TestDefaultRunner(QueueTests):
 
 
 class TestMain(QueueTests):
+    def test_missing_cwd_still_records_failed_then_exits_two(self):
+        self._write_queue([self._item(cwd="does-not-exist")])
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(
+                [
+                    "queue",
+                    "run",
+                    "--queue",
+                    str(self.queue_path),
+                    "--log-dir",
+                    str(self.log_dir),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("工具错误", stderr.getvalue())
+        records = self._records()
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["status"], "failed")
+
+    def test_help_and_docstring_state_missing_cwd_behavior(self):
+        import ccfa.queue as queue_module
+
+        self.assertIn("cwd 不存在", queue_module.__doc__)
+        self.assertIn("cwd 不存在", build_parser().format_help())
+
     def test_main_success_zero_failure_one_and_invalid_two(self):
         self._write_queue([self._item()])
         with mock.patch(
