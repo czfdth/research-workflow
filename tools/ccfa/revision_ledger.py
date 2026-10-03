@@ -30,11 +30,33 @@ _SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
 
 def _split_row(line: str) -> list[str]:
     text = line.strip()
-    if text.startswith("|"):
-        text = text[1:]
-    if text.endswith("|"):
-        text = text[:-1]
-    return [cell.strip() for cell in text.split("|")]
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in text:
+        if escaped:
+            if char == "|":
+                current.append("|")
+            else:
+                current.append("\\")
+                current.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+
+    if text.startswith("|") and cells and cells[0] == "":
+        cells = cells[1:]
+    if text.endswith("|") and cells and cells[-1] == "":
+        cells = cells[:-1]
+    return cells
 
 
 def _is_separator(cells: list[str]) -> bool:
@@ -56,6 +78,15 @@ def _find_table(lines: list[str]) -> tuple[int, int] | None:
     return None
 
 
+def _find_header_without_separator(lines: list[str]) -> int | None:
+    for index, line in enumerate(lines):
+        if "|" not in line:
+            continue
+        if tuple(_split_row(line)) == EXPECTED_HEADER:
+            return index
+    return None
+
+
 def check_ledger(path: Path) -> list[Problem]:
     """Return schema problems; an absent table is a legal empty ledger."""
     path = Path(path)
@@ -67,6 +98,16 @@ def check_ledger(path: Path) -> list[Problem]:
     lines = text.splitlines()
     table = _find_table(lines)
     if table is None:
+        header_index = _find_header_without_separator(lines)
+        if header_index is not None:
+            return [
+                Problem(
+                    "ledger-header",
+                    str(path),
+                    header_index + 1,
+                    "表头后缺少分隔行",
+                )
+            ]
         return []
 
     header_index, separator_index = table
@@ -111,7 +152,19 @@ def check_ledger(path: Path) -> list[Problem]:
             continue
 
         concern_id, _source, type_, evidence, disposition, risk, status = cells
-        if concern_id in seen_ids:
+        if not concern_id:
+            problems.append(
+                Problem(
+                    "ledger-empty-id",
+                    str(path),
+                    index + 1,
+                    f"第 {index + 1} 行 Concern ID 不能为空",
+                )
+            )
+            continue
+
+        concern_id_key = concern_id.casefold()
+        if concern_id_key in seen_ids:
             problems.append(
                 Problem(
                     "ledger-duplicate-id",
@@ -120,8 +173,8 @@ def check_ledger(path: Path) -> list[Problem]:
                     f"Concern ID 重复: {concern_id}",
                 )
             )
-        elif concern_id:
-            seen_ids.add(concern_id)
+        else:
+            seen_ids.add(concern_id_key)
 
         if type_ not in VALID_TYPES:
             problems.append(

@@ -84,6 +84,21 @@ class RevisionLedgerTests(unittest.TestCase):
         self.assertEqual([p.code for p in problems], ["ledger-row-shape"])
         self.assertEqual(problems[0].line, 4)
 
+    def test_escaped_pipe_in_disposition_is_not_a_column_separator(self):
+        path = self._ledger(
+            "| C1 | R1 | 证据不足 | run-001 | cite A \\| B | 否 | 已处理 |"
+        )
+
+        self.assertEqual(check_ledger(path), [])
+
+    def test_header_without_separator_is_reported_with_line(self):
+        path = self._write("# 审稿意见矩阵\n" + HEADER + "\n")
+
+        problems = check_ledger(path)
+
+        self.assertEqual([p.code for p in problems], ["ledger-header"])
+        self.assertEqual(problems[0].line, 2)
+
     def test_duplicate_concern_id_is_reported_with_line(self):
         path = self._ledger(self._row(cid="C1"), self._row(cid="C1"))
 
@@ -91,6 +106,23 @@ class RevisionLedgerTests(unittest.TestCase):
 
         self.assertEqual([p.code for p in problems], ["ledger-duplicate-id"])
         self.assertEqual(problems[0].line, 5)
+
+    def test_duplicate_concern_id_is_case_insensitive(self):
+        path = self._ledger(self._row(cid="C1"), self._row(cid="c1"))
+
+        problems = check_ledger(path)
+
+        self.assertEqual([p.code for p in problems], ["ledger-duplicate-id"])
+        self.assertEqual(problems[0].line, 5)
+
+    def test_empty_concern_id_is_reported_with_line(self):
+        path = self._ledger(self._row(cid=""))
+
+        problems = check_ledger(path)
+
+        self.assertEqual([p.code for p in problems], ["ledger-empty-id"])
+        self.assertEqual(problems[0].line, 4)
+        self.assertIn("4", problems[0].message)
 
     def test_invalid_type_and_status_are_reported_with_line(self):
         path = self._ledger(
