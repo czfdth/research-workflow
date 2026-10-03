@@ -152,6 +152,64 @@ class TestValidateYaml(unittest.TestCase):
 
         self.assertTrue(any("kind" in problem for problem in problems), problems)
 
+    def test_history_advance_backwards_is_problem(self):
+        broken = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: writing\n"
+            "      to: results-ready\n"
+            '      at: "2026-10-03"\n'
+            "      reason: bad direction\n"
+            "      kind: advance\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(
+            any("state-history-direction" in problem for problem in problems),
+            problems,
+        )
+
+    def test_history_rollback_forwards_is_problem(self):
+        broken = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: results-ready\n"
+            "      to: writing\n"
+            '      at: "2026-10-03"\n'
+            "      reason: bad direction\n"
+            "      kind: rollback\n"
+            "      void_artifacts: []\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(
+            any("state-history-direction" in problem for problem in problems),
+            problems,
+        )
+
+    def test_history_invalid_stage_is_problem(self):
+        broken = VALID.replace(
+            '  updated_at: "2026-10-03"\n',
+            '  updated_at: "2026-10-03"\n'
+            "  history:\n"
+            "    - from: idea\n"
+            "      to: no-such-stage\n"
+            '      at: "2026-10-03"\n'
+            "      reason: bad stage\n"
+            "      kind: advance\n",
+        )
+
+        problems = validate_yaml(_write(broken))
+
+        self.assertTrue(
+            any("state-history-stage" in problem for problem in problems),
+            problems,
+        )
+
     def test_help_prints_usage_to_stdout_and_exits_zero(self):
         stdout = io.StringIO()
         stderr = io.StringIO()

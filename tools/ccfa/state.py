@@ -18,7 +18,11 @@ HISTORY_FIELDS = ("from", "to", "at", "reason", "kind")
 HISTORY_KINDS = ("advance", "rollback")
 
 
-def history_entry_problems(entry: object, index: int) -> list[str]:
+def history_entry_problems(
+    entry: object,
+    index: int,
+    stages: list[str] | None = None,
+) -> list[str]:
     """Return validation problems for one ``stage.history`` entry."""
     where = f"stage.history[{index}]"
     if not isinstance(entry, dict):
@@ -49,16 +53,53 @@ def history_entry_problems(entry: object, index: int) -> list[str]:
                 problems.append(
                     f"{where}.void_artifacts 必须是非空字符串列表"
                 )
+
+    if stages is not None:
+        from_stage = entry.get("from")
+        to_stage = entry.get("to")
+        for field, value in (("from", from_stage), ("to", to_stage)):
+            if (
+                isinstance(value, str)
+                and value.strip()
+                and value not in stages
+            ):
+                problems.append(
+                    f"state-history-stage: {where}.{field} 不是合法 stage: "
+                    f"{value!r}"
+                )
+        if (
+            kind in HISTORY_KINDS
+            and isinstance(from_stage, str)
+            and isinstance(to_stage, str)
+            and from_stage in stages
+            and to_stage in stages
+        ):
+            from_index = stages.index(from_stage)
+            to_index = stages.index(to_stage)
+            if kind == "advance" and to_index <= from_index:
+                problems.append(
+                    f"state-history-direction: {where} kind=advance "
+                    "必须严格向后推进"
+                )
+            if kind == "rollback" and to_index >= from_index:
+                problems.append(
+                    f"state-history-direction: {where} kind=rollback "
+                    "必须严格向前回退"
+                )
     return problems
 
 
-def history_problems(history: object) -> list[str]:
+def history_problems(
+    history: object,
+    mode: str | None = None,
+) -> list[str]:
     """Return validation problems for a whole ``stage.history`` value."""
     if not isinstance(history, list):
         return ["stage.history 必须是列表"]
+    stages = stages_for(mode) if mode is not None else None
     problems: list[str] = []
     for index, entry in enumerate(history):
-        problems.extend(history_entry_problems(entry, index))
+        problems.extend(history_entry_problems(entry, index, stages=stages))
     return problems
 
 
@@ -80,7 +121,8 @@ def _read_state(paper_root: Path) -> tuple[Path, dict]:
     if not isinstance(stage, dict):
         raise ValueError(f"{path} 的 stage 必须是映射")
 
-    problems = history_problems(stage.get("history", []))
+    mode, _stages = _mode_and_stages(data)
+    problems = history_problems(stage.get("history", []), mode)
     if problems:
         raise ValueError("stage.history 非法: " + "; ".join(problems))
     return path, data
@@ -160,6 +202,8 @@ def _transition(
     if kind == "advance":
         if target_index == current_index:
             raise ValueError("目标 stage 与当前 stage 相同")
+        if target_index < current_index:
+            raise ValueError("set-stage 只能推进到当前 stage 之后")
     elif target_index >= current_index:
         raise ValueError("rollback 只能回退到当前 stage 之前")
 

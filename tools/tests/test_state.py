@@ -98,6 +98,23 @@ class TestSetStage(unittest.TestCase):
                 confirm=True,
             )
 
+    def test_set_stage_rejects_backward_stage_and_preserves_bytes(self):
+        self.path.write_text(
+            _write_state(self.root, current="writing").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        before = self.path.read_bytes()
+
+        with self.assertRaisesRegex(ValueError, "之后"):
+            set_stage(
+                self.root,
+                to="results-ready",
+                reason="must not disguise a rollback",
+                confirm=True,
+            )
+
+        self.assertEqual(self.path.read_bytes(), before)
+
     def test_set_stage_updates_gate_and_appends_history(self):
         result = set_stage(
             self.root,
@@ -261,6 +278,28 @@ class TestStateMain(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn("--confirm", stderr)
+
+    def test_main_backward_set_stage_exits_two_without_rewrite(self):
+        self.path.write_text(
+            _write_state(self.root, current="writing").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        before = self.path.read_bytes()
+
+        code, stdout, stderr = _run_main(
+            "--paper-root",
+            str(self.root),
+            "set-stage",
+            "results-ready",
+            "--reason",
+            "must not disguise a rollback",
+            "--confirm",
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("之后", stderr)
+        self.assertEqual(self.path.read_bytes(), before)
 
     def test_main_rollback_exits_zero(self):
         self.path.write_text(
