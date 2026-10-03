@@ -1732,3 +1732,12 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 ## workbench P0 Task 1 已派
 
 - 实施者 `Confucius`：`app/ccfa_core`（projects/settings/secrets/checks，零 Qt）+ `app/tests`（约 20 条）+ `app/requirements.txt`（PySide6/keyring 实测钉死）+ `app/README.md` + `.gitignore`；密钥红线（settings 不含 key、keyring 不可用不降级）与两条判别力实测；tools 侧 819 必须不动。commit `feat: add the workbench core for projects, settings and checks`。
+
+## workbench P0 执行记录（`7b3fa93 → ba01d2c → b5d156b → ed02bf4`）
+
+- **Task 1 `7b3fa93`**（`Confucius`）：`ccfa_core` 五个模块（projects/settings/secrets/checks）+ app 33 tests OK + tools 819 不动；钉死 `PySide6==6.11.2`、`keyring==25.7.0`、`PyYAML==6.0.3`（PyYAML 是 app 侧独立 venv 必需项）；判别力两条实测（save_settings 落 key、坏项不隔离）。
+  - 复评（`Kierkegaard`）：**Needs fixes**。Important——`save_settings` 的 `key` 参数被 `del` 静默丢弃（调用方以为存了密钥），属"接口在撒谎"；Minor——E58 只是文本断言、README 硬编码机器绝对路径。
+- **Task 1 修复 `b5d156b`**：删除 `key` 参数（传 key → `TypeError`）；落盘字段白名单逐字段断言；E58 换成真实 import 图测试（meta_path 阻断 PySide6，导核心模块 + 最小路径，断言 sys.modules 无 PySide6）；README 改 `py -3.12`、绝对路径降为示例。复评 **ADDRESSED**（判别力：恢复 key 参数 → `TypeError not raised`；故意 import → `blocked PySide6 import`）。
+- **Task 2 `ba01d2c`**（`Confucius`）：PySide6 壳（项目列表含坏项标红、阶段面板、运行 validate/milestones、设置对话框、凭据状态栏）；offscreen 真实渲染，`SCREENSHOT_RATIO=0.7457`、PNG 7505 bytes；清空布局 → 非空像素断言失败（判别力）。评审 `Kierkegaard`：**Approved**，独立复跑同比例/字节，对抗验证（坏项与好项并存、keyring 不可用时对话框报错不写盘）全过。
+- **Task 3 `ed02bf4`**（`Confucius`）：`test_workbench_e2e.py`（7 条，真实 NeurIPS 派生 + 真实 offscreen + 真实 validate/milestones + 密钥路径字节断言）；README 加「论文工作台（P0）」小节并如实标注边界（聊天/自定义 API 工具/安装包未接入）。app 53 tests OK；tools 819 不动；判别力：坏项跳过 → e2e 失败。
+- 待办：Task 3 评审（`Kierkegaard`）→ workbench P0 最终全分支评审（base `8747928`）。
