@@ -54,18 +54,50 @@ def load_store(path: Path) -> dict:
     return data
 
 
-def save_store(path: Path, store: dict) -> None:
+def save_text_atomically(path: Path, text: str, *, description: str = "") -> None:
+    """Write text through a sibling temp file and atomic replace.
+
+    Any ``OSError`` on the way folds into ``ValueError`` so the CLI maps it to
+    exit 2 instead of leaking a traceback.
+    """
     path = Path(path)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(path.name + ".tmp")
-        temporary.write_text(
-            json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        temporary.write_text(text, encoding="utf-8")
         os.replace(temporary, path)
     except OSError as exc:
-        raise ValueError(f"无法写入 store {path}: {exc}") from exc
+        what = f"{description} {path}".strip()
+        raise ValueError(f"无法写入 {what}: {exc}") from exc
+
+
+def save_store(path: Path, store: dict) -> None:
+    payload = json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    save_text_atomically(Path(path), payload, description="store")
+
+
+def render_markdown(store: dict) -> str:
+    lines = [
+        "# 数据来源",
+        "",
+        "| 路径 | 分类 | 来源 | 字节 | sha256 | 登记时间 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for relpath, entry in sorted(store["files"].items()):
+        digest = str(entry.get("sha256", ""))
+        short = digest.split(":", 1)[-1][:12]
+        lines.append(
+            f"| {relpath} | {entry.get('classification', '')} | {entry.get('source', '')} "
+            f"| {entry.get('size', '')} | {short} | {entry.get('recorded_at', '')} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def write_markdown(path: Path, text: str, force: bool = False) -> None:
+    path = Path(path)
+    if path.exists() and not force:
+        raise ValueError(f"导出目标已存在: {path}（如需覆盖请显式使用 --force）")
+    save_text_atomically(path, text)
 
 
 def add_entry(
@@ -173,6 +205,10 @@ def main(argv: list[str]) -> int:
 
     sub.add_parser("check", help="核对已登记文件的内容")
 
+    export = sub.add_parser("export", help="导出人读的来源文档")
+    export.add_argument("--out")
+    export.add_argument("--force", action="store_true")
+
     args = parser.parse_args(argv[1:])
     try:
         if args.command == "add":
@@ -190,6 +226,13 @@ def main(argv: list[str]) -> int:
             return emit([], [])
         if args.command == "check":
             return emit(check_store(Path(args.store), Path(args.paper_root)), [])
+        if args.command == "export":
+            store = load_store(Path(args.store))
+            if args.out:
+                write_markdown(Path(args.out), render_markdown(store), force=args.force)
+                return emit([], [])
+            print(render_markdown(store))
+            return 0
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
     return tool_error(f"未知子命令: {args.command}")

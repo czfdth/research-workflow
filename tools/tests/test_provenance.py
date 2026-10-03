@@ -12,8 +12,10 @@ from ccfa.provenance import (
     check_store,
     load_store,
     main,
+    render_markdown,
     save_store,
     sha256_of,
+    write_markdown,
 )
 
 
@@ -190,6 +192,45 @@ class TestCheckStore(BaseCase):
         before = self.store.read_bytes()
         check_store(self.store, self.root)
         self.assertEqual(self.store.read_bytes(), before)
+
+
+class TestExport(BaseCase):
+    def test_markdown_has_a_row_per_entry(self):
+        self.add(notes="first")
+        text = render_markdown(load_store(self.store))
+        self.assertIn("data/raw.csv", text)
+        self.assertIn("| 路径 |", text)
+        # header row + separator row + the single data row
+        self.assertEqual(text.count("\n| "), 3)
+
+    def test_short_hash_is_shown(self):
+        entry = self.add()
+        text = render_markdown(load_store(self.store))
+        self.assertIn(entry["sha256"][7:19], text)
+        self.assertNotIn(entry["sha256"], text)
+
+    def test_render_does_not_write(self):
+        self.add()
+        render_markdown(load_store(self.store))
+        self.assertTrue(self.store.exists())
+
+    def test_write_markdown_creates_the_file(self):
+        out = self.root / "data" / "provenance.md"
+        write_markdown(out, "# doc\n")
+        self.assertEqual(out.read_text(encoding="utf-8"), "# doc\n")
+
+    def test_write_markdown_refuses_to_overwrite_without_force(self):
+        out = self.root / "data" / "provenance.md"
+        write_markdown(out, "first")
+        with self.assertRaises(ValueError):
+            write_markdown(out, "second")
+        self.assertEqual(out.read_text(encoding="utf-8"), "first")
+
+    def test_write_markdown_force_replaces(self):
+        out = self.root / "data" / "provenance.md"
+        write_markdown(out, "first")
+        write_markdown(out, "second", force=True)
+        self.assertEqual(out.read_text(encoding="utf-8"), "second")
 
 
 if __name__ == "__main__":
