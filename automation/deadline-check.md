@@ -20,6 +20,7 @@ $env:PYTHONPATH = "$ROOT/tools"
 - `due`：命中的 checkpoint 或 overdue。
 - `missing_gates`：目标前的 gate 缺口。
 - `problems`：`deadline-invalid`, `stage-unknown`, `deadline-passed` 等。
+- `advisory`：`sequential` 模式下的下一建议动作。
 
 ## 通知规则
 

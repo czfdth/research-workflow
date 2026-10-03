@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -14,6 +15,12 @@ from ccfa.watch import scan
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTOMATION_DIR = REPO_ROOT / "automation"
+
+
+def _declared_fields(text: str) -> set[str]:
+    """Field names the template's read-fields section promises, nothing else."""
+    section = text.split("## 读取字段", 1)[1].split("##", 1)[0]
+    return set(re.findall(r"^- `([a-z_]+)`", section, flags=re.MULTILINE))
 
 ATOM_ONE = """\
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -135,8 +142,10 @@ class AutomationDocumentationTests(unittest.TestCase):
                 )
         self.assertEqual(code, 0)
         self.assertEqual(stderr.getvalue(), "")
-        for field in json.loads(stdout.getvalue()):
+        real_fields = set(json.loads(stdout.getvalue()))
+        for field in real_fields:
             self.assertIn(f"`{field}`", text)
+        self.assertEqual(_declared_fields(text), real_fields)
 
     def test_deadline_template_fields_match_real_due_output(self):
         text = (AUTOMATION_DIR / "deadline-check.md").read_text(encoding="utf-8")
@@ -175,6 +184,7 @@ class AutomationDocumentationTests(unittest.TestCase):
         for field in ("due", "problems"):
             self.assertIn(field, report)
             self.assertIn(f"`{field}`", text)
+        self.assertEqual(_declared_fields(text), set(report))
 
 
 class AutomationEndToEndTests(unittest.TestCase):
