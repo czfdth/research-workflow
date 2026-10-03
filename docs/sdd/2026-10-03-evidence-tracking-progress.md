@@ -1655,3 +1655,32 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **P0-c 已落地**（`dc5b4b0`）：设计 v6、17 份计划、E1–E52 账本、研究评估全部复制进 `docs/`（23 文件、632KB），根 README 指向仓库内副本；此文件自此为正式留档。
 - **P0-a/b 已派** `Confucius`：`tools/requirements.txt`（4 个实测钉死版本）+ README「从零搭建」+ **全新临时 venv 只装该清单跑全量**的证据；commit `chore: pin the toolchain dependencies for a fresh clone`。
 - **P1 Task 2 已派** `Kierkegaard`：`state.py` + `stage.history` + validate 兼容 + `scripts/state.ps1` + README 工具表；commit `feat: write paper stage transitions with an audit trail`。
+
+## 商品化 P0/P1 实施记录（提交链 `8d0db77 → f2eb1e7 → c4bf4f3 → bd12001`）
+
+- **P0 `8d0db77`**（`Confucius`）：`tools/requirements.txt` 钉死 `PyYAML==6.0.3 / bibtexparser==2.1.0 / pylatexenc==2.11 / pymupdf==1.28.2`（`pylatexenc` 是 bibtexparser 的硬依赖）；README 增「从零搭建」。**真实验证**：临时全新 venv 只装该清单 → 全量 `Ran 729 tests OK`（74.7s）；系统外部依赖（MiKTeX/git/PowerShell）照旧。包装器固定指向 `tools/.venv`，新克隆需先按 README 建 venv。
+- **Task 4 `f2eb1e7`**（`Pasteur the 2nd`）：manifest 溯源补全（缺 generator/hash、缺/坏 `source_run_ids`、未知 run id、缺/坏 `source_data`、`manual_edit` 无说明 → problem；`referenced_in` 仍 advisory）。run id 约定核实为 `run_id` 字段 + `experiments/log/<run_id>.json`，复用 `run_log.record_path()`。判别力：generator 改回可选 → `0 != 1` 失败。
+- **Task 3 `c4bf4f3`**（`Cicero the 2nd`）：倒排补全 8 节点（映射见 E54）+ T-30 硬规则（读 `run_id`/`started_at`，晚于 T-30 → `t30-new-experiment`；坏记录 → `t30-scan-skipped` advisory）。判别力：节点表回退 3 个 → `KeyError: 'T-30'`；去 T-30 扫描 → `StopIteration`。**连带待办**：countdown 报告新增 `advisories` 键，`automation/deadline-check.md` 未声明 → 记入 Task 6 文档同步（评审判定中）。
+- **Task 2 `bd12001`**（`Kierkegaard`）：`state.py` 的 `set-stage`/`rollback`（`--confirm` 授权门、`--reason` 必填、方向校验、`stage.history` 追加、`gate` 与 stages.py 一致、原子写）；模板加 `stage.history: []`；validate 兼容旧文件并校验 history；`scripts/state.ps1` + README 工具表 + CLI 清单测试同步。判别力：删 confirm → `ValueError not raised`；放宽回退方向 → 两个 subtest 失败。
+- 各任务完成后全量均 773 OK（含并行新增用例）；评审安排：P0 → `Kierkegaard`；Task 3 → `Pasteur the 2nd`；Task 4 → `Cicero the 2nd`；Task 2 → `Cicero the 2nd`（排在 Task 4 之后）。
+- **Task 5 已派** `Confucius`：`revision_ledger.py`（§4.4 七列 + 承诺风险一致性 + 真实行号）+ 包装器 + README；commit `feat: check the revision ledger against its column contract`。
+
+## 商品化评审与修复轮（2026-10-03 下半场）
+
+**P0 复评（`Kierkegaard`，对 `8d0db77`）：Needs fixes（1 Important）**
+- Important：README 把 `tools/.venv` / `tools/.venv/Scripts/python.exe` 放入反引号，`test_docs_consistency` 的路径存在性断言收集它们；`.gitignore` 忽略该目录 → **fresh clone 上该用例失败**（评审用 `git archive` 复现：`README 路径不存在: tools/.venv/Scripts/python.exe`）。当前绿只是因为本机有 venv。
+- 其余通过：requirements 四项与 pip freeze 一致；`pylatexenc` 作为 bibtexparser 硬依赖的理由成立；`pip install --dry-run` 解析通过；README 命令与 3.12.14 实测一致；包装器固定 venv 的声明明确。
+- 修复已排入 `Confucius`（Task 5 之后）：`test_docs_consistency.py` 对"生成型/gitignored 路径"显式豁免（至少 `tools/.venv`；用 `git archive` 找出其它同类缺失路径），并加"豁免不得变成什么都放过"的对抗用例 + 判别力实测（fresh archive 下无豁免必须失败）。commit `test: exempt generated paths from the README path check`。
+
+**Task 4 复评（`Cicero the 2nd`，对 `f2eb1e7`）：Request Changes（4 Important + 1 Minor）**
+1. `generator`/`generator_hash` 只做 falsy 检查：`[]`/`0` 等绕过整段哈希校验（实测 `problems=[]`）。
+2. `manual_edit` 用 `is True`：YAML 常见 `"true"`/`1` 绕过"手工修图必须注明"硬规则。
+3. `source_data` 不约束为 paper root 内相对路径：绝对路径与 `../` 越界指向真实文件时 `problems=[]`。
+4. `source_run_ids` 成员无类型/包含性约束：`../outside-run` 搭配外部文件可绕过；对象成员报错分类不准。
+5. Minor：新测试未覆盖上述类型/路径边界。
+- 修复已派回 `Pasteur the 2nd`：类型与路径硬化（见上），commit `fix: reject type and path bypasses in figure provenance`。
+
+**Task 2 复评（`Cicero the 2nd`，对 `bd12001`）：Request Changes（1 Important + 1 Minor）**
+- Important：`set-stage` 只拒绝"等于当前"，**允许向后移动且写成 `kind: advance`**（实测 `writing → results-ready` 退 0），绕开 `rollback` 的 `void_artifacts` 审计并谎报方向——属"审计轨迹不实"（规则 7 同类）。
+- Minor：history 校验不查方向/阶段合法性/日期（`writing → results-ready, kind=advance` 返回 `[]`）。
+- 修复已派回 `Kierkegaard`：`set-stage` 严格要求 `target_index > current_index`；`history_problems` 加方向与合法性校验；commit `fix: keep stage advances strictly forward`。

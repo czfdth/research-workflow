@@ -26,6 +26,10 @@
 - 写操作必须显式授权语义（`--confirm`），且不得触碰 `ccfa.yaml` 的结论字段。
 - 基线 729 tests OK；每个任务完成时全量必须绿。
 
+**环境备注（2026-10-03 实测）**：本机 PATH 上的 `python` 是 **3.13.14**，而仓库 `tools/.venv`
+与 README 的基线是 **3.12.14**；从零搭建时应显式使用 3.12（如 `py -3.12 -m venv tools/.venv`）。
+17 个 `scripts/*.ps1` 固定调用 `tools/.venv/Scripts/python.exe`，不随 PATH 变化。
+
 ---
 
 ### Task 1: 依赖清单 + 从零搭建（P0-a/b）——已派
