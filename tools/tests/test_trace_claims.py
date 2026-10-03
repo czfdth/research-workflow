@@ -124,5 +124,30 @@ class TestMain(BaseCase):
         self.assertEqual(code, 2)
 
 
+class TestUntaggedAdvisory(BaseCase):
+    def test_untagged_flag_puts_candidates_in_advisories(self):
+        self.write_doc("Accuracy was 92.5 percent.")
+        problems, advisories = check([self.doc], self.root, untagged=True)
+        self.assertEqual(problems, [])
+        self.assertEqual(self.codes(advisories), ["untagged-number"])
+
+    def test_untagged_candidates_do_not_change_the_exit_code(self):
+        self.write_doc("Accuracy was 92.5 percent.")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(
+                [
+                    "trace_claims.py",
+                    "--doc",
+                    str(self.doc),
+                    "--base-dir",
+                    str(self.root),
+                    "--untagged",
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out.getvalue())["problem_count"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

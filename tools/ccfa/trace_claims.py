@@ -12,7 +12,7 @@ from typing import Iterable
 
 from ccfa.cli import Problem, emit, tool_error
 from ccfa.datasource import SourceError, load_source, navigate, resolve_within_base_dir
-from ccfa.dataval import Tag, find_tags
+from ccfa.dataval import Tag, find_tags, find_untagged
 from ccfa.datavalue import values_match
 
 _TAG_ERRORS = (SourceError, OSError, ValueError, KeyError, IndexError, TypeError)
@@ -47,7 +47,9 @@ def check(
     base_dir: Path | None = None,
     tolerance: float = 1e-9,
     rel_tolerance: float = 0.0,
+    untagged: bool = False,
 ) -> tuple[list[Problem], list[Problem]]:
+    docs = list(docs)
     problems: list[Problem] = []
     for tag in find_tags(docs):
         try:
@@ -72,7 +74,19 @@ def check(
                     f"（{tag.source_path}:{tag.key_path}）",
                 )
             )
-    return problems, []
+    advisories: list[Problem] = []
+    if untagged:
+        for doc in docs:
+            for item in find_untagged(Path(doc)):
+                advisories.append(
+                    Problem(
+                        "untagged-number",
+                        item.path,
+                        item.line,
+                        f"未标记的数字线索（需人工复核）: {item.text}",
+                    )
+                )
+    return problems, advisories
 
 
 def main(argv: list[str]) -> int:
@@ -81,12 +95,19 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--base-dir")
     parser.add_argument("--tolerance", type=float, default=1e-9)
     parser.add_argument("--rel-tolerance", type=float, default=0.0)
+    parser.add_argument("--untagged", action="store_true")
     args = parser.parse_args(argv[1:])
 
     try:
         docs = _documents(args.docs)
         base_dir = Path(args.base_dir) if args.base_dir else None
-        problems, advisories = check(docs, base_dir, args.tolerance, args.rel_tolerance)
+        problems, advisories = check(
+            docs,
+            base_dir,
+            args.tolerance,
+            args.rel_tolerance,
+            untagged=args.untagged,
+        )
     except ValueError as exc:
         return tool_error(str(exc))
 
