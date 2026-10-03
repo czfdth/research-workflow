@@ -49,7 +49,11 @@ def check(
         main_tex = manuscript / "main.tex"
         if not main_tex.is_file():
             raise ValueError(f"找不到主文件: {main_tex}")
-        for step in compile_document(main_tex, chosen).steps:
+        try:
+            report = compile_document(main_tex, chosen)
+        except OSError as exc:
+            raise ToolEnvironmentError(f"编译工具不可用: {exc}") from exc
+        for step in report.steps:
             if step.status == "failed":
                 problems.append(
                     Problem(

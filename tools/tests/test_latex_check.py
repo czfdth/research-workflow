@@ -92,6 +92,23 @@ class TestMain(BaseCase):
             latex_check.find_engine = original
         self.assertEqual(code, 2)
 
+    def test_compile_tool_unavailable_exits_two(self):
+        original_compile = latex_check.compile_document
+        original_engine = latex_check.find_engine
+        latex_check.find_engine = lambda preferred=None: "pdflatex"
+
+        def _missing_tool(tex, engine):
+            raise FileNotFoundError("bibtex")
+
+        latex_check.compile_document = _missing_tool
+        try:
+            code, out, _ = self.run_main("--compile")
+        finally:
+            latex_check.compile_document = original_compile
+            latex_check.find_engine = original_engine
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+
 
 if __name__ == "__main__":
     unittest.main()
