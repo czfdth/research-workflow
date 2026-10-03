@@ -122,7 +122,6 @@ def _subprocess_runner(argv: list[str], cwd: Path) -> tuple[int, str]:
         list(argv),
         cwd=str(cwd),
         check=False,
-        stdout=sys.stderr,
     )
     return completed.returncode, ""
 
@@ -389,17 +388,6 @@ def main(argv: list[str]) -> int:
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
 
-    print(
-        json.dumps(
-            {
-                "run_id": run_id,
-                "status": record["status"],
-                "exit_code": record["exit_code"],
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
-    )
     print(
         f"运行 {run_id}: {record['status']} (exit_code={record['exit_code']})",
         file=sys.stderr,

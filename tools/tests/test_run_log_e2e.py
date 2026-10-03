@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34,20 +35,27 @@ class TestRunLogEndToEnd(unittest.TestCase):
             env=env,
         )
 
+    def _recover_run_id(self, stderr):
+        match = re.search(r"\b(\d{8}T\d{6}-\d{2})\b", stderr)
+        self.assertIsNotNone(match, stderr)
+        return match.group(1)
+
     def _run_successfully(self):
         result = self._run("run", "--", sys.executable, "-c", "print(1)")
         self.assertEqual(result.returncode, 0, result.stderr)
-        return json.loads(result.stdout)["run_id"]
+        return self._recover_run_id(result.stderr)
 
-    def test_run_emits_json_stdout_and_summary_on_stderr(self):
-        result = self._run("run", "--", sys.executable, "-c", "print(1)")
+    def test_run_passes_child_stdout_through_and_summary_to_stderr(self):
+        result = self._run(
+            "run", "--", sys.executable, "-c", "print('CHILD-MARKER')"
+        )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        payload = json.loads(result.stdout)
-        self.assertIsInstance(payload, dict)
-        self.assertEqual(payload["status"], "completed")
-        self.assertEqual(payload["exit_code"], 0)
-        self.assertIn(payload["run_id"], result.stderr)
+        self.assertIn("CHILD-MARKER", result.stdout)
+        run_id = self._recover_run_id(result.stderr)
+        self.assertIn(run_id, result.stderr)
+        self.assertIn("completed", result.stderr)
+        self.assertIn("exit_code=0", result.stderr)
 
     def test_completed_run_without_metrics_is_reported(self):
         self._run_successfully()
