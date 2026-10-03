@@ -122,6 +122,17 @@ class TestRunCommand(BaseCase):
         _, record = run_command(["python", "train.py"], self.log_dir, self.root, runner=run)
         self.assertEqual(record["cwd"], ".")
 
+    def test_explicit_cwd_is_recorded(self):
+        run, _ = self.runner()
+        _, record = run_command(
+            ["python", "train.py"],
+            self.log_dir,
+            self.root,
+            cwd="subdir",
+            runner=run,
+        )
+        self.assertEqual(record["cwd"], "subdir")
+
     def test_date_config_is_normalized_and_run_completes(self):
         self.config.write_text("date: 2026-10-03\n", encoding="utf-8")
         run, _ = self.runner()

@@ -131,6 +131,7 @@ def run_command(
     log_dir: Path,
     paper_root: Path,
     *,
+    cwd: str = ".",
     config: Path | None = None,
     seed: str | None = None,
     notes: str | None = None,
@@ -151,7 +152,7 @@ def run_command(
     record = {
         "run_id": run_id,
         "command": argv,
-        "cwd": ".",
+        "cwd": cwd,
         "config": config_entry,
         "seed": seed,
         "git_commit": commit,

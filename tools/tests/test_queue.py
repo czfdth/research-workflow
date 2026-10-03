@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -9,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from ccfa.queue import build_parser, load_queue, main, run_queue
+from ccfa.run_log import check_runs
 
 
 class FakeClock:
@@ -50,6 +53,19 @@ class RecordingRunner:
         if callable(behavior):
             return behavior()
         return int(behavior)
+
+
+class FakeProcess:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = StringIO(stdout)
+        self.stderr = StringIO(stderr)
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        raise AssertionError("kill should not be called")
 
 
 class QueueTests(unittest.TestCase):
@@ -317,36 +333,70 @@ class TestRunQueue(QueueTests):
 
 class TestDefaultRunner(QueueTests):
     def test_default_runner_uses_shell_false(self):
-        completed = subprocess.CompletedProcess(["cmd"], 0)
-        with mock.patch("ccfa.queue.subprocess.run", return_value=completed) as run:
+        process = FakeProcess(returncode=0)
+        with mock.patch("ccfa.queue.subprocess.Popen", return_value=process) as popen:
             from ccfa.queue import _default_runner
 
             code = _default_runner(["cmd"], self.root, None)
 
         self.assertEqual(code, 0)
-        self.assertFalse(run.call_args.kwargs["shell"])
-        self.assertEqual(run.call_args.kwargs["cwd"], str(self.root))
+        self.assertFalse(popen.call_args.kwargs["shell"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
+
+    def test_default_runner_streams_output_before_child_exits(self):
+        from ccfa.queue import _default_runner
+
+        script = (
+            "import time\n"
+            "print('FIRST', flush=True)\n"
+            "time.sleep(1.5)\n"
+            "print('SECOND', flush=True)\n"
+        )
+        stderr = StringIO()
+        result = {}
+
+        def invoke():
+            with redirect_stderr(stderr):
+                result["code"] = _default_runner(
+                    [sys.executable, "-c", script],
+                    self.root,
+                    None,
+                )
+
+        worker = threading.Thread(target=invoke)
+        started = time.monotonic()
+        worker.start()
+        deadline = started + 1.35
+        while time.monotonic() < deadline and "FIRST" not in stderr.getvalue():
+            time.sleep(0.02)
+        elapsed = time.monotonic() - started
+
+        self.assertIn("FIRST", stderr.getvalue())
+        self.assertLess(elapsed, 1.35)
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(result["code"], 0)
+        self.assertIn("SECOND", stderr.getvalue())
 
     def test_default_runner_forwards_partial_output_on_timeout(self):
         from ccfa.queue import _default_runner
 
-        timeout = subprocess.TimeoutExpired(
-            ["cmd"],
-            1,
-            output="PARTIAL_STDOUT",
-            stderr="PARTIAL_STDERR",
+        script = (
+            "import sys, time\n"
+            "print('PARTIAL_STDOUT', flush=True)\n"
+            "print('PARTIAL_STDERR', file=sys.stderr, flush=True)\n"
+            "time.sleep(5)\n"
         )
         stderr = StringIO()
-        with mock.patch("ccfa.queue.subprocess.run", side_effect=timeout):
-            with redirect_stderr(stderr), self.assertRaises(subprocess.TimeoutExpired):
-                _default_runner(["cmd"], self.root, 1)
+        with redirect_stderr(stderr), self.assertRaises(subprocess.TimeoutExpired):
+            _default_runner([sys.executable, "-c", script], self.root, 1.0)
 
         self.assertIn("PARTIAL_STDOUT", stderr.getvalue())
         self.assertIn("PARTIAL_STDERR", stderr.getvalue())
 
 
 class TestRunLogIntegration(QueueTests):
-    def test_each_attempt_records_resolved_cwd_metric(self):
+    def test_queue_records_resolved_cwd_in_run_log_field(self):
         sub = self.root / "sub"
         sub.mkdir()
         self._write_queue([self._item(cwd="sub")])
@@ -354,7 +404,19 @@ class TestRunLogIntegration(QueueTests):
         self._run(RecordingRunner([0]))
 
         record = self._records()[0]
-        self.assertEqual(record["metrics"]["cwd"], str(sub.resolve()))
+        self.assertEqual(record["cwd"], str(sub.resolve()))
+        self.assertIsNone(record["metrics"])
+
+    def test_completed_queue_run_still_reports_metrics_pending(self):
+        self._write_queue([self._item()])
+
+        self._run(RecordingRunner([0]))
+
+        problems, _ = check_runs(self.log_dir)
+        self.assertIn(
+            "run-log-metrics-pending",
+            [problem.code for problem in problems],
+        )
 
 
 class TestMain(QueueTests):

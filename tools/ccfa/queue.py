@@ -2,8 +2,9 @@
 
 The injected runner contract is ``runner(argv, cwd, timeout_s) -> int``.
 It may raise ``subprocess.TimeoutExpired`` or ``TimeoutError``. The default
-runner uses ``subprocess.run(..., shell=False)``, captures 子进程 stdout/stderr,
-and forwards both 转发到 stderr so queue stdout 只输出 JSON.
+runner uses ``subprocess.Popen(..., shell=False)``, streams 子进程 stdout/stderr
+line by line and forwards both 转发到 stderr so queue stdout 只输出 JSON.
+Timeouts still forward output that was already produced.
 
 Timeouts retry only when the manifest explicitly sets
 ``retry_on_timeout: true``. A cwd 不存在 is a runtime error: that attempt still
@@ -20,6 +21,7 @@ import argparse
 import json
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -115,35 +117,57 @@ def load_queue(path: Path) -> list[dict]:
     return normalized
 
 
-def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
-    def forward(value: object) -> None:
-        if not value:
-            return
-        if isinstance(value, bytes):
-            text = value.decode("utf-8", errors="replace")
-        else:
-            text = str(value)
-        sys.stderr.write(text)
-
+def _forward_stream(stream) -> None:
     try:
-        completed = subprocess.run(
-            list(argv),
-            cwd=str(cwd),
-            check=False,
-            shell=False,
-            timeout=timeout_s,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except subprocess.TimeoutExpired as exc:
-        forward(exc.stdout)
-        forward(exc.stderr)
+        for line in stream:
+            sys.stderr.write(line)
+            flush = getattr(sys.stderr, "flush", None)
+            if flush is not None:
+                flush()
+    finally:
+        stream.close()
+
+
+def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
+    process = subprocess.Popen(
+        list(argv),
+        cwd=str(cwd),
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    pumps = [
+        threading.Thread(
+            target=_forward_stream,
+            args=(process.stdout,),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_forward_stream,
+            args=(process.stderr,),
+            daemon=True,
+        ),
+    ]
+    for pump in pumps:
+        pump.start()
+    try:
+        returncode = process.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+        for pump in pumps:
+            pump.join()
         raise
-    forward(completed.stdout)
-    forward(completed.stderr)
-    return int(completed.returncode)
+    for pump in pumps:
+        pump.join()
+    return int(returncode)
 
 
 def _item_cwd(queue_root: Path, item: dict) -> Path:
@@ -213,15 +237,16 @@ def run_queue(
                 item["command"],
                 log_dir,
                 cwd,
+                cwd=str(cwd),
                 runner=attempt_runner,
             )
             exit_code = record["exit_code"]
-            metrics = {"cwd": str(cwd)}
             if timed_out:
-                metrics.update(
-                    {"timeout": True, "timeout_s": item["timeout_s"]}
+                log_metrics(
+                    log_dir,
+                    run_id,
+                    {"timeout": True, "timeout_s": item["timeout_s"]},
                 )
-            log_metrics(log_dir, run_id, metrics)
             if exit_code == 0:
                 status = "complete"
                 break
@@ -257,7 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "顺序运行实验队列。超时仅在 retry_on_timeout=true 时重试；"
             "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
-            "stdout 只输出结果 JSON；子进程 stdout/stderr 转发到 stderr。"
+            "stdout 只输出结果 JSON；子进程 stdout/stderr 流式转发到 stderr。"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
