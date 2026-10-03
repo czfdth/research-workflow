@@ -46,7 +46,23 @@ def _sha256(path: Path) -> str | None:
 
 
 def _blank(value: object) -> bool:
-    return value is None or not str(value).strip()
+    """Return true when *value* is not a usable non-empty string."""
+    return not isinstance(value, str) or not value.strip()
+
+
+def _resolve_inside(base: Path, path: Path) -> tuple[Path, bool]:
+    """Resolve *path* and report whether it stays under *base*."""
+    try:
+        resolved_base = base.resolve()
+        resolved = path.resolve()
+    except OSError:
+        resolved_base = base.absolute()
+        resolved = path.absolute()
+    try:
+        resolved.relative_to(resolved_base)
+    except ValueError:
+        return resolved, False
+    return resolved, True
 
 
 def _resolve_figure(item: dict, paper_root: Path) -> tuple[Path, Problem | None]:
@@ -77,19 +93,28 @@ def check_manifest(
         if fallback_advisory is not None:
             advisories.append(fallback_advisory)
 
-        missing_provenance = [
-            field
-            for field in ("generator", "generator_hash")
-            if _blank(item.get(field))
-        ]
-        if missing_provenance:
-            fields = "、".join(missing_provenance)
+        provenance_issues: list[str] = []
+        for field in ("generator", "generator_hash"):
+            if field not in item:
+                provenance_issues.append(f"{field} 缺失")
+                continue
+            value = item[field]
+            if not _blank(value):
+                continue
+            if isinstance(value, str):
+                provenance_issues.append(f"{field} 为空，必须是非空字符串")
+            else:
+                provenance_issues.append(
+                    f"{field} 类型非法（{type(value).__name__}），必须是非空字符串"
+                )
+        if provenance_issues:
+            fields = "；".join(provenance_issues)
             problems.append(
                 Problem(
                     "figure-provenance-missing",
                     str(figure),
                     None,
-                    f"条目 {name} 缺必填字段 {fields}，请补写生成脚本及其哈希",
+                    f"条目 {name} 的生成脚本溯源非法: {fields}",
                 )
             )
 
@@ -105,50 +130,126 @@ def check_manifest(
             )
         else:
             log_dir = paper_root / "experiments" / "log"
-            for run_id in source_run_ids:
-                run_label = str(run_id)
+            valid_run_ids: list[str] = []
+            bad_members: list[str] = []
+            for index, run_id in enumerate(source_run_ids):
+                if not isinstance(run_id, str):
+                    bad_members.append(
+                        f"第 {index} 项为 {type(run_id).__name__}"
+                    )
+                elif not run_id.strip():
+                    bad_members.append(f"第 {index} 项为空字符串")
+                else:
+                    valid_run_ids.append(run_id)
+            if bad_members:
+                problems.append(
+                    Problem(
+                        "figure-provenance-missing",
+                        str(figure),
+                        None,
+                        f"条目 {name} 的 source_run_ids 成员类型非法: "
+                        f"{'、'.join(bad_members)}；每个成员必须是非空字符串",
+                    )
+                )
+            for run_label in valid_run_ids:
                 run_path = record_path(log_dir, run_label)
-                if not run_path.is_file():
+                resolved_run, inside_log = _resolve_inside(log_dir, run_path)
+                if not inside_log:
                     problems.append(
                         Problem(
                             "figure-source-run",
-                            str(run_path),
+                            str(resolved_run),
+                            None,
+                            f"条目 {name} 的 source_run_ids 越界: {run_label}",
+                        )
+                    )
+                elif not resolved_run.is_file():
+                    problems.append(
+                        Problem(
+                            "figure-source-run",
+                            str(resolved_run),
                             None,
                             f"条目 {name} 的 source_run_ids 指向不存在的运行记录: {run_label}",
                         )
                     )
 
         source_data = item.get("source_data")
-        if not isinstance(source_data, str) or not source_data.strip():
+        if not isinstance(source_data, str):
             problems.append(
                 Problem(
                     "figure-source-data",
                     str(figure),
                     None,
-                    f"条目 {name} 缺 source_data（相对 paper root 的非空路径）",
+                    f"条目 {name} 的 source_data 类型非法"
+                    f"（{type(source_data).__name__}），必须是非空字符串",
+                )
+            )
+        elif not source_data.strip():
+            problems.append(
+                Problem(
+                    "figure-source-data",
+                    str(figure),
+                    None,
+                    f"条目 {name} 的 source_data 为空，必须是非空字符串",
                 )
             )
         else:
-            source_path = paper_root / source_data
-            if not source_path.is_file():
+            source_path = Path(source_data)
+            if source_path.is_absolute():
                 problems.append(
                     Problem(
                         "figure-source-data",
                         str(source_path),
                         None,
-                        f"条目 {name} 的 source_data 文件不存在: {source_data}",
+                        f"条目 {name} 的 source_data 不允许绝对路径: {source_data}",
                     )
                 )
-
-        if item.get("manual_edit") is True and _blank(item.get("manual_edit_note")):
-            problems.append(
-                Problem(
-                    "figure-manual-edit",
-                    str(figure),
-                    None,
-                    f"条目 {name} 标记 manual_edit: true，但缺 manual_edit_note",
+            else:
+                resolved_source, inside_root = _resolve_inside(
+                    paper_root,
+                    paper_root / source_data,
                 )
-            )
+                if not inside_root:
+                    problems.append(
+                        Problem(
+                            "figure-source-data",
+                            str(resolved_source),
+                            None,
+                            f"条目 {name} 的 source_data 越界: {source_data}",
+                        )
+                    )
+                elif not resolved_source.is_file():
+                    problems.append(
+                        Problem(
+                            "figure-source-data",
+                            str(resolved_source),
+                            None,
+                            f"条目 {name} 的 source_data 文件不存在: {source_data}",
+                        )
+                    )
+
+        if "manual_edit" in item:
+            manual_edit = item["manual_edit"]
+            if not isinstance(manual_edit, bool):
+                problems.append(
+                    Problem(
+                        "figure-manual-edit",
+                        str(figure),
+                        None,
+                        f"条目 {name} 的 manual_edit 必须是布尔值，"
+                        f"当前是 {type(manual_edit).__name__}",
+                    )
+                )
+            elif manual_edit and _blank(item.get("manual_edit_note")):
+                problems.append(
+                    Problem(
+                        "figure-manual-edit",
+                        str(figure),
+                        None,
+                        f"条目 {name} 标记 manual_edit: true，"
+                        "但 manual_edit_note 必须是非空字符串",
+                    )
+                )
 
         if not figure.is_file():
             problems.append(

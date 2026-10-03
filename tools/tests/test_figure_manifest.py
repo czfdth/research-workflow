@@ -152,6 +152,52 @@ class TestCheckManifest(unittest.TestCase):
         problems, _ = check_manifest([item], self.root)
         self.assertIn("figure-provenance-missing", [p.code for p in problems])
 
+    def test_non_string_generator_or_hash_reports_provenance_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for field in ("generator", "generator_hash"):
+            for value in ([], 0, {"id": "x"}):
+                with self.subTest(field=field, value=value):
+                    item = self._item(generator_hash=self._write_generator())
+                    item[field] = value
+                    problems, _ = check_manifest([item], self.root)
+                    matching = [
+                        problem
+                        for problem in problems
+                        if problem.code == "figure-provenance-missing"
+                    ]
+                    self.assertEqual(len(matching), 1)
+                    self.assertIn(field, matching[0].message)
+                    self.assertIn("类型非法", matching[0].message)
+                    self.assertIn(type(value).__name__, matching[0].message)
+
+    def test_non_string_run_id_member_reports_provenance_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_run_ids=[{"id": "x"}, 1, ""],
+        )
+        problems, _ = check_manifest([item], self.root)
+        matching = [
+            problem
+            for problem in problems
+            if problem.code == "figure-provenance-missing"
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("成员类型非法", matching[0].message)
+
+    def test_traversal_run_id_reports_source_run_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        outside = self.root / "experiments" / "outside-run.json"
+        outside.write_text('{"run_id": "outside-run"}\n', encoding="utf-8")
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_run_ids=["../outside-run"],
+        )
+        problems, _ = check_manifest([item], self.root)
+        matching = [p for p in problems if p.code == "figure-source-run"]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("越界", matching[0].message)
+
     def test_unknown_run_id_reports_the_missing_log_path(self):
         (self.figures / "plot.png").write_bytes(PNG)
         item = self._item(
@@ -175,6 +221,43 @@ class TestCheckManifest(unittest.TestCase):
                 problems, _ = check_manifest([item], self.root)
                 self.assertIn("figure-source-data", [p.code for p in problems])
 
+    def test_non_string_source_data_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for value in (0, [], {"path": "experiments/results/plot.csv"}):
+            with self.subTest(value=value):
+                item = self._item(
+                    generator_hash=self._write_generator(),
+                    source_data=value,
+                )
+                problems, _ = check_manifest([item], self.root)
+                matching = [p for p in problems if p.code == "figure-source-data"]
+                self.assertEqual(len(matching), 1)
+                self.assertIn("类型非法", matching[0].message)
+
+    def test_absolute_source_data_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_data=str(self.source_data),
+        )
+        problems, _ = check_manifest([item], self.root)
+        matching = [p for p in problems if p.code == "figure-source-data"]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("绝对路径", matching[0].message)
+
+    def test_traversal_source_data_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        outside = self.root.parent / f"{self.root.name}-outside.csv"
+        outside.write_text("x,y\n1,2\n", encoding="utf-8")
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_data=f"../{outside.name}",
+        )
+        problems, _ = check_manifest([item], self.root)
+        matching = [p for p in problems if p.code == "figure-source-data"]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("越界", matching[0].message)
+
     def test_missing_source_data_file_reports_problem(self):
         (self.figures / "plot.png").write_bytes(PNG)
         item = self._item(
@@ -189,6 +272,19 @@ class TestCheckManifest(unittest.TestCase):
         item = self._item(generator_hash=self._write_generator(), manual_edit=True)
         problems, _ = check_manifest([item], self.root)
         self.assertIn("figure-manual-edit", [p.code for p in problems])
+
+    def test_non_boolean_manual_edit_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for value in ("true", 1, []):
+            with self.subTest(value=value):
+                item = self._item(
+                    generator_hash=self._write_generator(),
+                    manual_edit=value,
+                )
+                problems, _ = check_manifest([item], self.root)
+                matching = [p for p in problems if p.code == "figure-manual-edit"]
+                self.assertEqual(len(matching), 1)
+                self.assertIn("布尔", matching[0].message)
 
     def test_manual_edit_with_note_is_clean(self):
         (self.figures / "plot.png").write_bytes(PNG)
