@@ -211,8 +211,9 @@ class TestExport(BaseCase):
 
     def test_render_does_not_write(self):
         self.add()
+        before = self.store.read_bytes()
         render_markdown(load_store(self.store))
-        self.assertTrue(self.store.exists())
+        self.assertEqual(before, self.store.read_bytes())
 
     def test_write_markdown_creates_the_file(self):
         out = self.root / "data" / "provenance.md"
