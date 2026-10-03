@@ -1,65 +1,130 @@
 # paper-template
 
-论文工作流模板库。每篇论文派生一份独立目录。
+论文工作流模板库。每篇论文从 venue 模板派生一份独立目录，状态、检查与归档都以仓库内的确定性脚本为准。
 
-设计文档：`../../Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md`
+设计文档在仓库外，路径为 `../../Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md`。
 
 ## 目录约定
 
 | 路径 | 用途 |
 | --- | --- |
 | `ccfa.yaml.template` | 新项目状态文件模板 |
-| `checklists/` | gate 清单，由 `tools/ccfa/stages.py` 生成 |
+| `checklists/` | gate 清单，由 `tools/newpaper/checklists.py` 从 `tools/ccfa/stages.py` 生成 |
 | `library/` | 共享 BibTeX 与 PDF 原件 |
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
-| `papers/` | 派生论文项目的默认目标目录（已在 `.gitignore` 中忽略） |
-| `tools/` | 确定性工具（Python） |
+| `papers/<slug>/` | 派生论文项目的默认目标目录，已在 `.gitignore` 中忽略 |
+| `scripts/` | 所有确定性 CLI 的 PowerShell 包装器 |
+| `tools/` | 确定性工具与项目测试 |
 | `automation/` | 四类本地自动化 prompt 与接线说明 |
+
+## 工具一览
+
+`tools/ccfa/` 下的每个 CLI 模块和 `newpaper.create` 都有对应的 `scripts/*.ps1` 入口，后者对应 `tools/newpaper/create.py`。包装器统一从仓库根设置 `PYTHONPATH`，调用 `tools/.venv/Scripts/python.exe`，并原样透传退出码、stdout 与 stderr。
+
+| 模块 | 一句话作用 | PowerShell 入口 |
+| --- | --- | --- |
+| `tools/newpaper/create.py` | 按 venue、年份、会议或期刊模式派生完整论文目录 | `scripts/new-paper.ps1` |
+| `tools/ccfa/citation_guard.py` | 检查引用台账、DOI 存在性与正文悬空引用 | `scripts/citation-guard.ps1` |
+| `tools/ccfa/trace_claims.py` | 将正文数字标记与 JSON、CSV、YAML 源值机械比对 | `scripts/trace-claims.ps1` |
+| `tools/ccfa/latex_check.py` | 检查 LaTeX 结构、引用、图片，并可按 `--main` 指定主文件编译 | `scripts/latex-check.ps1` |
+| `tools/ccfa/final_check.py` | 对终稿执行未解析标记、图表与声明完整性检查 | `scripts/final-check.ps1` |
+| `tools/ccfa/provenance.py` | 登记数据来源、分类与校验和，并可导出人读来源文档 | `scripts/provenance.ps1` |
+| `tools/ccfa/run_log.py` | 记录每次运行的配置、种子、commit、退出码与指标 | `scripts/run-log.ps1` |
+| `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |
+| `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
+| `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |
+| `tools/ccfa/library.py` | 索引和全文检索共享文献库 | `scripts/library.ps1` |
+| `tools/ccfa/memory.py` | 管理选题记忆与反重复 dead-end 记录 | `scripts/memory.ps1` |
+| `tools/ccfa/milestones.py` | 读取 stage 并检查投稿倒排 checkpoint 与 gate 缺口 | `scripts/milestones.ps1` |
+| `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵，阻止 blocking 项漏过 | `scripts/cross-review.ps1` |
+| `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
+| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
+| `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
+
+## 阶段到命令速查
+
+`ccfa.yaml` 的 `stage.current` 以 `tools/ccfa/stages.py` 为唯一状态机。会议模式在 `submitted` 后进入 `rebuttal`、`camera-ready`、`archived`；期刊模式进入 `major-revision`、`response-letter`、`resubmitted`、`accepted`、`archived`。
+
+| `ccfa.yaml` stage 或用途 | 命令 | 说明 |
+| --- | --- | --- |
+| 任意阶段的状态校验 | `scripts/validate.ps1` | 校验状态文件结构与 stage/gate 合法性 |
+| 读取当前阶段 | `scripts/milestones.ps1` | 调用 `stage` 子命令输出 `current`、`gate`、`updated_at` |
+| 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-14、T-7、T-3 与 gate 缺口 |
+| `idea`、`grounded` | `scripts/library.ps1` | 索引和检索共享文献库，支撑近邻工作与新颖性核对 |
+| `idea`、`grounded` | `scripts/memory.ps1` | 追加 idea 或 dead-end，检查是否重复 |
+| `data-ready` | `scripts/provenance.ps1` | 登记数据来源、分类、校验和并检查完整性 |
+| `experiment-design`、`experiments-running` | `scripts/run-log.ps1` | 记录运行事实、指标、退出码与失败结果 |
+| `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
+| `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
+| `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |
+| `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项 |
+| `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
+| `submission-check`、`camera-ready` | `scripts/final-check.ps1` | 对终稿或渲染 PDF 执行确定性检查 |
+| `submission-check`、`archived` | `scripts/repro-package.ps1` | 生成复现包并实际重跑 |
+| 任意需要快照的阶段 | `scripts/research-version.ps1` | 建立版本 tag 或比较两版差异 |
+
+常用命令：
+
+```powershell
+scripts/milestones.ps1 due --paper-root <paper-root>
+scripts/milestones.ps1 stage --paper-root <paper-root>
+scripts/library.ps1 search --query "keyword"
+scripts/memory.ps1 check --paper-root <paper-root>
+scripts/run-log.ps1 run --paper-root <paper-root> --log-dir <paper-root>/experiments/log
+scripts/latex-check.ps1 --manuscript <paper-root>/manuscript --bib <paper-root>/manuscript/references.bib --main sections/main.tex --compile
+scripts/final-check.ps1 --manuscript <paper-root>/manuscript --pdf <paper-root>/submission/final.pdf
+```
+
+`latex-check.ps1` 的 `--main` 接收相对手稿目录的主文件路径。默认值是 `main.tex`；venue 模板把主文件放在子目录时，应显式传入，例如 `--main paper/main.tex`。
+
+## Automation
+
+四类自动化模板与接线规则见 `automation/README.md`：
+
+- `automation/weekly-watch.md`：每周文献增量监控。
+- `automation/deadline-check.md`：投稿日倒排与 gate 缺口检查。
+- `automation/stage-advance.md`：读取当前 stage 并给出手动推进建议。
+- `automation/experiment-queue.md`：顺序运行实验队列并报告停止原因。
+
+四类任务的统一静默策略是：没有实质变化就不通知。没有新增文献、没有到期 checkpoint、没有状态变化、队列没有失败或停止项时，不发送“已检查”消息。模板只做信息收集与提醒，不得自动修改正文、`ccfa.yaml` 结论字段或推进 stage。实际挂载需用户确认；用户明确确认前只保留模板与手动命令，不注册 scheduler。
+
+## Venue 模板
+
+venue 模板库位于 `$CODEX_HOME/skills/ccf-latex-templates`，当前 139 个 venue 覆盖 NeurIPS、ICML、ACL、AAAI、CVPR 等会议与期刊入口。
+
+模板为官方/社区下载，不是本仓库生成或再分发的内容。使用前自查许可与完整性；例如 ACL 模板必须确认 `acl_natbib.bst` 与 `custom.bib` 均已随模板提供，否则真实编译会因缺文件失败。
 
 ## 派生一篇新论文
 
 ```powershell
 cd <仓库根>
-$root = (Get-Location).Path
-$env:PYTHONPATH = "$root/tools"
-$venv = "$root/tools/.venv/Scripts/python.exe"
-& $venv "$root/tools/newpaper/create.py" my-paper `
+scripts/new-paper.ps1 my-paper `
     --venue NeurIPS --year 2027 --mode conference --title "My Paper"
 ```
 
+默认写入 `papers/<slug>/`。派生失败时不得留下半成品目录。
+
 ## 重新生成 checklist
 
-```powershell
-cd <仓库根>
-$root = (Get-Location).Path
-$env:PYTHONPATH = "$root/tools"
-$venv = "$root/tools/.venv/Scripts/python.exe"
-& $venv "$root/tools/newpaper/checklists.py"
-```
-
-## 校验状态文件
+checklist 是生成物，不要手工编辑。修改 `tools/ccfa/stages.py` 后运行：
 
 ```powershell
 cd <仓库根>
-$root = (Get-Location).Path
-$env:PYTHONPATH = "$root/tools"
-$venv = "$root/tools/.venv/Scripts/python.exe"
-& $venv "$root/tools/ccfa/validate.py" path/to/ccfa.yaml
+& tools/.venv/Scripts/python.exe tools/newpaper/checklists.py
 ```
 
-退出码：`0` 通过，`1` 发现问题，`2` 工具自身出错。
+生成结果必须与 `checklists/conference.md` 和 `checklists/journal.md` 保持一致。
 
 ## 跑测试
 
 ```powershell
 cd <仓库根>
-$root = (Get-Location).Path
-$venv = "$root/tools/.venv/Scripts/python.exe"
-& $venv -m unittest discover -s tools/tests -t tools -v
+$env:PYTHONPATH = (Resolve-Path tools).Path
+& tools/.venv/Scripts/python.exe -m unittest discover -s tools/tests -t tools -v
 ```
 
 ## 已知环境约束
 
-- 编译不使用 `latexmk`（本机缺 Perl，实测报 `could not find the script engine 'perl'`）。编译驱动按 `pdflatex → bibtex → pdflatex → pdflatex` 显式执行。
+- 编译不使用 `latexmk`（本机缺 Perl，实测报 `could not find the script engine 'perl'`）。编译驱动按 `pdflatex`、`bibtex`、`pdflatex`、`pdflatex` 显式执行。
 - 中文文稿用 `xelatex` 加 `ctex`，已实测通过。
 - 文献库索引用于中文时必须使用 FTS5 `trigram` 分词器；`unicode61` 对中文完全无效。
