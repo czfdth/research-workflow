@@ -1826,3 +1826,21 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **P3（自用可选）**：PyInstaller + 安装包/快捷方式；自用不需要代码签名与许可合规（E60）。
 - 挂账：真实 Windows 凭据管理器 E2E、真实 provider 联调与真实 `codex exec` 冒烟未做；HTTP 取消为边界式；流式输出未做；`window._update_credential_status` 对非 `SecretStoreUnavailable` 异常仍会外抛。
 - 注：工作树中 `tools/ccfa/cross_review.py`、`tools/tests/test_cross_review.py` 与未跟踪 `submission/` 属**另一并行任务（Ampere）**的改动，本阶段未触碰、未纳入任何提交。
+
+## 用户审计与 P0 修复立项（2026-10-04，evidence-integrity）
+
+用户对整套工作流做了深度审计（"工程设计强于它保证的真相"）。控制器逐条核对，关键指控**属实**：
+- `papers/rag-attack-defense` 不是独立仓库：`git -C papers/rag-attack-defense rev-parse --show-toplevel` → 模板仓库根；示例 run-log 记录 `git_commit=4dbda14918c9…`（模板仓库 commit，**不含论文文件**）；`git_dirty=false` 却照常通过 check。
+- `doi_lookup.lookup` 丢弃响应体（`status, _body = fetcher(...)`），200 即 `found=True`；`cross_review.DEFAULT_MODEL = deepseek-v4-pro` 且 `_SAME_FAMILY_MODELS` 含两侧模型（默认同族）；`datavalue.implied_rounding_tolerance` 按 claimed 小数位放宽（写粗更容易过）。
+- 示例论文 59 处 `\dataval`，同时 final-check 报出数十条 `untagged-number` advisory（advisory 不改退出码）；`submission/checks.md` 却写"All headline counts … are bound"——声明超出证据。根目录另有一份未跟踪的 `submission/` 误拷贝。
+
+### 裁定 E61–E63（计划 `docs/plans/2026-10-04-evidence-integrity.md`）
+
+- **E61**：每篇论文 = 独立 git 仓库（`papers/<slug>` 内 `git init` + 首提交 + 论文级 .gitignore）；模板仓库继续忽略 `/papers/`；**任何论文 git 操作必须验证 toplevel == 论文根，绝不允许回退父仓库**（research-version 拒绝；run-log 记 `git_repo:"foreign"`、`git_commit:null`）。理由：现有中间态让"版本/快照/可复现"全部空转，是最严重的结构性问题。代价：`create.py` 多一步 git init/提交；迁移既有论文需一次性操作。
+- **E62**：`\dataval` 目标 = **受保护区**（摘要/贡献列表/结果主叙事）的关键数字；受保护区未绑定且未豁免 → **problem**；豁免进 `data/claims.yaml` 逐条留痕；`checks.md` 的覆盖率声明由工具生成，禁止手写。理由：advisory 永不改退出码 + 段落式声明 = 不可审计；覆盖标准不定义就永远靠拍板。代价：模板需要 `claims.yaml` 与策略扫描逻辑，历史论文会立刻暴露未绑定数字（这正是意图）。
+- **E63**：gate 的"已核验"必须绑定外部证据——DOI 核验读响应体、记录 body sha256/retrieved_at/matched_title 并校验 DOI 与标题；无 evidence 的 `verified` 台账条目 → problem；cross-review 的每条 blocking 必须携带**在输入文件中可逐字命中**的引文（否则 `review-uncited-blocking`）；run-log 的 `purpose` 降为 `declared_purpose` 并明示不构成证据，gate 改用可查事实（metrics-pending、repro verify 记录）。理由：把"文件自称已核验即可通过"换成"可交叉验证"。
+
+## evidence-integrity 执行状态
+
+- Task 1（论文独立仓库 + 防父仓库逃逸 + 示例论文迁移）已派 `Confucius`，base `b4bfec6`；Task 2（受保护区覆盖率）/Task 3（去自证）/Task 4（迁移与收口）随后。
+- 未跟踪根目录 `submission/`：与论文内 `submission/` 比对后按用户确认处理，本阶段不擅自删除。
