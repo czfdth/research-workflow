@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from ccfa.trace_claims import check, main
 
@@ -103,6 +104,23 @@ class TestMain(BaseCase):
                     str(self.root),
                 ]
             )
+        self.assertEqual(code, 2)
+
+    def test_unreadable_document_exits_two(self):
+        self.write_doc("No numbers here.")
+        out, err = io.StringIO(), io.StringIO()
+        # Use a mock because Windows does not reliably deny the owner read access.
+        with mock.patch.object(Path, "open", side_effect=PermissionError("denied")):
+            with redirect_stdout(out), redirect_stderr(err):
+                code = main(
+                    [
+                        "trace_claims.py",
+                        "--doc",
+                        str(self.doc),
+                        "--base-dir",
+                        str(self.root),
+                    ]
+                )
         self.assertEqual(code, 2)
 
 

@@ -33,6 +33,11 @@ def _documents(paths: Iterable[str]) -> list[Path]:
         path = Path(raw)
         if not path.is_file():
             raise ValueError(f"文档不存在或不是文件: {path}")
+        try:
+            with path.open("rb"):
+                pass
+        except OSError as exc:
+            raise ValueError(f"文档不可读: {path}: {exc}") from exc
         docs.append(path)
     return docs
 
