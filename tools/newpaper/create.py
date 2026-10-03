@@ -21,6 +21,34 @@ DEFAULT_PAPERS_ROOT = TEMPLATE_ROOT / "papers"
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
+# Windows reserves these device names before the first dot.
+WINDOWS_RESERVED_NAMES = frozenset(
+    {
+        "con",
+        "prn",
+        "aux",
+        "nul",
+        "com1",
+        "com2",
+        "com3",
+        "com4",
+        "com5",
+        "com6",
+        "com7",
+        "com8",
+        "com9",
+        "lpt1",
+        "lpt2",
+        "lpt3",
+        "lpt4",
+        "lpt5",
+        "lpt6",
+        "lpt7",
+        "lpt8",
+        "lpt9",
+    }
+)
+
 PAPER_DIRS = [
     "manuscript/sections",
     "data",
@@ -54,6 +82,11 @@ def validate_slug(slug: str) -> str:
     if not isinstance(slug, str) or not SLUG_PATTERN.fullmatch(slug):
         raise InvalidSlugError(
             f"非法 slug: {slug!r}；只允许 [a-z0-9._-]，且必须由小写字母或数字开头"
+        )
+    stem = slug.split(".", 1)[0]
+    if stem.lower() in WINDOWS_RESERVED_NAMES:
+        raise InvalidSlugError(
+            f"非法 slug: {slug!r}；{stem!r} 是 Windows 保留设备名，不能作为目录名"
         )
     return slug
 

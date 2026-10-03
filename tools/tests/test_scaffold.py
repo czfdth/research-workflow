@@ -24,6 +24,9 @@ class TestScaffoldContract(unittest.TestCase):
         for pattern in ["tools/.venv/", "*.aux", "*.log", "*.pdf"]:
             with self.subTest(pattern=pattern):
                 self.assertIn(pattern, gitignore)
+        lines = [line.strip() for line in gitignore.splitlines()]
+        with self.subTest(pattern="papers/"):
+            self.assertIn("papers/", lines, "缺少整行忽略规则: papers/")
 
     def test_papers_dir_kept_but_pdfs_ignored(self):
         gitignore = (TEMPLATE_ROOT / ".gitignore").read_text(encoding="utf-8")

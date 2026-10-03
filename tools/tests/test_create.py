@@ -122,9 +122,23 @@ class TestCreateProject(unittest.TestCase):
                     create_module.validate_slug(slug)
 
     def test_validate_slug_accepts_conservative_names(self):
-        for slug in ["a", "demo-paper", "paper.v2", "p_1", "a-1_b.c"]:
+        for slug in [
+            "a",
+            "demo-paper",
+            "paper.v2",
+            "p_1",
+            "a-1_b.c",
+            "console",
+            "content",
+        ]:
             with self.subTest(slug=slug):
                 self.assertEqual(create_module.validate_slug(slug), slug)
+
+    def test_validate_slug_rejects_windows_reserved_device_names(self):
+        for slug in ["con", "con.txt", "aux.paper", "CON", "com1", "lpt9"]:
+            with self.subTest(slug=slug):
+                with self.assertRaises(ValueError):
+                    create_module.validate_slug(slug)
 
     def test_create_project_rejects_unsafe_slug_without_writing(self):
         for slug in ["..", "../escape", "a/b", "a\\b", "UPPER"]:
@@ -159,6 +173,25 @@ class TestCreateProject(unittest.TestCase):
             )
         self.assertEqual(code, 1)
         self.assertFalse((self.tmp / "oops").exists())
+        self.assertEqual(list(self.papers.iterdir()), [])
+
+    def test_main_reports_reserved_slug_as_problem(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = create_module.main(
+                [
+                    "create.py",
+                    "con",
+                    "--venue",
+                    "NeurIPS",
+                    "--year",
+                    "2027",
+                    "--mode",
+                    "conference",
+                    "--papers-root",
+                    str(self.papers),
+                ]
+            )
+        self.assertEqual(code, 1)
         self.assertEqual(list(self.papers.iterdir()), [])
 
     def test_title_with_quotes_still_validates(self):

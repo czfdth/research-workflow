@@ -12,6 +12,7 @@
 | `checklists/` | gate 清单，由 `tools/ccfa/stages.py` 生成 |
 | `library/` | 共享 BibTeX 与 PDF 原件 |
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
+| `papers/` | 派生论文项目的默认目标目录（已在 `.gitignore` 中忽略） |
 | `tools/` | 确定性工具（Python） |
 
 ## 派生一篇新论文

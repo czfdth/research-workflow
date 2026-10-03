@@ -9,5 +9,7 @@ tools/.venv/
 *.synctex.gz
 library/papers/*.pdf
 !library/papers/.gitkeep
+# Derived paper projects created by tools/newpaper land here.
+papers/
 __pycache__/
 *.pyc
