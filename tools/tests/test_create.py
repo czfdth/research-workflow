@@ -93,6 +93,7 @@ class TestCreateProject(unittest.TestCase):
             "ccfa.yaml",
             "manuscript/sections",
             "manuscript/references.bib",
+            "data/claims.yaml",
             "data/provenance.json",
             "experiments/log",
             "experiments/results",
@@ -111,6 +112,28 @@ class TestCreateProject(unittest.TestCase):
             json.loads((root / "data" / "provenance.json").read_text(encoding="utf-8")),
             {"version": 1, "files": {}},
         )
+
+    def test_seeds_claims_policy_v1(self):
+        root = self._create()
+
+        policy = yaml.safe_load(
+            (root / "data" / "claims.yaml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(policy["version"], 1)
+        self.assertEqual(
+            policy["protected_sections"],
+            ["abstract", "contributions", "results"],
+        )
+        self.assertEqual(policy["waivers"], [])
+
+    def test_checks_template_points_to_generated_coverage_report(self):
+        root = self._create()
+
+        checks = (root / "submission" / "checks.md").read_text(encoding="utf-8")
+
+        self.assertIn("claims-coverage.md", checks)
+        self.assertNotIn("All headline counts", checks)
 
     def test_ccfa_yaml_is_valid_and_carries_mode(self):
         root = self._create(mode="journal")
@@ -546,6 +569,7 @@ class TestCreateProject(unittest.TestCase):
         self.assertIn(".gitignore", tracked)
         self.assertIn("ccfa.yaml", tracked)
         self.assertIn("manuscript/main.tex", tracked)
+        self.assertIn("data/claims.yaml", tracked)
         self.assertIn("memory/ideas.md", tracked)
         self.assertEqual(_run_git(root, "status", "--porcelain").strip(), "")
 

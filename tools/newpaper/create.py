@@ -71,8 +71,21 @@ SEED_FILES = {
     "memory/ideas.md": "# 选题记忆\n",
     "memory/dead-ends.md": "# 反重复记忆\n",
     "reviews/revision-ledger.md": "# 审稿意见矩阵\n",
-    "submission/checks.md": "# 投稿检查\n",
+    "submission/checks.md": (
+        "# 投稿检查\n"
+        "\n"
+        "数字覆盖率报告由工具生成，见 `submission/claims-coverage.md`"
+        "（机器记录：`submission/claims-coverage.json`）。\n"
+    ),
     "data/provenance.json": '{\n  "version": 1,\n  "files": {}\n}\n',
+    "data/claims.yaml": (
+        "version: 1\n"
+        "protected_sections:\n"
+        "  - abstract\n"
+        "  - contributions\n"
+        "  - results\n"
+        "waivers: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

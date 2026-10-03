@@ -10,6 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from ccfa.claims_policy import POLICY_RELATIVE_PATH, load_policy, scan_claims
 from ccfa.cli import Problem, ToolEnvironmentError, emit, tool_error
 from ccfa.dataval import find_untagged
 from ccfa.figure_manifest import check_manifest, load_manifest
@@ -116,16 +117,38 @@ def check(
         tex_files = iter_tex_files(manuscript)
     except OSError as exc:
         raise ToolEnvironmentError(f"无法遍历手稿目录: {manuscript}: {exc}") from exc
-    for tex in tex_files:
-        for item in find_untagged(tex):
+
+    policy_path = root / POLICY_RELATIVE_PATH
+    policy, policy_problems = load_policy(root)
+    problems.extend(policy_problems)
+    if policy is None:
+        if not policy_path.exists():
             advisories.append(
                 Problem(
-                    "untagged-number",
-                    item.path,
-                    item.line,
-                    f"未标记的数字线索（需人工复核）: {item.text}",
+                    "claims-policy-missing",
+                    str(policy_path),
+                    None,
+                    "未配置 claims policy，覆盖率未验证",
                 )
             )
+        for tex in tex_files:
+            for item in find_untagged(tex):
+                advisories.append(
+                    Problem(
+                        "untagged-number",
+                        item.path,
+                        item.line,
+                        f"未标记的数字线索（需人工复核）: {item.text}",
+                    )
+                )
+    else:
+        coverage_problems, coverage_advisories, _ = scan_claims(
+            manuscript,
+            policy,
+            paper_root=root,
+        )
+        problems.extend(coverage_problems)
+        advisories.extend(coverage_advisories)
 
     return problems, advisories
 

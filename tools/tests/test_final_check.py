@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from ccfa.final_check import check, main
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
@@ -44,10 +46,25 @@ class BaseCase(unittest.TestCase):
         self.source_data.parent.mkdir(parents=True)
         self.source_data.write_text("x,y\n1,2\n", encoding="utf-8")
         self.reader = lambda path: CLEAN_TEXT
+        self.policy_path = self.root / "data" / "claims.yaml"
+        self.write_policy()
 
     def run_check(self, **kwargs):
         kwargs.setdefault("reader", self.reader)
         return check(self.manuscript, pdf=self.pdf, **kwargs)
+
+    def write_policy(self, **overrides):
+        payload = {
+            "version": 1,
+            "protected_sections": ["abstract", "contributions", "results"],
+            "waivers": [],
+        }
+        payload.update(overrides)
+        self.policy_path.parent.mkdir(parents=True, exist_ok=True)
+        self.policy_path.write_text(
+            yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
 
     def write_generator(self, body="print('x')\n"):
         path = self.root / "src" / "plot.py"
@@ -139,6 +156,137 @@ class TestCheck(BaseCase):
         )
         _, advisories = self.run_check()
         self.assertIn("untagged-number", self.codes(advisories))
+
+    def test_protected_untagged_number_is_a_problem(self):
+        (self.manuscript / "main.tex").write_text(
+            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+            encoding="utf-8",
+        )
+        problems, advisories = self.run_check()
+        self.assertEqual(self.codes(problems), ["protected-untagged-number"])
+        self.assertEqual(advisories, [])
+
+    def test_waiver_is_listed_as_advisory(self):
+        (self.manuscript / "main.tex").write_text(
+            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+            encoding="utf-8",
+        )
+        self.write_policy(
+            waivers=[
+                {
+                    "file": "manuscript/main.tex",
+                    "line_text": "Coding 43 works.",
+                    "reason": "protocol count",
+                    "date": "2026-10-04",
+                    "author": "Alice",
+                }
+            ]
+        )
+        problems, advisories = self.run_check()
+        self.assertEqual(problems, [])
+        self.assertEqual(self.codes(advisories), ["waived-number"])
+        self.assertIn("protocol count", advisories[0].message)
+
+    def test_missing_policy_is_an_advisory(self):
+        self.policy_path.unlink()
+        _, advisories = self.run_check()
+        self.assertIn("claims-policy-missing", self.codes(advisories))
+        message = next(
+            item.message
+            for item in advisories
+            if item.code == "claims-policy-missing"
+        )
+        self.assertEqual(message, "未配置 claims policy，覆盖率未验证")
+
+    def test_bad_waiver_is_a_problem(self):
+        self.write_policy(
+            waivers=[
+                {
+                    "file": "manuscript/main.tex",
+                    "line_text": "Coding 43 works.",
+                    "reason": "protocol count",
+                    "date": "2026-10-04",
+                    "author": 7,
+                }
+            ]
+        )
+        problems, _ = self.run_check()
+        self.assertIn("claims-policy-invalid", self.codes(problems))
+
+    def test_protected_unbound_cli_exits_one(self):
+        (self.manuscript / "main.tex").write_text(
+            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("ccfa.final_check.extract_text", return_value=CLEAN_TEXT):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                        "--paper-root",
+                        str(self.root),
+                    ]
+                )
+        self.assertEqual(code, 1, stderr.getvalue())
+        self.assertEqual(
+            json.loads(stdout.getvalue())["problems"][0]["code"],
+            "protected-untagged-number",
+        )
+
+    def test_nonprotected_unbound_cli_exits_zero(self):
+        (self.manuscript / "main.tex").write_text(
+            "\\section{Introduction}\nCoding 43 works.\n",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("ccfa.final_check.extract_text", return_value=CLEAN_TEXT):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                        "--paper-root",
+                        str(self.root),
+                    ]
+                )
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertEqual(json.loads(stdout.getvalue())["problem_count"], 0)
+
+    def test_missing_policy_cli_still_exits_zero(self):
+        self.policy_path.unlink()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("ccfa.final_check.extract_text", return_value=CLEAN_TEXT):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                        "--paper-root",
+                        str(self.root),
+                    ]
+                )
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertIn(
+            "claims-policy-missing",
+            [
+                advisory["code"]
+                for advisory in json.loads(stdout.getvalue())["advisories"]
+            ],
+        )
 
     def test_missing_declaration_is_an_advisory(self):
         self.reader = lambda path: "nothing relevant here"
