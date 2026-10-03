@@ -142,7 +142,23 @@ $env:PYTHONPATH = (Resolve-Path ../tools).Path
 
 headless/CI 环境再设 `$env:QT_QPA_PLATFORM = "offscreen"`；若本机没有 `py -3.12`，把解释器换成你机器上 Python 3.12 的绝对路径。
 
-P0 边界：尚未接入智能体聊天、自定义 API 工具注册表与安装包；本轮只证明"项目 → 阶段 → 检查 → 设置"的最窄链路。
+P0 边界：本轮只证明"项目 → 阶段 → 检查 → 设置"的最窄链路；聊天与工具桥见下面的 P1 小节。
+
+## 论文工作台（P1：聊天与工具桥）
+
+P1 在 P0 之上加了聊天面板与引擎适配器：
+
+- 引擎下拉：`OpenAI 兼容`（读取 provider 设置，密钥只从 keyring 取）与 `codex exec`（本机 CLI，模型名可选）。
+- 引擎在后台线程执行，回复经 Qt 信号回主线程；运行中显示"停止"。
+- 选中项目后，模型可调用确定性工具：milestones、library、memory、state、trace_claims。写操作（memory 追加、stage 推进/回退）必须先在确认弹窗批准，拒绝时返回 `user declined`；每次调用追加到 `<paper>/ccfa-workfiles/agent-tools.jsonl`，只记录参数 sha256 摘要与结果，不记录参数明文或密钥。
+- `run-log run`（任意命令执行）不暴露给模型。
+
+P1 边界（如实）：
+
+- 流式输出未做，当前整段返回后一次显示。
+- `run-log run` 未暴露。
+- HTTP 取消是请求边界式：最坏等当前请求完成或超时（`timeout_s` 兜底）；codex 取消会立即 kill 子进程。
+- 安装包未做；仍需按上面的"首次准备"手动建 venv。
 
 ## 从零搭建
 
