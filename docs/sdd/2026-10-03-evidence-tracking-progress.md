@@ -1782,3 +1782,19 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 1. **引擎选型放宽**：`codex exec` 可作为一等引擎（无需商业再分发适配），OpenAI 兼容 HTTP 作为 BYO API 引擎并行存在；P3 的"许可合规/代码签名"降级为可选（自用可只做本地安装或直接运行）。
 2. **保留的工程约束**（对自己也是保护）：密钥只进凭据管理器、settings 不落 key、写操作显式确认、工具调用留审计——这些不改。
 3. **优先级调整**：P1 先做"能聊天"的最短路径（引擎 + 聊天面板），再做工具桥（HTTP 引擎的自定义 API 工具接入）；因为自用场景下 `codex exec` 本身已能调用仓库脚本。
+
+## workbench P1 执行记录（`6fb7d2a → 9da1fdc → fb8a310 → 55b10a6 → 191cd54 → b9bb540 → fb20f77`）
+
+- **Task 1 引擎适配器 `6fb7d2a`**（`Confucius`）：`ccfa_core/engines/`（base/openai_compat/codex_exec）+ 26 用例；httpx==0.28.1 钉死；app 81、tools 819。判别力：非 2xx 改返回空、去 key 校验。
+  - 复评（`Kierkegaard`）**Needs fixes**：Important——`SecretStore.get()` 异常文本被拼进错误消息（对抗注入 `RuntimeError(KEY)` 实测 key 泄露）；Minor——片段 514>500；Minor——HTTP 取消只在请求边界。
+- **引擎修复 `55b10a6`**：store 异常只带类型名（补字节级红线用例）；片段含 marker 总长 ≤500；HTTP 取消语义写进 docstring+README 并补边界用例。复评 **ADDRESSED**（判别力：恢复 `{exc}` → 红线用例失败；`514 not less than or equal to 500`）。
+- **Task 2 聊天面板 `9da1fdc`**（`Confucius`）：后台线程 + 四个 Qt 信号回主线程；停止/错误回填/引擎切换/未配置 provider 不调引擎；截图 `0.8341/3819`；判别力：主线程直调 → 0.609s > 0.1s 阻塞断言失败。评审 **Approved**（无 issue，独立复跑截图与阻塞判别力）。
+- **Task 3 工具桥 `fb8a310`**（`Confucius`）：10 个工具（read/write 分级；write 需确认；拒绝 → `user-declined`）；tool_calls 循环上限 6；`agent-tools.jsonl` 审计只存 digest；`run-log run` 未暴露。判别力：write 自动执行、去轮数上限。
+  - 自曝+复评发现 **Important**：`library_search` 指向项目级 `library/`（共享库在仓库根）→ 真实项目恒 `tool-error`；Minor：bridge 复用私有 `_stage_report`。
+- **Task 3 修复 `fb20f77`**：`ToolBridge` 显式 `library_dir`（window → panel → bridge 透传 `<repo>/library`）；`milestones.stage_report` 公开化并被 CLI/bridge 共用；新增真实共享库命中、未配置结构化错误、e2e 传递链断言、tools 公开入口一致性用例。判别力：改回项目级路径 → `ok False`；去公开包装 → `ImportError: cannot find stage_report`。app 139、tools 820。定向验证（`Kierkegaard`）待回报。
+- **Task 4 e2e `191cd54`**（`Confucius`）：`test_chat_e2e.py`（真实派生 + 工具调用 + 审计 + 写确认拒绝/同意 + 截图 0.7577/7510）；判别力：去审计写入 → e2e 失败。**实施者自曝真线程缺陷**：生产路径写确认会从 worker 线程弹 `QMessageBox`（Qt 控件只能在 GUI 线程）。
+- **线程修复 `b9bb540`**：写确认经 `write_confirmation_requested` 信号回 GUI 线程（worker 阻塞等待、300s 上限、停止可中止）；e2e 改为 worker 线程执行工具以覆盖生产路径；线程 id 证据 `CONFIRM_THREAD_ID=7520 GUI_THREAD_ID=7520`；判别力：worker 直弹 → `confirmation ran off the GUI thread`。app 135、tools 819。
+
+## workbench P1 待办
+
+- `Kierkegaard` 定向验证 `fb20f77`（进行中）→ P1 最终全分支评审（base `d4c4bee`，新评审者）→ 账本结项、README/边界复核。
