@@ -124,11 +124,23 @@ cd <仓库根>
 
 一个本地 PySide6 桌面壳：查看 `papers/*` 项目的阶段门、运行确定性检查，并配置 OpenAI 兼容 API；核心 `app/ccfa_core/` 零 Qt，GUI 在 `app/ccfa_gui/`。
 
+首次准备（在仓库根执行；`app/.venv` 已被 gitignore，不随克隆提供）：
+
+```powershell
+cd <仓库根>
+py -3.12 -m venv app/.venv
+& app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
+```
+
+启动：
+
 ```powershell
 cd app
 $env:PYTHONPATH = (Resolve-Path ../tools).Path
 & .venv/Scripts/python.exe -m ccfa_gui.main
 ```
+
+headless/CI 环境再设 `$env:QT_QPA_PLATFORM = "offscreen"`；若本机没有 `py -3.12`，把解释器换成你机器上 Python 3.12 的绝对路径。
 
 P0 边界：尚未接入智能体聊天、自定义 API 工具注册表与安装包；本轮只证明"项目 → 阶段 → 检查 → 设置"的最窄链路。
 

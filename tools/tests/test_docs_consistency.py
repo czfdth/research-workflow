@@ -63,6 +63,7 @@ TOP_LEVEL_REPO_FILES = {
 # .gitignore; the test below enforces that.
 GENERATED_README_PATH_PREFIXES = (
     "tools/.venv",
+    "app/.venv",
 )
 
 
@@ -211,7 +212,12 @@ class TestReadmeInventory(unittest.TestCase):
         self.assertTrue(
             _is_generated_readme_path("tools/.venv/Scripts/python.exe")
         )
+        self.assertTrue(_is_generated_readme_path("app/.venv"))
+        self.assertTrue(
+            _is_generated_readme_path("app/.venv/Scripts/python.exe")
+        )
         self.assertFalse(_is_generated_readme_path("tools/.venv-other"))
+        self.assertFalse(_is_generated_readme_path("app/.venv-other"))
         self.assertFalse(
             _is_generated_readme_path("tools/ccfa/revision_ledger.py")
         )
