@@ -91,6 +91,7 @@ class ChatPanel(QWidget):
         *,
         secret_store=None,
         engine_factory=None,
+        library_dir=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -99,6 +100,9 @@ class ChatPanel(QWidget):
             secret_store if secret_store is not None else KeyringSecretStore()
         )
         self._engine_factory = engine_factory or default_engine_factory
+        self._library_dir = (
+            Path(library_dir) if library_dir is not None else None
+        )
         self._history = []
         self._thread = None
         self._cancel_event = None
@@ -249,13 +253,16 @@ class ChatPanel(QWidget):
             self._cancel_event.set()
             self._set_hint("正在停止...")
 
-    def set_project(self, project_root) -> None:
+    def set_project(self, project_root, *, library_dir=None) -> None:
         """Attach the deterministic tools for one project (None clears them)."""
         if project_root is None:
             self._tool_bridge = None
             return
+        if library_dir is None:
+            library_dir = self._library_dir
         self._tool_bridge = ToolBridge(
             project_root,
+            library_dir=library_dir,
             confirm_write=lambda name, arguments: self.write_confirmer(
                 name,
                 arguments,

@@ -27,6 +27,8 @@ from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from .chat_panel import ChatPanel
 from .settings_dialog import SettingsDialog
 
+_SHARED_LIBRARY_DIR = Path(__file__).resolve().parents[2] / "library"
+
 
 def image_non_background_ratio(image: QImage) -> float:
     """Return the fraction of sampled pixels differing from the top-left one."""
@@ -113,6 +115,7 @@ class MainWindow(QMainWindow):
         self.chat_panel = ChatPanel(
             self._settings_path,
             secret_store=self._secret_store,
+            library_dir=_SHARED_LIBRARY_DIR,
         )
         right.addWidget(self.chat_panel, stretch=2)
 

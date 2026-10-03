@@ -235,6 +235,15 @@ class ChatEndToEnd(unittest.TestCase):
         )
         self.assertIn("chat-e2e", self.window.project_list.currentItem().text())
 
+    def test_panel_uses_the_repository_level_library(self):
+        from ccfa_gui import window as window_module
+
+        expected = (
+            Path(window_module.__file__).resolve().parents[2] / "library"
+        )
+
+        self.assertEqual(self.panel._tool_bridge.library_dir, expected)
+
     def test_chat_send_renders_user_and_assistant_messages(self):
         engine = self._use_engine(FakeToolEngine(reply="hello from fake"))
 

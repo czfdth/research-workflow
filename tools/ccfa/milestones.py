@@ -333,7 +333,8 @@ def due_report(paper_root: Path, today: date) -> dict:
     }
 
 
-def _stage_report(paper_root: Path) -> dict:
+def stage_report(paper_root: Path) -> dict:
+    """Return the public stage/gate/updated_at report for one paper root."""
     paper_root = Path(paper_root)
     state_path = paper_root / "ccfa.yaml"
     state = _load_state(paper_root)
@@ -378,7 +379,7 @@ def main(argv: list[str]) -> int:
         if args.command == "stage":
             print(
                 json.dumps(
-                    _stage_report(Path(args.paper_root)),
+                    stage_report(Path(args.paper_root)),
                     ensure_ascii=False,
                     sort_keys=True,
                 )

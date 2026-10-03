@@ -21,6 +21,7 @@ from ccfa_core.engines.base import ChatMessage, EngineError
 from ccfa_core.engines.openai_compat import OpenAICompatibleEngine
 from ccfa_core.tools_bridge import TOOL_DEFINITIONS, ToolBridge, openai_tools
 from ccfa_gui.chat_panel import ChatPanel
+from newpaper.create import create_project
 
 from . import write_project
 
@@ -161,17 +162,58 @@ class ToolBridgeTests(unittest.TestCase):
             ["T-14"],
         )
 
-    def test_library_search_happy_path(self):
-        library_dir = self.project_root / "library"
-        library_dir.mkdir(parents=True)
-        (library_dir / "refs.bib").write_text(SAMPLE_BIB, encoding="utf-8")
-        library_module.build_index(library_dir)
+    def test_library_search_uses_the_explicit_shared_library(self):
+        shared = self.root / "shared-library"
+        shared.mkdir()
+        (shared / "refs.bib").write_text(SAMPLE_BIB, encoding="utf-8")
+        library_module.build_index(shared)
+        self.assertFalse((self.project_root / "library").exists())
+        bridge = ToolBridge(self.project_root, library_dir=shared)
 
-        result = self.bridge.execute("library_search", {"query": "sample"})
+        result = bridge.execute("library_search", {"query": "sample"})
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["result"]["results"][0]["key"], "sample")
         self.assertEqual(result["result"]["mode"], "fts")
+
+    def test_library_search_without_shared_library_is_structured_error(self):
+        result = self.bridge.execute("library_search", {"query": "sample"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "tool-error")
+        self.assertIn("请先运行 library index", result["error"]["message"])
+
+    def test_library_search_missing_index_names_the_index_command(self):
+        shared = self.root / "empty-library"
+        shared.mkdir()
+        bridge = ToolBridge(self.project_root, library_dir=shared)
+
+        result = bridge.execute("library_search", {"query": "sample"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "tool-error")
+        self.assertIn("请先运行 library index", result["error"]["message"])
+
+    def test_real_derived_project_uses_the_repository_level_library(self):
+        project_dir = create_project(
+            papers_root=self.root / "papers",
+            slug="bridge-e2e",
+            venue="NeurIPS",
+            year="2027",
+            mode="conference",
+            title="Bridge E2E",
+        )
+        shared = self.root / "repo-library"
+        shared.mkdir()
+        (shared / "refs.bib").write_text(SAMPLE_BIB, encoding="utf-8")
+        library_module.build_index(shared)
+        self.assertFalse((project_dir / "library").exists())
+        bridge = ToolBridge(project_dir, library_dir=shared)
+
+        result = bridge.execute("library_search", {"query": "sample"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["result"]["results"][0]["key"], "sample")
 
     def test_memory_search_happy_path(self):
         memory_module.add_idea(

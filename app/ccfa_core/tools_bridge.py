@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
@@ -30,12 +31,20 @@ class ToolArgumentError(ValueError):
     """Raised when tool arguments do not match the declared schema."""
 
 
+@dataclass(frozen=True)
+class ToolContext:
+    """Paths shared by every tool call in one bridge."""
+
+    project_root: Path
+    library_dir: Path | None = None
+
+
 class Tool(NamedTuple):
     name: str
     description: str
     risk: str
     parameters: dict
-    handler: Callable[[Path, dict], Any]
+    handler: Callable[[ToolContext, dict], Any]
 
 
 def _schema(properties: dict, required: tuple = ()) -> dict:
@@ -62,12 +71,11 @@ def _resolve_within(root: Path, raw: Any) -> Path:
     return resolved
 
 
-def _tool_milestones_stage(root: Path, args: dict) -> dict:
-    # The CLI ``stage`` subcommand uses the same private report function.
-    return milestones._stage_report(root)
+def _tool_milestones_stage(context: ToolContext, args: dict) -> dict:
+    return milestones.stage_report(context.project_root)
 
 
-def _tool_milestones_due(root: Path, args: dict) -> dict:
+def _tool_milestones_due(context: ToolContext, args: dict) -> dict:
     raw_today = args.get("today")
     if raw_today is None:
         today = date.today()
@@ -75,32 +83,40 @@ def _tool_milestones_due(root: Path, args: dict) -> dict:
         today = milestones.parse_deadline(raw_today)
         if today is None:
             raise ValueError("today 不能为空字符串")
-    return milestones.due_report(root, today)
+    return milestones.due_report(context.project_root, today)
 
 
-def _tool_library_search(root: Path, args: dict) -> dict:
+def _tool_library_search(context: ToolContext, args: dict) -> dict:
+    library_dir = context.library_dir
+    if library_dir is None:
+        raise ValueError("未配置共享文献库：请先运行 library index")
+    index_path = Path(library_dir) / "index.db"
+    if not index_path.is_file():
+        raise ValueError(
+            f"找不到文献库索引 {index_path}：请先运行 library index"
+        )
     return library.search_index(
-        Path(root) / "library",
+        Path(library_dir),
         args["query"],
         limit=args.get("limit", 20),
     )
 
 
-def _tool_memory_search(root: Path, args: dict) -> dict:
-    return memory.search_memory(root, args["query"])
+def _tool_memory_search(context: ToolContext, args: dict) -> dict:
+    return memory.search_memory(context.project_root, args["query"])
 
 
-def _tool_memory_list(root: Path, args: dict) -> dict:
+def _tool_memory_list(context: ToolContext, args: dict) -> dict:
     return memory.list_memory(
-        root,
+        context.project_root,
         kind=args.get("kind", "all"),
         status=args.get("status"),
     )
 
 
-def _tool_memory_add_idea(root: Path, args: dict) -> dict:
+def _tool_memory_add_idea(context: ToolContext, args: dict) -> dict:
     return memory.add_idea(
-        root,
+        context.project_root,
         idea=args["idea"],
         date=args["date"],
         status=args.get("status", "active"),
@@ -108,9 +124,9 @@ def _tool_memory_add_idea(root: Path, args: dict) -> dict:
     )
 
 
-def _tool_memory_add_dead_end(root: Path, args: dict) -> dict:
+def _tool_memory_add_dead_end(context: ToolContext, args: dict) -> dict:
     return memory.add_dead_end(
-        root,
+        context.project_root,
         idea=args["idea"],
         date=args["date"],
         reason=args["reason"],
@@ -119,20 +135,20 @@ def _tool_memory_add_dead_end(root: Path, args: dict) -> dict:
     )
 
 
-def _tool_state_set_stage(root: Path, args: dict) -> dict:
+def _tool_state_set_stage(context: ToolContext, args: dict) -> dict:
     # The GUI confirmation already happened; ``confirm`` stays mandatory in
     # the underlying implementation, which is the ``--confirm`` semantics.
     return state.set_stage(
-        root,
+        context.project_root,
         to=args["to"],
         reason=args["reason"],
         confirm=True,
     )
 
 
-def _tool_state_rollback(root: Path, args: dict) -> dict:
+def _tool_state_rollback(context: ToolContext, args: dict) -> dict:
     return state.rollback(
-        root,
+        context.project_root,
         to=args["to"],
         reason=args["reason"],
         confirm=True,
@@ -140,11 +156,13 @@ def _tool_state_rollback(root: Path, args: dict) -> dict:
     )
 
 
-def _tool_trace_claims_check(root: Path, args: dict) -> dict:
-    docs = [_resolve_within(root, raw) for raw in args["docs"]]
+def _tool_trace_claims_check(context: ToolContext, args: dict) -> dict:
+    docs = [
+        _resolve_within(context.project_root, raw) for raw in args["docs"]
+    ]
     base_dir = None
     if args.get("base_dir") is not None:
-        base_dir = _resolve_within(root, args["base_dir"])
+        base_dir = _resolve_within(context.project_root, args["base_dir"])
     problems, advisories = trace_claims.check(
         docs,
         base_dir=base_dir,
@@ -396,10 +414,15 @@ class ToolBridge:
         self,
         project_root: Path,
         *,
+        library_dir: Path | None = None,
         confirm_write: Callable[[str, dict], bool] | None = None,
         on_call: Callable[[dict], None] | None = None,
     ):
         self.project_root = Path(project_root)
+        self.library_dir = (
+            Path(library_dir) if library_dir is not None else None
+        )
+        self._context = ToolContext(self.project_root, self.library_dir)
         self._confirm_write = confirm_write
         self._on_call = on_call
         self._tools = dict(_TOOLS_BY_NAME)
@@ -435,7 +458,7 @@ class ToolBridge:
                 self._finish(name, arguments, tool.risk, "declined", result)
                 return result
         try:
-            value = tool.handler(self.project_root, arguments)
+            value = tool.handler(self._context, arguments)
         except Exception as exc:
             result = _error(
                 name,

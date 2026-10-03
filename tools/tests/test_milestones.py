@@ -9,7 +9,13 @@ from pathlib import Path
 
 import yaml
 
-from ccfa.milestones import checkpoints, due_report, main, parse_deadline
+from ccfa.milestones import (
+    checkpoints,
+    due_report,
+    main,
+    parse_deadline,
+    stage_report,
+)
 
 
 class MilestoneTests(unittest.TestCase):
@@ -378,6 +384,40 @@ class TestMilestonesMain(MilestoneTests):
         self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn("工具错误", stderr)
+
+    def test_public_stage_report_matches_cli_output(self):
+        self._write_state(stage="writing", deadline=None)
+        data = yaml.safe_load(
+            (self.paper_root / "ccfa.yaml").read_text(encoding="utf-8")
+        )
+        data["stage"]["gate"] = "draft_complete"
+        data["stage"]["updated_at"] = "2026-10-03"
+        (self.paper_root / "ccfa.yaml").write_text(
+            yaml.safe_dump(data, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        report = stage_report(self.paper_root)
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "stage",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(json.loads(stdout), report)
+        self.assertEqual(
+            report,
+            {
+                "current": "writing",
+                "gate": "draft_complete",
+                "updated_at": "2026-10-03",
+            },
+        )
 
         self._write_state(stage="writing", deadline=None)
         code, stdout, stderr = self._run(
