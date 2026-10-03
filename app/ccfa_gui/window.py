@@ -24,6 +24,7 @@ from ccfa_core.checks import CheckError, run_milestones_due, run_validate
 from ccfa_core.projects import ProjectError, find_projects, load_project
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 
+from .chat_panel import ChatPanel
 from .settings_dialog import SettingsDialog
 
 
@@ -109,6 +110,11 @@ class MainWindow(QMainWindow):
         self.milestones_button.clicked.connect(self.run_milestones)
         buttons.addWidget(self.milestones_button)
         right.addLayout(buttons)
+        self.chat_panel = ChatPanel(
+            self._settings_path,
+            secret_store=self._secret_store,
+        )
+        right.addWidget(self.chat_panel, stretch=2)
 
         outer.addLayout(left, stretch=1)
         outer.addLayout(right, stretch=3)
@@ -247,3 +253,4 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._update_credential_status()
+            self.chat_panel.refresh_status()
