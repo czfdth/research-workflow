@@ -8,13 +8,14 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ccfa_core.engines.base import ChatMessage, EngineError, EngineReply
 from ccfa_core.secrets import SecretStoreUnavailable
@@ -263,6 +264,95 @@ class ChatPanelTests(unittest.TestCase):
         self.assertIn("backend exploded", items[1][1])
         self.assertEqual(items[1][2], QColor("#b00020"))
         self.assertEqual(panel.input_edit.toPlainText(), "retry me")
+
+    def test_write_confirmation_runs_on_the_gui_thread(self):
+        panel = self._panel(engines={"openai": FakeEngine()})
+        project_dir = write_project(self.root, "confirm-thread")
+        panel.set_project(project_dir)
+        gui_thread_id = threading.get_ident()
+        observed = {}
+        result = {}
+        done = threading.Event()
+
+        def fake_question(*args, **kwargs):
+            observed["thread_id"] = threading.get_ident()
+            observed["thread_name"] = threading.current_thread().name
+            if QThread.currentThread() is not QApplication.instance().thread():
+                observed["failure"] = "confirmation ran off the GUI thread"
+                return QMessageBox.StandardButton.No
+            observed["on_gui_thread"] = True
+            return QMessageBox.StandardButton.No
+
+        def worker():
+            try:
+                result["value"] = panel._tool_bridge.execute(
+                    "memory_add_idea",
+                    {"idea": "thread check", "date": "2026-10-04"},
+                )
+            finally:
+                done.set()
+
+        with mock.patch.object(
+            QMessageBox,
+            "question",
+            side_effect=fake_question,
+        ):
+            worker_thread = threading.Thread(
+                target=worker,
+                name="confirm-worker",
+            )
+            worker_thread.start()
+            self.assertTrue(self._wait_until(lambda: done.is_set()))
+            worker_thread.join(timeout=5.0)
+
+        print(
+            "CONFIRM_THREAD_ID="
+            f"{observed.get('thread_id')} GUI_THREAD_ID={gui_thread_id}"
+        )
+        print(f"CONFIRM_THREAD_NAME={observed.get('thread_name')}")
+        self.assertIsNone(observed.get("failure"))
+        self.assertTrue(observed.get("on_gui_thread"))
+        self.assertEqual(observed.get("thread_id"), gui_thread_id)
+        self.assertFalse(result["value"]["ok"])
+        self.assertEqual(
+            result["value"]["error"]["code"],
+            "user-declined",
+        )
+
+    def test_pending_write_confirmation_aborts_when_stopped(self):
+        panel = self._panel(engines={"openai": FakeEngine()})
+        panel.set_project(write_project(self.root, "confirm-stop"))
+        panel._cancel_event = threading.Event()
+        panel.write_confirmation_requested.disconnect()
+        panel.write_confirmation_requested.connect(
+            lambda name, arguments, box: None,
+            Qt.ConnectionType.DirectConnection,
+        )
+        result = {}
+        done = threading.Event()
+
+        def worker():
+            result["value"] = panel._ask_write_confirmation(
+                "memory_add_idea",
+                {},
+            )
+            done.set()
+
+        worker_thread = threading.Thread(
+            target=worker,
+            name="confirm-stop-worker",
+        )
+        started = time.monotonic()
+        worker_thread.start()
+        time.sleep(0.2)
+        panel._cancel_event.set()
+        self.assertTrue(done.wait(3.0))
+        worker_thread.join(timeout=3.0)
+        elapsed = time.monotonic() - started
+        panel._cancel_event = None
+
+        self.assertFalse(result["value"])
+        self.assertLess(elapsed, 3.0)
 
     def test_engine_switch_uses_the_selected_engine(self):
         self._configure_provider()

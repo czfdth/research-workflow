@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -35,6 +36,8 @@ from ccfa_core.tools_bridge import ToolBridge, openai_tools
 
 ENGINE_OPENAI = "openai"
 ENGINE_CODEX = "codex"
+
+WRITE_CONFIRM_TIMEOUT_S = 300.0
 
 ROLE_PREFIXES = {
     "user": "你",
@@ -80,6 +83,7 @@ class ChatPanel(QWidget):
     run_stopped = Signal(str)
     run_finished = Signal()
     tool_called = Signal(object)
+    write_confirmation_requested = Signal(str, object, object)
 
     def __init__(
         self,
@@ -108,6 +112,9 @@ class ChatPanel(QWidget):
         self.run_stopped.connect(self._on_stopped)
         self.run_finished.connect(self._on_run_finished)
         self.tool_called.connect(self._on_tool_call)
+        self.write_confirmation_requested.connect(
+            self._show_write_confirmation
+        )
         self._on_engine_changed()
 
     def _build_ui(self) -> None:
@@ -257,6 +264,41 @@ class ChatPanel(QWidget):
         )
 
     def _ask_write_confirmation(self, name: str, arguments: dict) -> bool:
+        """Ask the user to approve a write tool call.
+
+        Qt widgets must stay on the GUI thread: a worker thread emits a
+        request and waits (bounded) for the answer, while a direct call from
+        the GUI thread shows the dialog immediately.
+        """
+        if QThread.currentThread() is self.thread():
+            return self._show_write_confirmation_now(name, arguments)
+        box = {"event": threading.Event(), "allowed": False}
+        self.write_confirmation_requested.emit(name, dict(arguments), box)
+        deadline = time.monotonic() + WRITE_CONFIRM_TIMEOUT_S
+        while not box["event"].wait(0.1):
+            if self._cancel_event is not None and self._cancel_event.is_set():
+                return False
+            if time.monotonic() >= deadline:
+                return False
+        return bool(box.get("allowed"))
+
+    @Slot(str, object, object)
+    def _show_write_confirmation(self, name, arguments, box) -> None:
+        try:
+            box["allowed"] = self._show_write_confirmation_now(
+                name,
+                arguments,
+            )
+        except Exception:
+            box["allowed"] = False
+        finally:
+            box["event"].set()
+
+    def _show_write_confirmation_now(
+        self,
+        name: str,
+        arguments: dict,
+    ) -> bool:
         summary = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
         if len(summary) > 500:
             summary = summary[:500] + "...[truncated]"

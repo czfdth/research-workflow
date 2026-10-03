@@ -3,8 +3,9 @@
 The fake engine below mirrors the real OpenAI-compatible tool loop: it
 "returns" tool_calls, executes them through the bridge configured by the
 panel, and feeds the results back as if they were tool messages. Tool
-execution is marshalled onto the GUI thread because the real confirmation
-dialog is a Qt widget.
+execution happens on the engine worker thread, exactly like the production
+engine; the panel is responsible for showing the confirmation dialog on the
+GUI thread.
 """
 
 from __future__ import annotations
@@ -12,14 +13,13 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ccfa_core.engines.base import EngineError, EngineReply
@@ -57,13 +57,10 @@ def tool_call(call_id, name, arguments):
     }
 
 
-class FakeToolEngine(QObject):
+class FakeToolEngine:
     """Minimal engine that replays scripted tool_calls through the bridge."""
 
-    execute_requested = Signal(str, object, object)
-
     def __init__(self, plans=None, reply="fake reply"):
-        super().__init__()
         self.plans = dict(plans or {})
         self.reply = reply
         self.tools = None
@@ -71,7 +68,6 @@ class FakeToolEngine(QObject):
         self.sent_texts = []
         self.returned_tool_calls = []
         self.tool_results = []
-        self.execute_requested.connect(self._execute_on_gui_thread)
 
     def configure_tools(self, handler, max_rounds=6):
         self._handler = handler
@@ -89,25 +85,20 @@ class FakeToolEngine(QObject):
             self.returned_tool_calls.append(call)
             function = call["function"]
             arguments = json.loads(function["arguments"])
-            box = {"event": threading.Event()}
-            self.execute_requested.emit(function["name"], arguments, box)
-            if not box["event"].wait(30):
-                raise EngineError("tool execution timed out")
-            if "error" in box:
-                raise EngineError(str(box["error"]))
-            self.tool_results.append(box["result"])
+            try:
+                result = self._handler(function["name"], arguments)
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "error": {
+                        "code": "tool-handler-error",
+                        "message": str(exc),
+                    },
+                }
+            self.tool_results.append(result)
         if calls:
             return EngineReply(text=f"{self.reply} (tools={len(calls)})")
         return EngineReply(text=self.reply)
-
-    @Slot(str, object, object)
-    def _execute_on_gui_thread(self, name, arguments, box):
-        try:
-            box["result"] = self._handler(name, arguments)
-        except Exception as exc:  # surfaced to the test thread
-            box["error"] = exc
-        finally:
-            box["event"].set()
 
 
 class ChatEndToEnd(unittest.TestCase):
