@@ -133,6 +133,8 @@ class OpenAICompatibleEngineTests(unittest.TestCase):
         self.assertIn("401", message)
         self.assertLessEqual(message.count("x"), 500)
         self.assertNotIn(FAKE_KEY, message)
+        snippet = message.split(": ", 1)[1]
+        self.assertLessEqual(len(snippet), 500)
 
     def test_bad_json_raises_engine_error(self):
         def handler(request):
@@ -234,6 +236,54 @@ class OpenAICompatibleEngineTests(unittest.TestCase):
 
         self.assertIn("取消", str(context.exception))
         self.assertEqual(calls["count"], 0)
+
+    def test_cancel_during_request_takes_effect_at_the_boundary(self):
+        state = {"cancelled": False}
+
+        def handler(request):
+            # The request is already in flight; the token flips mid-request.
+            state["cancelled"] = True
+            return httpx.Response(200, json=chat_json("late reply"))
+
+        engine, calls = make_engine(handler)
+
+        with self.assertRaises(EngineError) as context:
+            engine.send(
+                [ChatMessage("user", "hello")],
+                cancel=lambda: state["cancelled"],
+            )
+
+        message = str(context.exception)
+        self.assertIn("请求已取消", message)
+        self.assertEqual(calls["count"], 1)
+        self.assertNotIn("late reply", message)
+
+    def test_secret_store_error_never_leaks_key_bytes(self):
+        class ExplodingStore:
+            def get(self, key_name):
+                raise RuntimeError(FAKE_KEY)
+
+        engine = OpenAICompatibleEngine(
+            base_url=BASE_URL,
+            model="test-model",
+            secret_store=ExplodingStore(),
+            key_name="provider-key",
+            timeout_s=5.0,
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json=chat_json("unreachable"),
+                )
+            ),
+        )
+
+        with self.assertRaises(EngineError) as context:
+            engine.send([ChatMessage("user", "hello")])
+
+        message = str(context.exception)
+        self.assertIn("RuntimeError", message)
+        self.assertNotIn(FAKE_KEY, message)
+        self.assertNotIn(FAKE_KEY.encode("utf-8"), message.encode("utf-8"))
 
     def test_client_factory_is_used_for_requests(self):
         def handler(request):

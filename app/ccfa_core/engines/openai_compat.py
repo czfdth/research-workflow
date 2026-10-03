@@ -31,13 +31,22 @@ def _snippet(text: Any, secret: str, limit: int = SNIPPET_LIMIT) -> str:
     redacted = str(text)
     if secret and secret in redacted:
         redacted = redacted.replace(secret, REDACTED)
-    if len(redacted) > limit:
-        return redacted[:limit] + "...[truncated]"
-    return redacted
+    if len(redacted) <= limit:
+        return redacted
+    marker = "...[truncated]"
+    keep = max(0, limit - len(marker))
+    return redacted[:keep] + marker
 
 
 class OpenAICompatibleEngine:
-    """Chat-completions engine for OpenAI-compatible HTTP APIs."""
+    """Chat-completions engine for OpenAI-compatible HTTP APIs.
+
+    Cancellation is cooperative: a cancel token is checked before the request
+    and again after it returns, so an in-flight HTTP request is never aborted
+    mid-flight; the worst case waits for the current request to finish or for
+    ``timeout_s`` to fire. The codex engine, by contrast, kills its child
+    process as soon as the token is set.
+    """
 
     name = "openai-compatible"
 
@@ -255,8 +264,10 @@ class OpenAICompatibleEngine:
     def _api_key(self) -> str:
         try:
             value = self._secret_store.get(self._key_name)
-        except Exception as exc:  # adapter boundary: surface store failures
-            raise EngineError(f"无法读取 API key: {exc}") from exc
+        except Exception as exc:  # never echo the store message: it may embed
+            raise EngineError(  # the key under a hostile implementation
+                f"无法读取 API key（{type(exc).__name__}）"
+            ) from exc
         if not isinstance(value, str) or not value.strip():
             raise EngineError(
                 "未配置 API key：请先在设置中保存该 provider 的密钥"

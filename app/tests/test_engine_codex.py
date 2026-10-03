@@ -147,6 +147,8 @@ class CodexExecEngineTests(unittest.TestCase):
         self.assertIn("codex exec", message)
         self.assertIn("2", message)
         self.assertLessEqual(message.count("z"), 500)
+        snippet = message.rsplit(": ", 1)[-1]
+        self.assertLessEqual(len(snippet), 500)
 
     def test_runner_exit_code_124_is_a_timeout(self):
         runner = RecordingRunner(code=124)

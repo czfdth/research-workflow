@@ -40,3 +40,11 @@ $env:PYTHONPATH = (Resolve-Path ../tools).Path
 - `settings.json` 只写 `key_name` 引用，不写 key 明文；密钥只进
   `KeyringSecretStore`（E57）。
 - keyring 不可用时抛 `SecretStoreUnavailable`，不降级明文。
+
+## 引擎与取消
+
+- `OpenAICompatibleEngine` 的取消是协作式的：只在请求边界生效，最坏等待当前
+  HTTP 请求完成或超时（`timeout_s` 兜底）；正在飞行中的请求不会被中途打断。
+- `CodexExecEngine` 的取消会立即 kill 子进程。
+- 引擎错误消息不包含 `SecretStore.get()` 的原始异常文本（可能嵌入 key），
+  只带异常类型名。

@@ -131,9 +131,11 @@ class CodexExecEngine:
     @staticmethod
     def _snippet(text: Any, limit: int = STDERR_LIMIT) -> str:
         value = "" if text is None else str(text)
-        if len(value) > limit:
-            return value[:limit] + "...[truncated]"
-        return value
+        if len(value) <= limit:
+            return value
+        marker = "...[truncated]"
+        keep = max(0, limit - len(marker))
+        return value[:keep] + marker
 
     def _default_runner(
         self,
