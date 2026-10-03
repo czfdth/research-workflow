@@ -1630,3 +1630,28 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   - 两条均 `status = ACTIVE`、`target = project(科研)`；已通过 `$CODEX_HOME/automations/*/automation.toml` 逐字段核实（名称/rrule/model/effort/cwd/prompt）。
 - **未挂载（按设计保持手动）**：`stage-advance`（手动触发模板，README 明示不挂定时任务）；`experiment-queue`（长任务运行期按需执行，无队列文件可挂）。
 - **激活周监控的唯一动作**：把要跟踪的 arXiv Atom feed URL 填进 `automation/watch-sources.json` 的 `feeds`；在此之前该任务每周静默空跑。
+
+## 遗漏审计（用户要求，2026-10-03）
+
+对照设计 v6 与商品化标准做全量审计，确认四类遗漏（均有实证）：
+
+**A. 设计写了未实现**：倒排只有 3/8 节点（缺 T-90/60/30/21/1，T-30 硬规则无执行点）；`ccfa.yaml` 只能读不能写回，§4.3 回退记录无字段无工具；§4.4 审稿矩阵只有种子行、7 列契约无检查器；§6.3 manifest 只验 2/4 问（`source_run_ids`/`source_data` 完全不校验，缺 generator/hash 静默通过）；§5 stage→技能路由依赖仓库外技能且"更新状态"缺写回工具；§7 COM/Overleaf/浏览器适配层大部分未建；§10 缺 `docs/`、派生项目缺 `experiments/design.md` 与 `figures/manifest.yaml` 种子。
+
+**B. 有代码但真实环境未跑**：`library/refs.bib` 0 字节、无 `index.db`（只在 fixture 验证）；无真实论文项目；watch feeds 为空；自动化未经历真实定时运行；跨模型评审只有一次临时冒烟；期刊 venue 无真编译证据。
+
+**C. 可移植性**：无依赖清单（venv 被 gitignore）；`.superpowers/` 全被忽略导致 E1–E52 账本不入库（本轮已复制进 `docs/`）；仓库无 remote、无 CI；无 LICENSE；README 无建 venv 说明。
+
+**D. 已挂账小项**（见上文各阶段结项）。
+
+### 商品化裁定 E53–E56（计划 `docs/plans/2026-10-03-productization.md`）
+
+- **E53 state 写回必须显式授权且留痕**：`set-stage`/`rollback` 需 `--confirm`；`reason` 必填；`rollback` 只能往回且由调用者显式给出作废产物；写 `stage.history`（advance/rollback）。理由：§12 要求"可读和更新"，§4.3 要求回退留痕；§9 硬约束一要求修改需明确授权。代价：自动化推进 stage 时同样要带 `--confirm`（意图是让人/代理显式表态）。
+- **E54 倒排补全 8 节点 + T-30 硬规则可检测**：节点映射 T-90→experiment-design、T-60→experiments-running、T-30→results-ready、T-21→writing、T-14/T-7→internal-review、T-3/T-1→submission-check；T-30 之后 `experiments/log` 出现新记录 → problem `t30-new-experiment`。理由：§4.5"T-30 之后不接受新实验是硬规则"，没有检测点等于没有规则。代价：误报面（补跑旧记录需人工判断），用 advisory/明细消息降低。
+- **E55 交付图必须有完整溯源**：缺 generator/hash、缺 `source_run_ids`、run id 在 log 中不存在、`source_data` 缺失、`manual_edit: true` 无说明 → problem；`referenced_in` 仍按 §6.6 保持 advisory。理由：§6.3 硬规则 1"必须由脚本生成"当前无检查，硬规则 2"手工修图必须注明"无检查点。代价：历史 manifest 需要补齐字段（这正是目的）。
+- **E56 审稿矩阵按 §4.4 七列校验**：表头/行形状/ID 唯一/两个枚举/不采纳须理由/承诺风险一致性；problem 带真实行号。理由：承诺风险列是 §4.4 的关键，没有检查器时它只是一句口号。
+
+## 商品化执行记录
+
+- **P0-c 已落地**（`dc5b4b0`）：设计 v6、17 份计划、E1–E52 账本、研究评估全部复制进 `docs/`（23 文件、632KB），根 README 指向仓库内副本；此文件自此为正式留档。
+- **P0-a/b 已派** `Confucius`：`tools/requirements.txt`（4 个实测钉死版本）+ README「从零搭建」+ **全新临时 venv 只装该清单跑全量**的证据；commit `chore: pin the toolchain dependencies for a fresh clone`。
+- **P1 Task 2 已派** `Kierkegaard`：`state.py` + `stage.history` + validate 兼容 + `scripts/state.ps1` + README 工具表；commit `feat: write paper stage transitions with an audit trail`。
