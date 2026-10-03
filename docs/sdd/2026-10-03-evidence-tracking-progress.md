@@ -1809,3 +1809,20 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 其余全部核实通过：E60 一等 codex 引擎（argv/stdin/超时/取消）；密钥红线四条路径字节断言；工具桥风险模型（10 工具、write 确认、`user-declined`、`run-log run` 未暴露、轮数 6、审计只存 digest）；后台线程 + GUI 线程确认（线程 id 相等）；offscreen 独立复跑 `0.7427/6935`；`git clone` fresh checkout app 139 / tools 820 全绿；README 边界与实现一致。
 - 修复 `59c2210`：面板两处只回显异常类型名（补对抗用例，两条路径字节断言）；`library_search` 描述改为共享库并加断言。判别力：恢复 `{exc}` → `'sk-CHAT-LEAK-9999' unexpectedly found in '无法读取凭据: sk-CHAT-LEAK-9999'`。app 140 / tools 820。
 - `Ramanujan the 2nd` 定向复评（进行中）→ 通过后 P1 结项。
+
+## workbench P1 结项（2026-10-04）
+
+- 终审修复 `59c2210` 复评：**ADDRESSED / Merge readiness = Ready**。独立换新假 key 复现两条面板路径均不泄露；判别力 `sk-CHAT-LEAK-9999` 重现；app 140 / tools 820。
+- 终审遗留两条 Minor 也已关闭（`cdaba2e`）：
+  1. `SecretStoreUnavailable` 两条分支不再拼接 `str(exc)`（与引擎口径统一；对抗 SSU 含假 key 的两路径字节断言；判别力两 subtest 失败原文留档）。
+  2. `test_codex_engine_does_not_require_provider` 等待条件补齐为 `len(engine.calls)==1 and panel._thread is None`，竞态消除。
+  - 复评（`Ramanujan the 2nd`）：**ADDRESSED / Ready**，app 全量连续 3 次 `Ran 141 tests OK`（无 flake），新假 key 对抗复现无泄露，无新问题。
+- 终态：app **141 tests OK**、tools **820 tests OK**；代码 HEAD `cdaba2e`（其后仅账本文档提交）。P1 交付：两个引擎（OpenAI 兼容 HTTP + `codex exec`）、聊天面板（后台线程/停止/错误回填/引擎切换）、10 个工具的桥（read/write 分级、GUI 线程写确认、`user-declined`、`run-log run` 未暴露、digest 审计、轮数上限）、聊天 e2e（截图 `0.7577/7510`）。
+  workbench P1: complete (commits d4c4bee..cdaba2e, review clean)
+
+## 工作台后续（P2/P3，供参考）
+
+- **P2**：自定义 API 工具注册表（HTTP 工具声明式接入 → 校验 → 注册 → 审计；Python handler 默认关闭、显式授权 + 沙箱）。
+- **P3（自用可选）**：PyInstaller + 安装包/快捷方式；自用不需要代码签名与许可合规（E60）。
+- 挂账：真实 Windows 凭据管理器 E2E、真实 provider 联调与真实 `codex exec` 冒烟未做；HTTP 取消为边界式；流式输出未做；`window._update_credential_status` 对非 `SecretStoreUnavailable` 异常仍会外抛。
+- 注：工作树中 `tools/ccfa/cross_review.py`、`tools/tests/test_cross_review.py` 与未跟踪 `submission/` 属**另一并行任务（Ampere）**的改动，本阶段未触碰、未纳入任何提交。
