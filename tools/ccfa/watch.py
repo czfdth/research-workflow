@@ -35,7 +35,7 @@ def _parse_feed_with_skipped(xml_text: str) -> tuple[list[dict], int]:
         for child in element:
             name = _local_name(child.tag)
             if name in ("id", "title", "published", "summary") and name not in fields:
-                fields[name] = "".join(child.itertext()).strip()
+                fields[name] = " ".join(" ".join(child.itertext()).split())
         entry_id = fields.get("id", "")
         title = fields.get("title", "")
         if not entry_id or not title:

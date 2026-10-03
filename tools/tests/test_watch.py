@@ -107,6 +107,31 @@ class TestParseFeed(WatchTests):
         self.assertEqual(entries[0]["title"], "Hello World")
         self.assertEqual(entries[0]["summary"], "Nested summary")
 
+    def test_parse_feed_separates_block_level_title_text(self):
+        xml = """\
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>blocks-title</id>
+    <title type="xhtml"><div>Hello</div><div>World</div></title>
+  </entry>
+</feed>
+"""
+
+        self.assertEqual(parse_feed(xml)[0]["title"], "Hello World")
+
+    def test_parse_feed_separates_block_level_summary_text(self):
+        xml = """\
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>blocks-summary</id>
+    <title>Title</title>
+    <summary type="xhtml"><div>First</div><div>Second</div></summary>
+  </entry>
+</feed>
+"""
+
+        self.assertEqual(parse_feed(xml)[0]["summary"], "First Second")
+
 
 class TestScan(WatchTests):
     def test_first_run_creates_baseline_without_reporting_entries(self):
