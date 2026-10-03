@@ -47,8 +47,8 @@ class FakeGit:
             return 0, ""
         raise AssertionError(f"unexpected git argv: {args}")
 
-    def tag_created(self) -> bool:
-        return any(call[:1] == ["tag"] and "-a" in call for call in self.calls)
+    def tag_calls(self) -> list[list[str]]:
+        return [call for call in self.calls if call[:1] == ["tag"]]
 
 
 class TestListVersions(unittest.TestCase):
@@ -69,6 +69,14 @@ class TestNextVersion(unittest.TestCase):
     def test_existing_three_advances_to_four(self):
         runner = FakeGit(tags=["paper-v3"])
         self.assertEqual(next_version(Path("repo"), runner=runner), "paper-v4")
+
+    def test_malformed_tag_is_named_in_the_error(self):
+        runner = FakeGit(tags=["paper-vX"])
+
+        with self.assertRaises(ValueError) as caught:
+            next_version(Path("repo"), runner=runner)
+
+        self.assertIn("paper-vX", str(caught.exception))
 
 
 class TestWorkingTreeDirty(unittest.TestCase):
@@ -94,15 +102,28 @@ class TestSnapshot(unittest.TestCase):
         with self.assertRaises(ValueError):
             snapshot(Path("repo"), runner=runner)
 
-        self.assertFalse(runner.tag_created())
+        self.assertEqual(runner.tag_calls(), [])
 
     def test_allow_dirty_records_dirty_true(self):
-        runner = FakeGit(tags=[], dirty=True)
+        runner = FakeGit(tags=[], dirty=True, commit="abc123")
 
         tag, _ = snapshot(Path("repo"), allow_dirty=True, runner=runner)
 
         self.assertEqual(tag, "paper-v1")
-        self.assertEqual(self.tag_message(runner), "dirty=true")
+        message = self.tag_message(runner)
+        self.assertIn("dirty=true", message)
+        self.assertIn(
+            "note=uncommitted changes are not captured; "
+            "tag points at HEAD commit abc123",
+            message,
+        )
+
+    def test_clean_tree_message_carries_no_uncaptured_content_note(self):
+        runner = FakeGit(tags=[], dirty=False, commit="cafe01")
+
+        snapshot(Path("repo"), runner=runner)
+
+        self.assertNotIn("uncommitted changes are not captured", self.tag_message(runner))
 
     def test_label_goes_into_message_without_changing_the_name(self):
         runner = FakeGit(tags=["paper-v1"], dirty=False)
@@ -132,6 +153,20 @@ class TestDiffVersions(unittest.TestCase):
             runner.calls[-1],
             ["diff", "paper-v1", "paper-v2", "--", "main.tex", "refs.bib"],
         )
+
+    def test_unknown_revision_exits_two_with_a_tool_message(self):
+        def failing(args: list[str], repo: Path) -> tuple[int, str]:
+            return 128, "fatal: bad revision 'paper-v9'"
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = main(
+                ["research_version.py", "--repo", "repo", "diff", "paper-v9", "paper-v1"],
+                runner=failing,
+            )
+
+        self.assertEqual(code, 2)
+        self.assertIn("paper-v9", err.getvalue())
 
 
 class TestGitOutput(unittest.TestCase):
@@ -194,7 +229,13 @@ class TestRealGitIntegration(unittest.TestCase):
 
         tag2, _ = snapshot(self.repo, allow_dirty=True)
         self.assertEqual(tag2, "paper-v2")
-        self.assertIn("dirty=true", _tag_message(self.repo, tag2))
+        message2 = _tag_message(self.repo, tag2)
+        self.assertIn("dirty=true", message2)
+        self.assertIn(
+            "note=uncommitted changes are not captured; "
+            f"tag points at HEAD commit {git_output(['rev-parse', 'HEAD'], self.repo).strip()}",
+            message2,
+        )
 
         # Once the edit is committed it gets its own commit and version, so a
         # diff between paper-v1 and the clean paper-v3 has real content.

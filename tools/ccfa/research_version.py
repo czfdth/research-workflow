@@ -52,7 +52,13 @@ def git_output(args: list[str], repo: Path, runner: GitRunner | None = None) -> 
 
 
 def _version_number(tag: str) -> int:
-    return int(tag[len(TAG_PREFIX) :])
+    suffix = tag[len(TAG_PREFIX) :]
+    try:
+        return int(suffix)
+    except ValueError as exc:
+        raise ValueError(
+            f"标签 {tag!r} 不符合 {TAG_PREFIX}<N> 命名，无法解析版本号"
+        ) from exc
 
 
 def list_versions(repo: Path, runner: GitRunner | None = None) -> list[str]:
@@ -73,8 +79,15 @@ def working_tree_dirty(repo: Path, runner: GitRunner | None = None) -> bool:
     return bool(output.strip())
 
 
-def _tag_message(dirty: bool, label: str | None = None) -> str:
+def _tag_message(
+    dirty: bool, label: str | None = None, commit: str | None = None
+) -> str:
     lines = [f"dirty={'true' if dirty else 'false'}"]
+    if dirty:
+        target = commit or "HEAD"
+        lines.append(
+            f"note=uncommitted changes are not captured; tag points at HEAD commit {target}"
+        )
     if label:
         lines.append(f"label={label}")
     return "\n".join(lines)
@@ -89,7 +102,8 @@ def snapshot(
 ) -> tuple[str, str]:
     """Tag the current commit as ``paper-v<N>`` and return ``(tag, commit)``."""
     repo = Path(repo)
-    if working_tree_dirty(repo, runner=runner) and not allow_dirty:
+    dirty = working_tree_dirty(repo, runner=runner)
+    if dirty and not allow_dirty:
         raise ValueError(
             "工作树有未提交改动，脏树快照无法仅凭 commit 复现；"
             "如确认要记录该状态，请加 --allow-dirty"
@@ -97,7 +111,7 @@ def snapshot(
     tag = next_version(repo, runner=runner)
     commit = git_output(["rev-parse", "HEAD"], repo, runner=runner).strip()
     git_output(
-        ["tag", "-a", tag, "-m", _tag_message(working_tree_dirty(repo, runner=runner), label)],
+        ["tag", "-a", tag, "-m", _tag_message(dirty, label, commit)],
         repo,
         runner=runner,
     )
@@ -136,7 +150,10 @@ def _build_parser() -> argparse.ArgumentParser:
     snapshot_parser.add_argument(
         "--allow-dirty",
         action="store_true",
-        help="允许工作树有未提交改动，并在标签消息里记录 dirty=true",
+        help=(
+            "允许工作树有未提交改动：标签仍指向 HEAD 提交，"
+            "未提交内容不会被捕获，标签消息记录 dirty=true 及该声明"
+        ),
     )
     snapshot_parser.set_defaults(handler="snapshot")
 
