@@ -1,0 +1,319 @@
+import json
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
+from unittest import mock
+
+import yaml
+
+from ccfa.cross_review import (
+    REVIEW_SCHEMA,
+    build_prompt,
+    check_review,
+    main,
+    run_review,
+)
+
+
+class CrossReviewTests(unittest.TestCase):
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.paper_root = Path(self._temporary.name)
+        (self.paper_root / "manuscript").mkdir()
+        self.input_path = self.paper_root / "manuscript" / "main.tex"
+        self.input_path.write_text("\\documentclass{article}\n", encoding="utf-8")
+        state = {
+            "target_venue": {"name": "NeurIPS", "mode": "conference"},
+            "stage": {"current": "internal-review"},
+        }
+        (self.paper_root / "ccfa.yaml").write_text(
+            yaml.safe_dump(state, sort_keys=False),
+            encoding="utf-8",
+        )
+
+    def _payload(self, verdict="pass", blocking=None, summary="summary"):
+        return {
+            "verdict": verdict,
+            "blocking": blocking or [],
+            "summary": summary,
+        }
+
+    def _runner(
+        self,
+        *,
+        payload=None,
+        raw=None,
+        code=0,
+        stderr="",
+        write_last=True,
+    ):
+        calls = []
+
+        def runner(argv, cwd, timeout, prompt):
+            calls.append(
+                {
+                    "argv": list(argv),
+                    "cwd": Path(cwd),
+                    "timeout": timeout,
+                    "prompt": prompt,
+                }
+            )
+            if write_last:
+                output_path = Path(argv[argv.index("-o") + 1])
+                text = raw if raw is not None else json.dumps(payload or self._payload())
+                output_path.write_text(text, encoding="utf-8")
+            return code, stderr
+
+        runner.calls = calls
+        return runner
+
+    def _run(self, runner, **overrides):
+        values = {
+            "model": "deepseek-v4-pro",
+            "stage": "internal-review",
+            "paths": [Path("manuscript/main.tex")],
+        }
+        values.update(overrides)
+        return run_review(self.paper_root, runner=runner, **values)
+
+    def _record_path(self):
+        return self.paper_root / "reviews" / "cross-review.json"
+
+
+class TestPromptAndArgv(CrossReviewTests):
+    def test_build_prompt_contains_gate_criterion_file_list_and_no_write_rule(self):
+        prompt = build_prompt(
+            self.paper_root,
+            "internal-review",
+            [Path("manuscript/main.tex")],
+        )
+
+        self.assertIn("review_cleared", prompt)
+        self.assertIn("跨模型评审报告无 blocking", prompt)
+        self.assertIn("manuscript/main.tex", prompt)
+        self.assertIn("禁止修改任何文件", prompt)
+        self.assertIn("JSON", prompt)
+
+    def test_argv_has_exact_required_flags_and_stdin_prompt(self):
+        runner = self._runner(payload=self._payload())
+
+        self._run(runner)
+
+        argv = runner.calls[0]["argv"]
+        self.assertEqual(argv[:2], ["codex", "exec"])
+        self.assertIn("-m", argv)
+        self.assertEqual(argv[argv.index("-m") + 1], "deepseek-v4-pro")
+        self.assertIn("-s", argv)
+        self.assertEqual(argv[argv.index("-s") + 1], "read-only")
+        self.assertIn("--ephemeral", argv)
+        self.assertIn("--skip-git-repo-check", argv)
+        self.assertIn("-C", argv)
+        self.assertEqual(argv[argv.index("-C") + 1], str(self.paper_root))
+        self.assertIn("--output-schema", argv)
+        self.assertIn("-o", argv)
+        self.assertEqual(argv[-1], "-")
+        self.assertIn("禁止修改任何文件", runner.calls[0]["prompt"])
+
+    def test_review_schema_is_strict(self):
+        self.assertEqual(REVIEW_SCHEMA["properties"]["verdict"]["enum"], ["pass", "blocking"])
+        self.assertEqual(
+            REVIEW_SCHEMA["properties"]["blocking"]["items"]["required"],
+            ["title", "evidence"],
+        )
+
+
+class TestRunReview(CrossReviewTests):
+    def test_pass_writes_json_and_markdown_records(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(runner)
+
+        self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(result["family_judgement"], "same-family")
+        self.assertTrue(self._record_path().is_file())
+        self.assertTrue((self.paper_root / "reviews" / "cross-review.md").is_file())
+        self.assertEqual(result["model"], "deepseek-v4-pro")
+
+    def test_blocking_verdict_preserves_evidence_exactly(self):
+        blocking = [
+            {
+                "title": "Missing ablation",
+                "evidence": "Table 2 has no seed variance.",
+            }
+        ]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+
+        result = self._run(runner)
+
+        self.assertEqual(result["verdict"], "blocking")
+        self.assertEqual(result["blocking"], blocking)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["blocking"], blocking)
+
+    def test_missing_last_message_is_malformed_and_not_pass(self):
+        runner = self._runner(write_last=False)
+
+        result = self._run(runner)
+
+        self.assertEqual(result["verdict"], "malformed")
+        self.assertNotEqual(result["verdict"], "pass")
+        self.assertTrue(self._record_path().is_file())
+
+    def test_invalid_json_is_malformed(self):
+        runner = self._runner(raw="{not json", write_last=True)
+
+        result = self._run(runner)
+
+        self.assertEqual(result["verdict"], "malformed")
+
+    def test_nonzero_exit_writes_failure_record_and_raises(self):
+        runner = self._runner(code=7, stderr="model unavailable", write_last=False)
+
+        with self.assertRaisesRegex(ValueError, "codex exec"):
+            self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["exit_code"], 7)
+        self.assertIn("model unavailable", record["stderr"])
+
+    def test_missing_codex_names_codex_exec(self):
+        def runner(argv, cwd, timeout, prompt):
+            raise FileNotFoundError("codex")
+
+        with self.assertRaisesRegex(ValueError, "codex exec"):
+            self._run(runner)
+
+    def test_record_is_not_overwritten_without_force(self):
+        first = self._runner(payload=self._payload("pass"))
+        second = self._runner(payload=self._payload("blocking", [{"title": "x", "evidence": "y"}]))
+        self._run(first)
+
+        with self.assertRaises(ValueError):
+            self._run(second)
+        self.assertEqual(len(second.calls), 0)
+
+        result = self._run(second, force=True)
+        self.assertEqual(result["verdict"], "blocking")
+
+    def test_input_hashes_are_recorded(self):
+        runner = self._runner(payload=self._payload())
+
+        result = self._run(runner)
+
+        self.assertEqual(
+            set(result["input_hashes"]),
+            {"manuscript/main.tex"},
+        )
+        self.assertTrue(result["input_hashes"]["manuscript/main.tex"].startswith("sha256:"))
+
+
+class TestCheckReview(CrossReviewTests):
+    def test_missing_record_is_review_missing(self):
+        problems = check_review(self.paper_root)
+        self.assertEqual([problem.code for problem in problems], ["review-missing"])
+
+    def test_changed_input_is_review_stale(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        self.input_path.write_text("changed\n", encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual([problem.code for problem in problems], ["review-stale"])
+
+    def test_blocking_record_is_review_blocking(self):
+        blocking = [{"title": "gap", "evidence": "missing"}]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual([problem.code for problem in problems], ["review-blocking"])
+
+    def test_malformed_record_is_review_malformed(self):
+        path = self._record_path()
+        path.parent.mkdir(parents=True)
+        path.write_text("{bad json", encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual([problem.code for problem in problems], ["review-malformed"])
+
+
+class TestMainAndHelp(CrossReviewTests):
+    def test_help_states_same_family_different_scale_not_cross_family(self):
+        stdout = StringIO()
+        with redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
+            main(["cross-review", "--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        text = stdout.getvalue()
+        self.assertIn("同族不同规模", text)
+        self.assertIn("非跨族", text)
+
+    def test_main_run_pass_zero_blocking_one_and_oserror_two(self):
+        pass_runner = self._runner(payload=self._payload("pass"))
+        with mock.patch("ccfa.cross_review.run_review", side_effect=lambda *a, **k: {"verdict": "pass"}):
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "cross-review",
+                            "run",
+                            "--paper-root",
+                            str(self.paper_root),
+                            "--stage",
+                            "internal-review",
+                            "--path",
+                            "manuscript/main.tex",
+                        ]
+                    ),
+                    0,
+                )
+
+        with mock.patch("ccfa.cross_review.run_review", side_effect=lambda *a, **k: {"verdict": "blocking"}):
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "cross-review",
+                            "run",
+                            "--paper-root",
+                            str(self.paper_root),
+                            "--stage",
+                            "internal-review",
+                            "--path",
+                            "manuscript/main.tex",
+                        ]
+                    ),
+                    1,
+                )
+
+        with mock.patch(
+            "ccfa.cross_review.run_review",
+            side_effect=ValueError("无法运行 codex exec"),
+        ):
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "cross-review",
+                            "run",
+                            "--paper-root",
+                            str(self.paper_root),
+                            "--stage",
+                            "internal-review",
+                            "--path",
+                            "manuscript/main.tex",
+                        ]
+                    ),
+                    2,
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()
