@@ -12,6 +12,7 @@ from pathlib import Path
 from ccfa.bib import load_entries
 from ccfa.citation_ledger import load_ledger
 from ccfa.cli import Problem, emit, tool_error
+from ccfa.doi_lookup import lookup
 from ccfa.texscan import find_cited_keys, iter_tex_files
 
 
@@ -19,6 +20,7 @@ def check(
     manuscript: Path,
     bib_path: Path,
     ledger_path: Path,
+    verify_online: bool = False,
 ) -> tuple[list[Problem], list[Problem]]:
     cited = find_cited_keys(iter_tex_files(Path(manuscript)))
     entries = load_entries(Path(bib_path))
@@ -78,6 +80,22 @@ def check(
                 )
             )
 
+    if verify_online:
+        for key in sorted(entries):
+            doi = entries[key].doi
+            if not doi:
+                continue
+            result = lookup(doi)
+            if not result.found:
+                problems.append(
+                    Problem(
+                        "doi-not-found",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的 DOI {doi} 无法解析（{result.detail}）",
+                    )
+                )
+
     return problems, advisories
 
 
@@ -86,11 +104,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--manuscript", required=True)
     parser.add_argument("--bib", required=True)
     parser.add_argument("--ledger", required=True)
+    parser.add_argument("--verify-online", action="store_true")
     args = parser.parse_args(argv[1:])
 
     try:
         problems, advisories = check(
-            Path(args.manuscript), Path(args.bib), Path(args.ledger)
+            Path(args.manuscript),
+            Path(args.bib),
+            Path(args.ledger),
+            verify_online=args.verify_online,
         )
     except ValueError as exc:
         return tool_error(str(exc))

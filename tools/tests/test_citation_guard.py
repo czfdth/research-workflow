@@ -166,3 +166,28 @@ class TestMain(BaseCase):
                 ]
             )
         self.assertEqual(code, 2)
+
+
+class TestVerifyOnline(BaseCase):
+    def test_online_flag_is_off_by_default(self):
+        self.cite(r"\cite{good}")
+        problems, _ = check(self.root / "manuscript", self.bib, self.ledger)
+        self.assertNotIn("doi-not-found", self.codes(problems))
+
+    def test_online_flag_reports_a_dead_doi(self):
+        self.cite(r"\cite{good}")
+        import ccfa.citation_guard as guard
+        from ccfa.doi_lookup import LookupResult
+
+        def fake_lookup(doi, fetch=None, timeout=20.0):
+            return LookupResult(doi, False, None, "crossref: HTTP 404")
+
+        original = guard.lookup
+        guard.lookup = fake_lookup
+        try:
+            problems, _ = check(
+                self.root / "manuscript", self.bib, self.ledger, verify_online=True
+            )
+        finally:
+            guard.lookup = original
+        self.assertIn("doi-not-found", self.codes(problems))
