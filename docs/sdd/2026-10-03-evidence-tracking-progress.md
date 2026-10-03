@@ -1701,3 +1701,19 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 
 - 终审者 `Bernoulli the 2nd`；范围 base `dc5b4b0` → head `f4a61f5`（14 commits，153,626 bytes）。
 - 重点：fresh checkout 可复现（无 venv 跑 docs 测试）、state 授权与审计方向、8 节点 + T-30、manifest 类型/路径、revision-ledger 七列、DoD（729→818，+89）、新 CLI 包装器与集合断言、诚实挂账。
+
+## 商品化结项（2026-10-03）
+
+- 终审者 `Bernoulli the 2nd`：**Merge readiness = Ready**，无 Critical/Important。独立证据：全量 818 OK；`git archive f4a61f5`（无 venv、无 .git）下 docs 测试 14 例 OK；`pip install --dry-run` 解析四项钉死依赖；向后 set-stage 退 2 且字节不变；伪造方向 history 报 `state-history-direction`；manifest 越界 generator/source_data/run id 均被拦；revision-ledger 转义竖线不误拆、`C1`/`c1` 判重。
+- 终审两条 Minor 处置：
+  1. **根 README 速查仍是 3 节点**（`b9b790d` 漏了根 README）→ 控制器当场修：`87edf7a` 改成 8 节点，并新增 `test_every_countdown_node_is_named_in_readme`（节点列表**从 `milestones.checkpoints` 派生**、用数字边界避免 `T-1` 匹配 `T-14`）。判别力实测：修前 4 条失败（T-90/T-60/T-30/T-21 缺失），修后 docs 15 例 OK、全量 **819 OK**。
+  2. `stage.history[].at` 只校验非空字符串、不校验日期 → **挂账**（信息字段、无授权/方向含义；与既有 `stage.updated_at` 不校验日期的口径一致）。
+- 商品化阶段：commits `dc5b4b0..87edf7a`；测试 **729 → 819（+90）**；DoD（≥780、6 条判别力、全新 venv 证据、新 CLI 包装器与集合断言、E53–E56 入账）全部满足。
+  productization: complete (review clean)
+
+## 全项目挂账清单（商品化后，供后续决定）
+
+1. 自动化：2 条 cron 已挂载（投稿里程碑每日、文献监控每周），但尚未经历真实定时触发；周监控 `feeds` 仍为空待用户填；`stage-advance`/`experiment-queue` 按设计保持手动。
+2. 模板库：ACL 上游缺 `acl_natbib.bst`/`custom.bib`（测试诚实钉住）；期刊 venue 无真编译证据（NeurIPS 会议模板已真编译）。
+3. 契约小项：`history[].at` 与 `stage.updated_at` 不校验日期；`milestones stage` 不校验 gate 与 stages.py 一致；T-14/T-7 共用同一 gate；`today == deadline` 无提示；problem 无行号（milestones）；checklist 换行未钉死文件规范；`run_log` cwd 断言价值有限；真实 `codex exec` 冒烟未被终审复跑。
+4. 工程化：无远端仓库、无 CI、无 LICENSE（需用户决定私有/开源与托管位置）；venv 依赖清单已补齐并验证，但 `tools/.venv` 本身仍不入库（符合预期）。
