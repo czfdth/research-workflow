@@ -21,12 +21,29 @@ from ccfa.latex_structure import (
 from ccfa.texscan import iter_tex_files
 
 
+def _resolve_main(manuscript: Path, main: str) -> Path:
+    """Resolve a manuscript-relative main file without escaping its root."""
+    raw = Path(main)
+    if raw.is_absolute():
+        raise ValueError(f"--main 必须是手稿目录下的相对路径: {main!r}")
+    root = manuscript.resolve()
+    candidate = (root / raw).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"--main 逃出手稿目录: {main!r}") from exc
+    if not candidate.is_file():
+        raise ValueError(f"找不到主文件: {candidate}")
+    return candidate
+
+
 def check(
     manuscript: Path,
     bib: Path | None = None,
     figures_root: Path | None = None,
     compile: bool = False,
     engine: str | None = None,
+    main: str = "main.tex",
 ) -> tuple[list[Problem], list[Problem]]:
     manuscript = Path(manuscript)
     if not manuscript.is_dir():
@@ -46,9 +63,7 @@ def check(
         chosen = find_engine(engine)
         if chosen is None:
             raise ToolEnvironmentError("找不到 LaTeX 引擎（尝试过 pdflatex / xelatex）")
-        main_tex = manuscript / "main.tex"
-        if not main_tex.is_file():
-            raise ValueError(f"找不到主文件: {main_tex}")
+        main_tex = _resolve_main(manuscript, main)
         try:
             report = compile_document(main_tex, chosen)
         except OSError as exc:
@@ -73,6 +88,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--figures-root")
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--engine")
+    parser.add_argument(
+        "--main",
+        default="main.tex",
+        help="手稿目录下的相对主文件路径（默认: main.tex）",
+    )
     args = parser.parse_args(argv[1:])
     try:
         problems, advisories = check(
@@ -81,6 +101,7 @@ def main(argv: list[str]) -> int:
             Path(args.figures_root) if args.figures_root else None,
             compile=args.compile,
             engine=args.engine,
+            main=args.main,
         )
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))

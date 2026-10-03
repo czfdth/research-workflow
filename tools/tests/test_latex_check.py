@@ -21,6 +21,25 @@ class BaseCase(unittest.TestCase):
     def write(self, body: str):
         self.tex.write_text(body, encoding="utf-8")
 
+    def fake_compile(self, seen):
+        original_compile = latex_check.compile_document
+        original_engine = latex_check.find_engine
+        report = CompileReport("pdflatex", [CompileStep("pdflatex", "ran", 0)])
+
+        def compile_without_latex(tex, engine):
+            seen["tex"] = Path(tex)
+            seen["engine"] = engine
+            return report
+
+        latex_check.compile_document = compile_without_latex
+        latex_check.find_engine = lambda preferred=None: "pdflatex"
+        return original_compile, original_engine
+
+    @staticmethod
+    def restore_compile(original_compile, original_engine):
+        latex_check.compile_document = original_compile
+        latex_check.find_engine = original_engine
+
     def run_main(self, *extra):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -35,6 +54,35 @@ class TestCheck(BaseCase):
         problems, advisories = check(self.manuscript)
         self.assertEqual(problems, [])
         self.assertEqual(advisories, [])
+
+    def test_compiles_non_default_main_file(self):
+        alternative = self.manuscript / "venue-paper.tex"
+        alternative.write_text("\\section{Intro}\n", encoding="utf-8")
+        self.tex.unlink()
+        seen = {}
+        originals = self.fake_compile(seen)
+        try:
+            problems, _ = check(
+                self.manuscript,
+                compile=True,
+                main="venue-paper.tex",
+            )
+        finally:
+            self.restore_compile(*originals)
+
+        self.assertEqual(problems, [])
+        self.assertEqual(seen["tex"], alternative.resolve())
+
+    def test_default_main_file_is_still_main_tex(self):
+        seen = {}
+        originals = self.fake_compile(seen)
+        try:
+            problems, _ = check(self.manuscript, compile=True)
+        finally:
+            self.restore_compile(*originals)
+
+        self.assertEqual(problems, [])
+        self.assertEqual(seen["tex"], self.tex.resolve())
 
     def test_unclosed_brace_is_a_problem(self):
         self.write("\\section{Intro\n")
@@ -108,6 +156,45 @@ class TestMain(BaseCase):
             latex_check.find_engine = original_engine
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
+
+    def test_main_flag_targets_non_default_file(self):
+        alternative = self.manuscript / "venue-paper.tex"
+        alternative.write_text("\\section{Intro}\n", encoding="utf-8")
+        self.tex.unlink()
+        seen = {}
+        originals = self.fake_compile(seen)
+        try:
+            code, stdout, stderr = self.run_main(
+                "--compile",
+                "--main",
+                "venue-paper.tex",
+            )
+        finally:
+            self.restore_compile(*originals)
+
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(seen["tex"], alternative.resolve())
+        self.assertEqual(json.loads(stdout)["problem_count"], 0)
+
+    def test_missing_or_escaping_main_exits_two(self):
+        original = latex_check.find_engine
+        latex_check.find_engine = lambda preferred=None: "pdflatex"
+        try:
+            for name, expected in (
+                ("does-not-exist.tex", "找不到主文件"),
+                ("../escape.tex", "逃出"),
+            ):
+                with self.subTest(name=name):
+                    code, stdout, stderr = self.run_main(
+                        "--compile",
+                        "--main",
+                        name,
+                    )
+                    self.assertEqual(code, 2)
+                    self.assertEqual(stdout, "")
+                    self.assertIn(expected, stderr)
+        finally:
+            latex_check.find_engine = original
 
 
 if __name__ == "__main__":

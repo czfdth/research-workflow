@@ -24,12 +24,14 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
+from ccfa.latex_check import main as latex_check_main
 from ccfa.latex_compile import compile_document, find_engine
 from ccfa.memory import main as memory_main
 from ccfa.milestones import main as milestones_main
 from ccfa.texdoc import find_main_tex
 from ccfa.validate import main as validate_main
 from newpaper.create import create_project
+from newpaper.venues import resolve_venue
 
 
 class DerivationEndToEnd(unittest.TestCase):
@@ -195,12 +197,66 @@ class DerivationEndToEnd(unittest.TestCase):
         self.assertEqual(report.engine, engine)
         self.assertGreater(pdf.stat().st_size, 0)
 
-    def test_derived_acl_project_compiles_end_to_end(self):
+        # Structural mode pins the upstream placeholder gap. Exit 1 is the
+        # correct result: the real template references myfile.pdf but does not
+        # ship that placeholder asset.
+        code, stdout, stderr = self._run(
+            latex_check_main,
+            [
+                "latex_check.py",
+                "--manuscript",
+                str(root / "manuscript"),
+                "--main",
+                "neurips_2026.tex",
+            ],
+        )
+        self.assertEqual(code, 1, stderr)
+        problems = json.loads(stdout)["problems"]
+        self.assertTrue(
+            any(
+                problem["code"] == "missing-figure"
+                and "myfile.pdf" in problem["message"]
+                for problem in problems
+            ),
+            f"NeurIPS 上游占位图问题未被报出: {problems!r}",
+        )
+
+    def test_acl_upstream_template_is_missing_bibliography_assets(self):
+        """ACL 模板当前缺少 bib 资产；上游补齐后本用例必须升级。
+
+        The upstream ACL directory ships ``acl.sty`` and ``acl_latex.tex``
+        but not ``acl_natbib.bst`` or ``custom.bib``. If a future template
+        update adds those files, the missing-asset assertions below fail and
+        this test must be replaced with a full compile-success assertion.
+        """
+
         root = self._derive("acl-smoke", "ACL")
 
         self._assert_skeleton(root)
         self._assert_toolchain(root)
-        self._assert_compiles(root)
+
+        template = resolve_venue("ACL")
+        for asset in ("acl_natbib.bst", "custom.bib"):
+            self.assertFalse(
+                (template / asset).exists(),
+                f"上游 ACL 模板已提供 {asset}；请升级为完整编译成功断言",
+            )
+
+        _, _, _, report, log = self._compile_actual_main(root)
+        self.assertTrue(report.steps, "ACL 编译序列没有执行任何步骤")
+        self.assertEqual(
+            report.steps[-1].status,
+            "failed",
+            f"ACL 模板意外编译成功；请升级为成功断言: {list(report.steps)!r}",
+        )
+        failed = next(
+            index
+            for index, step in enumerate(report.steps)
+            if step.status == "failed"
+        )
+        output = log[failed]["output"]
+        self.assertIn("acl_natbib.bst", output)
+        self.assertIn("custom.bib", output)
 
     def test_derived_cvpr_project_preserves_nested_template_tree(self):
         root = self._derive("cvpr-smoke", "CVPR")
