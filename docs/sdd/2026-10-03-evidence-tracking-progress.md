@@ -1844,3 +1844,12 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 
 - Task 1（论文独立仓库 + 防父仓库逃逸 + 示例论文迁移）已派 `Confucius`，base `b4bfec6`；Task 2（受保护区覆盖率）/Task 3（去自证）/Task 4（迁移与收口）随后。
 - 未跟踪根目录 `submission/`：与论文内 `submission/` 比对后按用户确认处理，本阶段不擅自删除。
+
+### 根目录 `submission/` 误拷贝处理（已解决）
+
+- 比对证据：根目录副本 11 个文件，其中 10 个与论文内 `submission/repro/` 对应文件**字节一致**，仅 `MANIFEST.json` 不同（根 `created_at=2026-10-03T18:34:37Z`，论文内 `19:23:20Z`，后者是超集）。
+- 处置：**不删除**，非破坏性归档到 `papers/rag-attack-defense/ccfa-workfiles/archive/repro-bundle-20261003T1834/`；模板仓库根目录不再有游离 `submission/`。由论文仓库（迁移后）自行决定保留或丢弃。
+
+### 用户对 P1 方向的口头确认
+
+- 用户以"嗯嗯"回应"P0 之后紧接着做长任务安全（沙箱/GPU 预算/看门狗）与跨族评审"的提议：按**同意**处理，两项列入 evidence-integrity 之后的下一计划（长任务安全为最高优先）。
