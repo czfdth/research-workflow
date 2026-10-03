@@ -1,7 +1,15 @@
 import unittest
+from pathlib import Path
 
 from ccfa.stages import stages_for
 from newpaper.checklists import render_checklist
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CHECKLISTS = {"conference": "conference.md", "journal": "journal.md"}
+
+
+def normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 class TestChecklistRendering(unittest.TestCase):
@@ -27,3 +35,17 @@ class TestChecklistRendering(unittest.TestCase):
     def test_unknown_mode_raises(self):
         with self.assertRaises(ValueError):
             render_checklist("workshop")
+
+
+class TestCommittedChecklists(unittest.TestCase):
+    def test_committed_files_match_fresh_render(self):
+        for mode, filename in CHECKLISTS.items():
+            with self.subTest(mode=mode):
+                path = REPO_ROOT / "checklists" / filename
+                with path.open("r", encoding="utf-8", newline="") as handle:
+                    committed = handle.read()
+                self.assertEqual(
+                    normalize_newlines(committed),
+                    normalize_newlines(render_checklist(mode)),
+                    f"{filename} 与最新渲染不一致；请重新运行 tools/newpaper/checklists.py",
+                )

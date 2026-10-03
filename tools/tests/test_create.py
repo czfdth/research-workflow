@@ -1,7 +1,12 @@
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import newpaper.create as create_module
+import yaml
 from ccfa.validate import validate_yaml
 from newpaper.create import create_project
 from newpaper.venues import VenueNotFound
@@ -13,15 +18,31 @@ class TestCreateProject(unittest.TestCase):
         self.papers = self.tmp / "papers"
         self.papers.mkdir()
 
-    def _create(self, slug="demo-paper", venue="NeurIPS", mode="conference"):
+    def _create(
+        self,
+        slug="demo-paper",
+        venue="NeurIPS",
+        mode="conference",
+        title="Demo Paper",
+        year="2027",
+    ):
         return create_project(
             papers_root=self.papers,
             slug=slug,
             venue=venue,
-            year="2027",
+            year=year,
             mode=mode,
-            title="Demo Paper",
+            title=title,
         )
+
+    def _venue_template(self, name="fake-venue"):
+        template = self.tmp / name
+        template.mkdir()
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        return template
 
     def test_creates_expected_tree(self):
         root = self._create()
@@ -82,3 +103,132 @@ class TestCreateProject(unittest.TestCase):
         rel = main.relative_to(root).as_posix()
         text = (root / "ccfa.yaml").read_text(encoding="utf-8")
         self.assertIn(f'manuscript: "{rel}"', text)
+
+    def test_validate_slug_rejects_unsafe_names(self):
+        for slug in [
+            "..",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "C:\\evil",
+            "/abs/evil",
+            "UPPER",
+            "",
+            "with space",
+            "-leading-dash",
+        ]:
+            with self.subTest(slug=slug):
+                with self.assertRaises(ValueError):
+                    create_module.validate_slug(slug)
+
+    def test_validate_slug_accepts_conservative_names(self):
+        for slug in ["a", "demo-paper", "paper.v2", "p_1", "a-1_b.c"]:
+            with self.subTest(slug=slug):
+                self.assertEqual(create_module.validate_slug(slug), slug)
+
+    def test_create_project_rejects_unsafe_slug_without_writing(self):
+        for slug in ["..", "../escape", "a/b", "a\\b", "UPPER"]:
+            with self.subTest(slug=slug):
+                with self.assertRaises(ValueError):
+                    self._create(slug=slug)
+        self.assertEqual(list(self.papers.iterdir()), [])
+        self.assertEqual([entry.name for entry in self.tmp.iterdir()], ["papers"])
+
+    def test_create_project_rechecks_target_containment(self):
+        escape = str(self.tmp / "outside" / "paper")
+        with mock.patch("newpaper.create.validate_slug", return_value=escape):
+            with self.assertRaises(ValueError):
+                self._create(slug="whatever")
+        self.assertFalse((self.tmp / "outside").exists())
+
+    def test_main_reports_unsafe_slug_as_problem(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = create_module.main(
+                [
+                    "create.py",
+                    "../oops",
+                    "--venue",
+                    "NeurIPS",
+                    "--year",
+                    "2027",
+                    "--mode",
+                    "conference",
+                    "--papers-root",
+                    str(self.papers),
+                ]
+            )
+        self.assertEqual(code, 1)
+        self.assertFalse((self.tmp / "oops").exists())
+        self.assertEqual(list(self.papers.iterdir()), [])
+
+    def test_title_with_quotes_still_validates(self):
+        root = self._create(title='My "Quoted" Paper')
+        self.assertEqual(validate_yaml(root / "ccfa.yaml"), [])
+        data = yaml.safe_load((root / "ccfa.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(data["project"]["title"], 'My "Quoted" Paper')
+
+    def test_tricky_scalars_round_trip_as_strings(self):
+        template = self._venue_template()
+        venue = 'NeurIPS: "Main" #1'
+        title = 'A "title": #not-a-comment'
+        year = "20:27"
+        with mock.patch("newpaper.create.resolve_venue", return_value=template):
+            root = create_project(
+                papers_root=self.papers,
+                slug="tricky-scalars",
+                venue=venue,
+                year=year,
+                mode="conference",
+                title=title,
+            )
+        self.assertEqual(validate_yaml(root / "ccfa.yaml"), [])
+        data = yaml.safe_load((root / "ccfa.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(data["project"]["title"], title)
+        self.assertEqual(data["project"]["short_name"], "tricky-scalars")
+        self.assertEqual(data["target_venue"]["name"], venue)
+        self.assertEqual(data["target_venue"]["year"], year)
+
+    def test_main_defaults_papers_root_to_repository_papers(self):
+        captured = {}
+
+        def fake_create_project(**kwargs):
+            captured.update(kwargs)
+            return Path("unused")
+
+        with mock.patch("newpaper.create.create_project", new=fake_create_project):
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = create_module.main(
+                    [
+                        "create.py",
+                        "demo-paper",
+                        "--venue",
+                        "NeurIPS",
+                        "--year",
+                        "2027",
+                        "--mode",
+                        "conference",
+                        "--title",
+                        "Demo",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        expected = Path(create_module.__file__).resolve().parents[2] / "papers"
+        self.assertEqual(captured["papers_root"], expected)
+
+    def test_failed_template_leaves_no_debris_and_stays_retryable(self):
+        broken = self.tmp / "broken-template"
+        broken.mkdir()
+        (broken / "venue.cls").write_text("% no documentclass here\n", encoding="utf-8")
+        with mock.patch("newpaper.create.resolve_venue", return_value=broken):
+            with self.assertRaises(FileNotFoundError):
+                self._create(slug="retry-demo")
+        self.assertFalse(
+            (self.papers / "retry-demo").exists(),
+            "失败后残留了半成品目录，重试会被 FileExistsError 挡住",
+        )
+
+        good = self._venue_template("good-template")
+        with mock.patch("newpaper.create.resolve_venue", return_value=good):
+            root = self._create(slug="retry-demo")
+        self.assertTrue((root / "ccfa.yaml").is_file())
+        self.assertEqual(validate_yaml(root / "ccfa.yaml"), [])
