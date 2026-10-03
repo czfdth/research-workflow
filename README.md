@@ -2,7 +2,7 @@
 
 论文工作流模板库。每篇论文派生一份独立目录。
 
-设计文档：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md`
+设计文档：`../../Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md`
 
 ## 目录约定
 
@@ -17,7 +17,8 @@
 ## 派生一篇新论文
 
 ```powershell
-$root = "C:/Users/best/Documents/Codex/paper-template"
+cd <仓库根>
+$root = (Get-Location).Path
 $env:PYTHONPATH = "$root/tools"
 $venv = "$root/tools/.venv/Scripts/python.exe"
 & $venv "$root/tools/newpaper/create.py" my-paper `
@@ -27,12 +28,20 @@ $venv = "$root/tools/.venv/Scripts/python.exe"
 ## 重新生成 checklist
 
 ```powershell
+cd <仓库根>
+$root = (Get-Location).Path
+$env:PYTHONPATH = "$root/tools"
+$venv = "$root/tools/.venv/Scripts/python.exe"
 & $venv "$root/tools/newpaper/checklists.py"
 ```
 
 ## 校验状态文件
 
 ```powershell
+cd <仓库根>
+$root = (Get-Location).Path
+$env:PYTHONPATH = "$root/tools"
+$venv = "$root/tools/.venv/Scripts/python.exe"
 & $venv "$root/tools/ccfa/validate.py" path/to/ccfa.yaml
 ```
 
@@ -41,7 +50,9 @@ $venv = "$root/tools/.venv/Scripts/python.exe"
 ## 跑测试
 
 ```powershell
-cd $root
+cd <仓库根>
+$root = (Get-Location).Path
+$venv = "$root/tools/.venv/Scripts/python.exe"
 & $venv -m unittest discover -s tools/tests -t tools -v
 ```
 
