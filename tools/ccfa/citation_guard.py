@@ -24,7 +24,7 @@ def check(
 ) -> tuple[list[Problem], list[Problem]]:
     manuscript = Path(manuscript)
     if not manuscript.is_dir():
-        raise ValueError(f"手稿目录不存在: {manuscript}")
+        raise ValueError(f"手稿目录不存在或不是目录: {manuscript}")
     cited = find_cited_keys(iter_tex_files(manuscript))
     entries = load_entries(Path(bib_path))
     ledger = load_ledger(Path(ledger_path))
