@@ -56,14 +56,30 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(payload["provider"]["key_name"], "provider-key")
         self.assertEqual(list(self.path.parent.glob("*.tmp")), [])
 
-    def test_saved_bytes_never_contain_a_key(self):
-        save_settings(
-            self.path,
-            Settings(provider=self._provider()),
-            key=FAKE_KEY,
-        )
+    def test_saved_provider_fields_are_exactly_the_whitelist(self):
+        provider = self._provider()
 
-        self.assertNotIn(FAKE_KEY.encode("utf-8"), self.path.read_bytes())
+        save_settings(self.path, Settings(provider=provider))
+
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            set(payload["provider"]),
+            {"name", "base_url", "model", "key_name", "timeout_s"},
+        )
+        self.assertEqual(payload["provider"]["name"], provider.name)
+        self.assertEqual(payload["provider"]["base_url"], provider.base_url)
+        self.assertEqual(payload["provider"]["model"], provider.model)
+        self.assertEqual(payload["provider"]["key_name"], provider.key_name)
+        self.assertEqual(payload["provider"]["timeout_s"], provider.timeout_s)
+        self.assertNotIn(FAKE_KEY, self.path.read_text(encoding="utf-8"))
+
+    def test_save_settings_rejects_an_unknown_key_argument(self):
+        with self.assertRaises(TypeError):
+            save_settings(
+                self.path,
+                Settings(provider=self._provider()),
+                key=FAKE_KEY,
+            )
 
     def test_load_rejects_wrong_schema_version(self):
         self.path.write_text(

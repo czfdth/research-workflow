@@ -101,10 +101,8 @@ def load_settings(path: Path) -> Settings:
 def save_settings(
     path: Path,
     settings: Settings | ProviderSettings | None = None,
-    *,
-    key: str | None = None,
 ) -> None:
-    """Atomically save settings. ``key`` is never serialized."""
+    """Atomically save settings; secrets belong in SecretStore."""
     path = Path(path)
     if isinstance(settings, ProviderSettings):
         settings = Settings(provider=settings)
@@ -139,8 +137,5 @@ def save_settings(
             "timeout_s": provider.timeout_s,
         },
     }
-    # ``key`` exists only to make the no-plaintext red line explicit and
-    # testable. Real secrets belong in SecretStore, never in this file.
-    del key
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     save_text_atomically(path, text, description="设置")

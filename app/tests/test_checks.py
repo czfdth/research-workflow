@@ -1,4 +1,8 @@
+import os
+import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from datetime import date
 from pathlib import Path
@@ -91,11 +95,58 @@ class CheckTests(unittest.TestCase):
 
         self.assertIn("milestones", str(caught.exception))
 
-    def test_core_source_has_no_pyside6_import(self):
-        core_dir = Path(__file__).resolve().parents[1] / "ccfa_core"
-        for path in sorted(core_dir.glob("*.py")):
-            with self.subTest(path=path.name):
-                self.assertNotIn("PySide6", path.read_text(encoding="utf-8"))
+    def test_core_import_graph_does_not_block_on_pyside6(self):
+        script = textwrap.dedent(
+            """
+            import sys
+            import tempfile
+            from pathlib import Path
+
+            class BlockPySide6:
+                def find_spec(self, fullname, path=None, target=None):
+                    if fullname == "PySide6" or fullname.startswith("PySide6."):
+                        raise ImportError(f"blocked PySide6 import: {fullname}")
+                    return None
+
+            sys.meta_path.insert(0, BlockPySide6())
+
+            import ccfa_core
+            from ccfa_core import checks, projects, secrets, settings
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                assert projects.find_projects(root) == []
+                loaded = settings.load_settings(root / "settings.json")
+                assert loaded.provider is None
+
+            offending = [
+                name
+                for name in sys.modules
+                if name == "PySide6" or name.startswith("PySide6.")
+            ]
+            assert not offending, offending
+            print("CORE_IMPORT_OK")
+            """
+        )
+        app_dir = Path(__file__).resolve().parents[1]
+        repo_root = Path(__file__).resolve().parents[2]
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(app_dir), str(repo_root / "tools")]
+        )
+
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=str(app_dir),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("CORE_IMPORT_OK", completed.stdout)
 
 
 if __name__ == "__main__":
