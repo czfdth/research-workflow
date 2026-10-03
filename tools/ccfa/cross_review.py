@@ -43,6 +43,7 @@ DEFAULT_MODEL = "deepseek-v4-pro"
 _SAME_FAMILY_MODELS = {"deepseek-v4-pro", "deepseek-v4-flash"}
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STDERR_LIMIT = 4000
+_RAW_LAST_MESSAGE_LIMIT = 10000
 _STDERR_TRUNCATION_MARKER = "...[truncated]"
 
 
@@ -58,11 +59,15 @@ def _family_judgement(model: str) -> str:
     return "unknown"
 
 
-def _bounded_stderr(stderr: object) -> str:
-    text = str(stderr)
-    if len(text) <= _STDERR_LIMIT:
+def _bounded_text(value: object, limit: int) -> str:
+    text = str(value)
+    if len(text) <= limit:
         return text
-    return text[:_STDERR_LIMIT] + _STDERR_TRUNCATION_MARKER
+    return text[:limit] + _STDERR_TRUNCATION_MARKER
+
+
+def _bounded_stderr(stderr: object) -> str:
+    return _bounded_text(stderr, _STDERR_LIMIT)
 
 
 def _load_mode(paper_root: Path) -> str:
@@ -360,7 +365,10 @@ def run_review(
             "stage": stage,
             "exit_code": 0,
             "stderr": _bounded_stderr(stderr),
-            "raw_last_message": raw_last_message[:10000],
+            "raw_last_message": _bounded_text(
+                raw_last_message,
+                _RAW_LAST_MESSAGE_LIMIT,
+            ),
         }
         _write_records(malformed, json_path, markdown_path)
         return malformed

@@ -278,6 +278,28 @@ class TestRunReview(CrossReviewTests):
         self.assertEqual(record["stderr"], "short stderr")
         self.assertNotIn("...[truncated]", record["stderr"])
 
+    def test_long_raw_last_message_is_marked_truncated(self):
+        runner = self._runner(raw="x" * 20_000)
+
+        result = self._run(runner)
+
+        self.assertEqual(result["verdict"], "malformed")
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertLessEqual(
+            len(record["raw_last_message"]),
+            10_000 + len("...[truncated]"),
+        )
+        self.assertTrue(record["raw_last_message"].endswith("...[truncated]"))
+
+    def test_short_raw_last_message_is_not_marked_truncated(self):
+        runner = self._runner(raw="{short malformed")
+
+        self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["raw_last_message"], "{short malformed")
+        self.assertNotIn("...[truncated]", record["raw_last_message"])
+
 
 class TestCheckReview(CrossReviewTests):
     def test_missing_record_is_review_missing(self):
