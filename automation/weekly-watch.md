@@ -2,15 +2,19 @@
 
 运行共享文献增量监控，只报告事实新增。
 
+## 源配置
+
+从 `automation/watch-sources.json` 读取：`feeds`（Atom feed URL 列表）与 `state`（状态文件相对路径）。
+`feeds` 为空时保持安静，不通知。每个 URL 各跑一次下面的命令。
+
 ## 命令
 
 ```powershell
 $ROOT = "<repo-root>"
-$PAPER_ROOT = "<paper-root>"
 $env:PYTHONPATH = "$ROOT/tools"
 & "$ROOT/tools/.venv/Scripts/python.exe" "$ROOT/tools/ccfa/watch.py" scan `
-    --state "$PAPER_ROOT/watch-state.json" `
-    --url "<arxiv-feed-url>"
+    --state "$ROOT/<state>" `
+    --url "<feeds 中的每个 URL>"
 ```
 
 ## 读取字段

@@ -9,6 +9,8 @@ tools/.venv/
 *.synctex.gz
 library/papers/*.pdf
 !library/papers/.gitkeep
+# Derived cursor for automation/watch-sources.json; rebuilt from scratch on a fresh clone.
+/library/watch-state.json
 # Derived paper projects created by tools/newpaper land here.
 /papers/
 __pycache__/

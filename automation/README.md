@@ -35,7 +35,8 @@
 ## 挂载方式
 
 1. 用户提供论文项目根目录 `<paper-root>`。
-2. 用户确认要创建的自动化、频率和相关 URL/队列文件。
+2. 用户确认要创建的自动化、频率和相关 URL/队列文件；文献监控的源写在
+   `automation/watch-sources.json`（`feeds` 为空时该任务保持安静）。
 3. 在 Codex automations 中选择本地项目，把对应模板作为 prompt。
 4. 在 prompt 中替换 `<repo-root>` 与 `<paper-root>`。
 5. 先用手动命令验证输出，再启用定时触发。
