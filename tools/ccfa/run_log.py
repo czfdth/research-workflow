@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from ccfa import cli
-from ccfa.cli import ToolEnvironmentError, tool_error
+from ccfa.cli import Problem, ToolEnvironmentError, emit, save_text_atomically, tool_error
 
 
 def _now_iso() -> str:
@@ -168,6 +168,126 @@ def run_command(
     return run_id, record
 
 
+def record_path(log_dir: Path, run_id: str) -> Path:
+    return Path(log_dir) / f"{run_id}.json"
+
+
+def log_metrics(log_dir: Path, run_id: str, metrics: dict) -> dict:
+    if not isinstance(metrics, dict):
+        raise ValueError("metrics 必须是 JSON 对象")
+    path = record_path(log_dir, run_id)
+    if not path.is_file():
+        raise ValueError(f"没有这条运行记录: {run_id}")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["metrics"] = metrics
+    save_text_atomically(
+        path,
+        json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        description="运行记录",
+    )
+    return record
+
+
+def _parse_started(value: object) -> datetime | None:
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def check_runs(
+    log_dir: Path,
+    stale_hours: float = 24.0,
+    now: datetime | None = None,
+) -> tuple[list[Problem], list[Problem]]:
+    log_dir = Path(log_dir)
+    reference = now or datetime.now(timezone.utc)
+    problems: list[Problem] = []
+    advisories: list[Problem] = []
+    if not log_dir.is_dir():
+        return problems, advisories
+    for path in sorted(log_dir.glob("*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            problems.append(
+                Problem("run-log-malformed", str(path), None, f"运行记录不可读: {exc}")
+            )
+            continue
+        if not isinstance(record, dict) or "status" not in record:
+            problems.append(
+                Problem(
+                    "run-log-malformed",
+                    str(path),
+                    None,
+                    "运行记录缺少 status 字段",
+                )
+            )
+            continue
+        status = record.get("status")
+        started = _parse_started(record.get("started_at"))
+        if status == "running":
+            if started is None:
+                problems.append(
+                    Problem(
+                        "run-log-malformed",
+                        str(path),
+                        None,
+                        "running 记录缺少可解析的 started_at",
+                    )
+                )
+            elif (reference - started).total_seconds() > stale_hours * 3600:
+                problems.append(
+                    Problem(
+                        "run-log-stale-running",
+                        str(path),
+                        None,
+                        f"记录停留在 running 超过 {stale_hours:g} 小时: {record.get('run_id')}",
+                    )
+                )
+            continue
+        if status == "completed":
+            if record.get("metrics") is None:
+                problems.append(
+                    Problem(
+                        "run-log-metrics-pending",
+                        str(path),
+                        None,
+                        f"运行已完成但未登记指标: {record.get('run_id')}",
+                    )
+                )
+            elif record.get("metrics") == {}:
+                problems.append(
+                    Problem(
+                        "run-log-empty-metrics",
+                        str(path),
+                        None,
+                        f"运行指标为空对象: {record.get('run_id')}",
+                    )
+                )
+        if not record.get("git_commit"):
+            problems.append(
+                Problem(
+                    "run-log-missing-commit",
+                    str(path),
+                    None,
+                    f"记录缺少 git commit: {record.get('run_id')}",
+                )
+            )
+        if record.get("git_dirty") is True:
+            advisories.append(
+                Problem(
+                    "run-log-dirty-tree",
+                    str(path),
+                    None,
+                    f"该运行发生在脏树上，无法仅凭 commit 复现: {record.get('run_id')}",
+                )
+            )
+    return problems, advisories
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="记录并运行一次计算")
     parser.add_argument("--log-dir", required=True)
@@ -181,9 +301,30 @@ def main(argv: list[str]) -> int:
     run.add_argument("--propagate-exit", action="store_true")
     run.add_argument("command", nargs=argparse.REMAINDER)
 
+    metrics = sub.add_parser("log-metrics", help="为已有运行记录登记指标")
+    metrics.add_argument("run_id")
+    metrics.add_argument("--metrics", required=True)
+
+    check = sub.add_parser("check", help="检查运行记录完整性")
+    check.add_argument("--stale-hours", type=float, default=24.0)
+
     args = parser.parse_args(argv[1:])
-    if args.subcommand != "run":
-        return tool_error(f"未知子命令: {args.subcommand}")
+    if args.subcommand == "log-metrics":
+        try:
+            parsed_metrics = json.loads(args.metrics)
+            record = log_metrics(Path(args.log_dir), args.run_id, parsed_metrics)
+        except (ValueError, OSError) as exc:
+            return tool_error(str(exc))
+        print(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        return 0
+
+    if args.subcommand == "check":
+        return emit(
+            *check_runs(
+                Path(args.log_dir),
+                stale_hours=args.stale_hours,
+            )
+        )
 
     command = list(args.command)
     if command and command[0] == "--":
