@@ -200,6 +200,80 @@ def filter_entries(
     return selected
 
 
+def _markdown_cell(value: object) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("|", "\\|").replace("\r\n", "\n").replace("\n", " ")
+
+
+def render_markdown(store: dict) -> str:
+    lines = [
+        "# 工作流摩擦记录",
+        "",
+        "| id | date | stage | component | category | severity | description | workaround |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for entry in store.get("entries", []):
+        if not isinstance(entry, dict):
+            lines.append(f"| | | | | | | {_markdown_cell(entry)} | |")
+            continue
+        created_at = str(entry.get("created_at", ""))
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    entry.get("id", ""),
+                    created_at[:10],
+                    entry.get("stage", ""),
+                    entry.get("component", ""),
+                    entry.get("category", ""),
+                    entry.get("severity", ""),
+                    entry.get("description", ""),
+                    entry.get("workaround", ""),
+                )
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def aggregate_stores(inputs: list[tuple[Path, str]]) -> dict:
+    merged: list[dict] = []
+    for path, label in inputs:
+        store = load_store(Path(path))
+        for entry in store["entries"]:
+            if isinstance(entry, dict):
+                merged.append({**entry, "source": label})
+            else:
+                merged.append(entry)
+    return {
+        "version": 1,
+        "entries": [
+            {**entry, "id": index}
+            if isinstance(entry, dict)
+            else entry
+            for index, entry in enumerate(merged, start=1)
+        ],
+    }
+
+
+def write_text_output(path: Path, text: str, force: bool = False) -> None:
+    path = Path(path)
+    if path.exists() and not force:
+        raise ValueError(f"输出目标已存在: {path}（如需覆盖请显式使用 --force）")
+    cli.save_text_atomically(path, text, description="输出文件")
+
+
+def _parse_aggregate_inputs(raw_inputs: list[str]) -> list[tuple[Path, str]]:
+    inputs: list[tuple[Path, str]] = []
+    for raw in raw_inputs:
+        path_text, separator, label = raw.partition("=")
+        if not separator or not path_text or not label:
+            raise ValueError(f"聚合输入必须写成 PATH=LABEL: {raw!r}")
+        inputs.append((Path(path_text), label))
+    return inputs
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="记录和查看工作流摩擦")
     parser.add_argument(
@@ -223,6 +297,16 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--severity", choices=VALID_SEVERITIES)
 
     sub.add_parser("check", help="重新校验 store 中的每条记录")
+
+    export = sub.add_parser("export", help="导出人读的摩擦记录文档")
+    export.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    export.add_argument("--out")
+    export.add_argument("--force", action="store_true")
+
+    aggregate = sub.add_parser("aggregate", help="合并多篇论文的摩擦记录")
+    aggregate.add_argument("inputs", nargs="+", metavar="PATH=LABEL")
+    aggregate.add_argument("--out", required=True)
+    aggregate.add_argument("--force", action="store_true")
     return parser
 
 
@@ -257,6 +341,26 @@ def main(argv: list[str]) -> int:
                 )
             )
             return 0
+        if args.command == "export":
+            store = load_store(Path(args.store))
+            text = (
+                render_markdown(store)
+                if args.format == "markdown"
+                else json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            )
+            if args.out:
+                write_text_output(Path(args.out), text, force=args.force)
+            else:
+                print(text, end="" if text.endswith("\n") else "\n")
+            return 0
+        if args.command == "aggregate":
+            inputs = _parse_aggregate_inputs(args.inputs)
+            problems: list[Problem] = []
+            for path, _label in inputs:
+                problems.extend(check_store(path))
+            merged = aggregate_stores(inputs)
+            write_text_output(Path(args.out), _dump_store(merged), force=args.force)
+            return emit(problems)
         return emit(check_store(Path(args.store)))
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))

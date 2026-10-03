@@ -2,16 +2,22 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from ccfa.friction_log import (
+    aggregate_stores,
     add_entry,
     check_store,
     filter_entries,
     load_store,
+    main,
+    render_markdown,
     save_store,
+    write_text_output,
 )
 
 
@@ -217,6 +223,211 @@ class FrictionLogTests(unittest.TestCase):
         check_store(self.store_path)
 
         self.assertEqual(self.store_path.read_bytes(), before)
+
+    def test_render_markdown_has_header_and_one_row_per_entry(self):
+        self._add(
+            stage="writing",
+            component="citation-manager",
+            category="tool-bug",
+            severity="high",
+            description="citation dropped",
+            workaround="re-added by hand",
+        )
+        store = load_store(self.store_path)
+
+        text = render_markdown(store)
+
+        self.assertIn(
+            "| id | date | stage | component | category | severity | description | workaround |",
+            text,
+        )
+        self.assertIn(
+            "| 1 | "
+            + store["entries"][0]["created_at"][:10]
+            + " | writing | citation-manager | tool-bug | high | citation dropped | re-added by hand |",
+            text,
+        )
+
+    def test_export_without_out_prints_the_document_to_stdout(self):
+        self._add(description="stdout only")
+        markdown_stdout = StringIO()
+        with redirect_stdout(markdown_stdout), redirect_stderr(StringIO()):
+            markdown_code = main(["friction-log", "--store", str(self.store_path), "export"])
+        json_stdout = StringIO()
+        with redirect_stdout(json_stdout), redirect_stderr(StringIO()):
+            json_code = main(
+                [
+                    "friction-log",
+                    "--store",
+                    str(self.store_path),
+                    "export",
+                    "--format",
+                    "json",
+                ]
+            )
+
+        self.assertEqual(markdown_code, 0)
+        self.assertEqual(json_code, 0)
+        self.assertIn("| id | date |", markdown_stdout.getvalue())
+        self.assertEqual(json.loads(json_stdout.getvalue()), load_store(self.store_path))
+        self.assertEqual(list(self.root.glob("*.md")), [])
+
+    def test_export_with_out_writes_the_document_to_a_file(self):
+        self._add(description="to file")
+        out = self.root / "export.md"
+        stdout = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            code = main(
+                ["friction-log", "--store", str(self.store_path), "export", "--out", str(out)]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("to file", out.read_text(encoding="utf-8"))
+
+    def test_aggregate_merges_stores_and_labels_each_source(self):
+        first = self.root / "first.json"
+        second = self.root / "second.json"
+        add_entry(
+            first,
+            stage="writing",
+            component="citation-manager",
+            category="tool-bug",
+            severity="high",
+            description="first paper friction",
+        )
+        add_entry(
+            second,
+            stage="revision",
+            component="latex-check",
+            category="environment",
+            severity="low",
+            description="second paper friction",
+        )
+
+        store = aggregate_stores([(first, "paper-a"), (second, "paper-b")])
+
+        self.assertEqual(store["version"], 1)
+        self.assertEqual([entry["id"] for entry in store["entries"]], [1, 2])
+        self.assertEqual(
+            [entry["source"] for entry in store["entries"]], ["paper-a", "paper-b"]
+        )
+        self.assertEqual(
+            [entry["description"] for entry in store["entries"]],
+            ["first paper friction", "second paper friction"],
+        )
+
+    def test_aggregate_out_existing_file_is_refused_without_force(self):
+        source = self.root / "source.json"
+        add_entry(
+            source,
+            stage="writing",
+            component="citation-manager",
+            category="tool-bug",
+            severity="high",
+            description="kept",
+        )
+        out = self.root / "merged.json"
+        out.write_text("do not clobber", encoding="utf-8")
+        stderr = StringIO()
+
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            code = main(
+                [
+                    "friction-log",
+                    "aggregate",
+                    f"{source}=paper-a",
+                    "--out",
+                    str(out),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(out.read_text(encoding="utf-8"), "do not clobber")
+        self.assertIn("输出目标已存在", stderr.getvalue())
+
+    def test_aggregate_force_overwrites_existing_output(self):
+        source = self.root / "source.json"
+        add_entry(
+            source,
+            stage="writing",
+            component="citation-manager",
+            category="tool-bug",
+            severity="high",
+            description="kept",
+        )
+        out = self.root / "merged.json"
+        out.write_text("stale", encoding="utf-8")
+
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            code = main(
+                [
+                    "friction-log",
+                    "aggregate",
+                    f"{source}=paper-a",
+                    "--out",
+                    str(out),
+                    "--force",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        merged = load_store(out)
+        self.assertEqual(merged["entries"][0]["description"], "kept")
+
+    def test_aggregate_carries_invalid_entries_through_and_reports_problems(self):
+        self._add(description="valid entry")
+        self._write_store(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "id": 1,
+                        "created_at": "2026-10-03T00:00:00Z",
+                        "stage": "writing",
+                        "component": "citation-manager",
+                        "category": "invalid-category",
+                        "severity": "high",
+                        "description": "hand edited into an invalid enum",
+                        "workaround": None,
+                    }
+                ],
+            }
+        )
+        out = self.root / "merged.json"
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(
+                [
+                    "friction-log",
+                    "aggregate",
+                    f"{self.store_path}=paper-x",
+                    "--out",
+                    str(out),
+                ]
+            )
+
+        self.assertEqual(code, 1)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["problem_count"], 1)
+        self.assertEqual(report["problems"][0]["code"], "friction-invalid-enum")
+        self.assertIn("invalid-category", stderr.getvalue())
+        merged = load_store(out)
+        self.assertEqual(len(merged["entries"]), 1)
+        self.assertEqual(merged["entries"][0]["id"], 1)
+        self.assertEqual(merged["entries"][0]["source"], "paper-x")
+        self.assertEqual(merged["entries"][0]["category"], "invalid-category")
+
+    def test_write_text_output_refuses_overwrite_without_force(self):
+        out = self.root / "artifact.txt"
+        write_text_output(out, "first")
+        with self.assertRaises(ValueError):
+            write_text_output(out, "second")
+        self.assertEqual(out.read_text(encoding="utf-8"), "first")
+        write_text_output(out, "third", force=True)
+        self.assertEqual(out.read_text(encoding="utf-8"), "third")
 
 
 if __name__ == "__main__":
