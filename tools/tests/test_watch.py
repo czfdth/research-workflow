@@ -90,6 +90,23 @@ class TestParseFeed(WatchTests):
         with self.assertRaises(ValueError):
             parse_feed("<feed><entry>")
 
+    def test_parse_feed_reads_nested_title_and_summary_text(self):
+        xml = """\
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>nested</id>
+    <title type="xhtml"><div>Hello <b>World</b></div></title>
+    <summary type="xhtml"><p>Nested summary</p></summary>
+  </entry>
+</feed>
+"""
+
+        entries = parse_feed(xml)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["title"], "Hello World")
+        self.assertEqual(entries[0]["summary"], "Nested summary")
+
 
 class TestScan(WatchTests):
     def test_first_run_creates_baseline_without_reporting_entries(self):
@@ -167,6 +184,53 @@ class TestScan(WatchTests):
         self.assertTrue(result["baseline"])
         self.assertEqual(result["new"], [])
         self.assertEqual(result["seen_total"], 2)
+
+    def test_explicit_baseline_merges_with_existing_state(self):
+        self.state_path.write_text(
+            json.dumps({"version": 1, "seen_ids": ["old"]}),
+            encoding="utf-8",
+        )
+
+        result = scan(
+            ["https://feed"],
+            self.state_path,
+            fetcher=self._fetcher(),
+            baseline=True,
+        )
+
+        self.assertTrue(result["baseline"])
+        self.assertEqual(result["new"], [])
+        self.assertEqual(result["seen_total"], 3)
+        self.assertEqual(
+            self._state()["seen_ids"],
+            ["old", "urn:arxiv:2401.00001", "urn:arxiv:2401.00002"],
+        )
+
+    def test_force_resets_state_to_current_feed_ids(self):
+        self.state_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "seen_ids": ["old", "urn:arxiv:2401.00001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = scan(
+            ["https://feed"],
+            self.state_path,
+            fetcher=self._fetcher(),
+            force=True,
+        )
+
+        self.assertTrue(result["baseline"])
+        self.assertEqual(result["new"], [])
+        self.assertEqual(result["seen_total"], 2)
+        self.assertEqual(
+            self._state()["seen_ids"],
+            ["urn:arxiv:2401.00001", "urn:arxiv:2401.00002"],
+        )
 
     def test_limit_defers_unreported_new_entries(self):
         state = {"version": 1, "seen_ids": []}
@@ -248,6 +312,64 @@ class TestMain(WatchTests):
         self.assertEqual(code, 0)
         self.assertTrue(json.loads(stdout.getvalue())["baseline"])
         self.assertIn("已建立基线 2 条", stderr.getvalue())
+
+    def test_cli_force_reports_rebuilt_count_and_drops_old_ids(self):
+        self.state_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "seen_ids": ["old", "urn:arxiv:2401.00001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        with mock.patch("ccfa.watch._default_fetcher", return_value=ATOM):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = main(
+                    [
+                        "watch",
+                        "scan",
+                        "--state",
+                        str(self.state_path),
+                        "--url",
+                        "https://feed",
+                        "--force",
+                    ]
+                )
+
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(report["new"], [])
+        self.assertEqual(report["seen_total"], 2)
+        self.assertNotIn("old", self._state()["seen_ids"])
+        self.assertIn("已重建基线 2 条", stderr.getvalue())
+
+    def test_cli_force_recovers_from_corrupt_state(self):
+        self.state_path.write_text("{bad json", encoding="utf-8")
+        stdout = StringIO()
+        stderr = StringIO()
+        with mock.patch("ccfa.watch._default_fetcher", return_value=ATOM):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = main(
+                    [
+                        "watch",
+                        "scan",
+                        "--state",
+                        str(self.state_path),
+                        "--url",
+                        "https://feed",
+                        "--force",
+                    ]
+                )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            self._state()["seen_ids"],
+            ["urn:arxiv:2401.00001", "urn:arxiv:2401.00002"],
+        )
+        self.assertIn("已重建基线 2 条", stderr.getvalue())
 
     def test_cli_network_error_exits_two(self):
         stdout = StringIO()

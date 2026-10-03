@@ -35,7 +35,7 @@ def _parse_feed_with_skipped(xml_text: str) -> tuple[list[dict], int]:
         for child in element:
             name = _local_name(child.tag)
             if name in ("id", "title", "published", "summary") and name not in fields:
-                fields[name] = (child.text or "").strip()
+                fields[name] = "".join(child.itertext()).strip()
         entry_id = fields.get("id", "")
         title = fields.get("title", "")
         if not entry_id or not title:
@@ -128,7 +128,11 @@ def scan(
     if type(limit) is not int or limit < 0:
         raise ValueError("limit 必须是非负整数")
     state_path = Path(state_path)
-    state, state_exists = _load_state(state_path)
+    if force:
+        state = {"version": STATE_VERSION, "seen_ids": []}
+        state_exists = False
+    else:
+        state, state_exists = _load_state(state_path)
     fetch = fetcher or _default_fetcher
     is_baseline = baseline or force or not state_exists
 
@@ -217,8 +221,9 @@ def main(argv: list[str]) -> int:
 
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     if result["baseline"]:
+        action = "已重建基线" if args.force else "已建立基线"
         print(
-            f"已建立基线 {result['seen_total']} 条",
+            f"{action} {result['seen_total']} 条",
             file=sys.stderr,
         )
     return 0
