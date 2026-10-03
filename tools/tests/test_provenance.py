@@ -9,6 +9,7 @@ from unittest import mock
 from ccfa.provenance import (
     VALID_CLASSIFICATIONS,
     add_entry,
+    check_store,
     load_store,
     main,
     save_store,
@@ -143,6 +144,52 @@ class TestAddEntry(BaseCase):
                 exit_code = main(args)
         self.assertEqual(exit_code, 2)
         self.assertEqual(stdout.getvalue(), "")
+
+
+class TestCheckStore(BaseCase):
+    def _codes(self, problems):
+        return sorted(p.code for p in problems)
+
+    def test_consistent_entry_is_clean(self):
+        self.add()
+        self.assertEqual(check_store(self.store, self.root), [])
+
+    def test_modified_file_is_reported_as_drift(self):
+        self.add()
+        (self.data / "raw.csv").write_text("a,b\n9,9\n", encoding="utf-8")
+        self.assertEqual(self._codes(check_store(self.store, self.root)), ["provenance-drift"])
+
+    def test_removed_file_is_reported_as_missing(self):
+        self.add()
+        (self.data / "raw.csv").unlink()
+        self.assertEqual(
+            self._codes(check_store(self.store, self.root)), ["provenance-missing-file"]
+        )
+
+    def test_empty_source_is_reported(self):
+        self.add()
+        store = load_store(self.store)
+        store["files"]["data/raw.csv"]["source"] = ""
+        save_store(self.store, store)
+        self.assertEqual(
+            self._codes(check_store(self.store, self.root)), ["provenance-missing-source"]
+        )
+
+    def test_hand_edited_invalid_classification_is_reported(self):
+        self.add()
+        store = load_store(self.store)
+        store["files"]["data/raw.csv"]["classification"] = "made-up"
+        save_store(self.store, store)
+        self.assertEqual(
+            self._codes(check_store(self.store, self.root)),
+            ["provenance-invalid-classification"],
+        )
+
+    def test_check_does_not_write(self):
+        self.add()
+        before = self.store.read_bytes()
+        check_store(self.store, self.root)
+        self.assertEqual(self.store.read_bytes(), before)
 
 
 if __name__ == "__main__":

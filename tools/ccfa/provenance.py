@@ -116,6 +116,46 @@ def add_entry(
     return entry
 
 
+def check_store(store_path: Path, paper_root: Path) -> list[Problem]:
+    store = load_store(store_path)
+    problems: list[Problem] = []
+    for relpath, entry in sorted(store["files"].items()):
+        target = Path(paper_root) / relpath
+        if not str(entry.get("source", "")).strip():
+            problems.append(
+                Problem("provenance-missing-source", str(target), None, f"条目缺少来源: {relpath}")
+            )
+        classification = entry.get("classification")
+        if classification not in VALID_CLASSIFICATIONS:
+            problems.append(
+                Problem(
+                    "provenance-invalid-classification",
+                    str(target),
+                    None,
+                    f"条目分类非法: {classification!r}（{relpath}）",
+                )
+            )
+        if not target.is_file():
+            problems.append(
+                Problem("provenance-missing-file", str(target), None, f"来源文件不存在: {relpath}")
+            )
+            continue
+        try:
+            actual = sha256_of(target)
+        except OSError as exc:
+            raise ValueError(f"无法读取来源文件 {target}: {exc}") from exc
+        if actual != entry.get("sha256"):
+            problems.append(
+                Problem(
+                    "provenance-drift",
+                    str(target),
+                    None,
+                    f"文件内容与记录不符: {relpath}（记录 {entry.get('sha256')}，实际 {actual}）",
+                )
+            )
+    return problems
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="数据来源记录与核对")
     parser.add_argument("--store", required=True)
@@ -130,6 +170,8 @@ def main(argv: list[str]) -> int:
     add.add_argument("--coverage")
     add.add_argument("--notes")
     add.add_argument("--force", action="store_true")
+
+    sub.add_parser("check", help="核对已登记文件的内容")
 
     args = parser.parse_args(argv[1:])
     try:
@@ -146,6 +188,8 @@ def main(argv: list[str]) -> int:
                 force=args.force,
             )
             return emit([], [])
+        if args.command == "check":
+            return emit(check_store(Path(args.store), Path(args.paper_root)), [])
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))
     return tool_error(f"未知子命令: {args.command}")
