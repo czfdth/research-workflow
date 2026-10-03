@@ -1,8 +1,10 @@
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from ccfa.validate import validate_yaml
+from ccfa.validate import main, validate_yaml
 
 VALID = """\
 version: "0.4.0"
@@ -102,3 +104,14 @@ class TestValidateYaml(unittest.TestCase):
         problems = validate_yaml(_write(broken))
 
         self.assertTrue(any("deadline" in problem for problem in problems), problems)
+
+    def test_help_prints_usage_to_stdout_and_exits_zero(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["validate.py", "--help"])
+
+        self.assertEqual(code, 0)
+        self.assertIn("usage", stdout.getvalue().lower())
+        self.assertEqual(stderr.getvalue(), "")

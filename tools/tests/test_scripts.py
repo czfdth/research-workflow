@@ -34,13 +34,6 @@ CCFA_WRAPPERS = {
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"
 
-# validate.py predates the argparse-based CLIs. It writes its own usage error
-# and treats every non-path token, including --help, as a path.
-HELP_EXIT_CODES = {wrapper: 0 for wrapper in CCFA_WRAPPERS.values()}
-HELP_EXIT_CODES[NEWPAPER_WRAPPER] = 0
-HELP_EXIT_CODES["validate.ps1"] = 2
-
-
 def _modules_with_main():
     modules = {}
     for module_path in sorted(CCFA_DIR.glob("*.py")):
@@ -137,13 +130,10 @@ def _make_help_test(wrapper):
         output = result.stdout + result.stderr
         self.assertEqual(
             result.returncode,
-            HELP_EXIT_CODES[wrapper],
+            0,
             f"{wrapper} --help output:\n{output}",
         )
-        if wrapper == "validate.ps1":
-            self.assertIn("--help", output)
-        else:
-            self.assertIn("usage", output.lower())
+        self.assertIn("usage", result.stdout.lower())
 
     return test
 

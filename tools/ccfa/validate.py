@@ -93,6 +93,13 @@ def validate_yaml(path: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[1] in ("-h", "--help"):
+        print("usage: validate.py <ccfa.yaml 路径>")
+        print("校验 ccfa.yaml 的结构、stage 与 gate 状态")
+        print("位置参数:")
+        print("  <ccfa.yaml 路径>  要校验的状态文件")
+        return 0
+
     if len(argv) != 2:
         print("用法: validate.py <ccfa.yaml 路径>", file=sys.stderr)
         return 2
