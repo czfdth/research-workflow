@@ -219,6 +219,16 @@ def _entry_problems(
         )
 
     if kind == "dead-ends":
+        for field in ("reason", "evidence"):
+            if _missing_text(entry, field):
+                problems.append(
+                    Problem(
+                        "memory-missing-field",
+                        str(path),
+                        None,
+                        f"dead-end 缺少非空字段: {field}",
+                    )
+                )
         reopen_if = entry.get("reopen_if")
         if not isinstance(reopen_if, str) or not reopen_if.strip():
             problems.append(
@@ -301,7 +311,7 @@ def search_memory(paper_root: Path, query: str) -> dict:
     folded = query.casefold()
 
     matches: dict[str, list[dict]] = {"ideas": [], "dead_ends": []}
-    skipped_invalid = 0
+    skipped: list[dict] = []
     for kind, key, path, entries, fields in (
         ("ideas", "ideas", ideas_path, ideas, _IDEA_SEARCH_FIELDS),
         (
@@ -314,8 +324,21 @@ def search_memory(paper_root: Path, query: str) -> dict:
     ):
         duplicate_ids = _duplicate_ids(entries)
         for entry in entries:
-            if _entry_problems(path, entry, kind, duplicate_ids):
-                skipped_invalid += 1
+            problems = _entry_problems(path, entry, kind, duplicate_ids)
+            if problems:
+                entry_id = (
+                    entry.get("id")
+                    if isinstance(entry, dict)
+                    and isinstance(entry.get("id"), str)
+                    else None
+                )
+                skipped.append(
+                    {
+                        "file": kind,
+                        "id": entry_id,
+                        "codes": [problem.code for problem in problems],
+                    }
+                )
                 continue
             if _searchable(entry, fields, folded):
                 matches[key].append(dict(entry))
@@ -323,7 +346,8 @@ def search_memory(paper_root: Path, query: str) -> dict:
         "query": query,
         "ideas": matches["ideas"],
         "dead_ends": matches["dead_ends"],
-        "skipped_invalid": skipped_invalid,
+        "skipped_invalid": len(skipped),
+        "skipped": skipped,
     }
 
 

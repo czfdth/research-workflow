@@ -358,6 +358,38 @@ class TestMemoryCheck(MemoryTests):
             self._codes(check_memory(self.paper_root)),
         )
 
+    def test_dead_end_reason_and_evidence_are_revalidated(self):
+        cases = (
+            (
+                "reason",
+                "- id: DE1\n"
+                "  date: \"2026-10-03\"\n"
+                "  idea: dead end\n"
+                "  reason: \"\"\n"
+                "  evidence: evidence.csv\n"
+                "  reopen_if: reopen\n",
+            ),
+            (
+                "evidence",
+                "- id: DE1\n"
+                "  date: \"2026-10-03\"\n"
+                "  idea: dead end\n"
+                "  reason: reason\n"
+                "  reopen_if: reopen\n",
+            ),
+        )
+        for field, text in cases:
+            with self.subTest(field=field):
+                self._write(DEAD_ENDS_FILE, text)
+                problems = check_memory(self.paper_root)
+                missing = [
+                    problem
+                    for problem in problems
+                    if problem.code == "memory-missing-field"
+                ]
+                self.assertEqual(len(missing), 1)
+                self.assertIn(field, missing[0].message)
+
     def test_non_mapping_does_not_stop_auditing_later_entries(self):
         self._write(
             IDEAS_FILE,
@@ -459,7 +491,69 @@ class TestMemorySearch(MemoryTests):
         result = search_memory(self.paper_root, "searchable")
 
         self.assertEqual(result["skipped_invalid"], 1)
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual(result["skipped"][0]["file"], "ideas")
+        self.assertIsNone(result["skipped"][0]["id"])
+        self.assertIn(
+            "memory-entry-not-mapping",
+            result["skipped"][0]["codes"],
+        )
         self.assertEqual([entry["id"] for entry in result["ideas"]], ["I1"])
+
+    def test_duplicate_matching_entries_are_both_skipped(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: duplicate searchable idea\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: duplicate searchable idea\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        result = search_memory(self.paper_root, "duplicate")
+
+        self.assertEqual(result["ideas"], [])
+        self.assertEqual(result["skipped_invalid"], 2)
+        self.assertEqual(len(result["skipped"]), 2)
+        self.assertEqual(
+            [(item["file"], item["id"]) for item in result["skipped"]],
+            [("ideas", "I1"), ("ideas", "I1")],
+        )
+        for item in result["skipped"]:
+            self.assertIn("memory-duplicate-id", item["codes"])
+
+    def test_invalid_dead_end_hit_is_reported_in_skipped(self):
+        self._write(
+            DEAD_ENDS_FILE,
+            "- id: DE1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: matching dead end\n"
+            "  reason: matching reason\n"
+            "  evidence: evidence.csv\n",
+        )
+
+        result = search_memory(self.paper_root, "matching")
+
+        self.assertEqual(result["dead_ends"], [])
+        self.assertEqual(result["skipped_invalid"], 1)
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual(result["skipped"][0]["file"], "dead-ends")
+        self.assertEqual(result["skipped"][0]["id"], "DE1")
+        self.assertIn(
+            "deadend-missing-reopen-if",
+            result["skipped"][0]["codes"],
+        )
+
+    def test_search_rejects_empty_and_non_string_queries(self):
+        for query in ("", "   ", None, 7):
+            with self.subTest(query=query):
+                with self.assertRaises(ValueError):
+                    search_memory(self.paper_root, query)
 
     def test_search_no_match_is_an_empty_answer(self):
         self._add_idea(idea="one idea")
@@ -582,6 +676,58 @@ class TestMain(MemoryTests):
             json.loads(search_stdout.getvalue())["ideas"][0]["idea"],
             "CLI searchable idea",
         )
+
+    def test_check_problem_and_bad_yaml_exit_codes(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I0\n"
+            "  date: \"bad\"\n"
+            "  idea: invalid\n"
+            "  status: whatever\n"
+            "  notes: null\n",
+        )
+        problem_stdout = StringIO()
+        with redirect_stdout(problem_stdout), redirect_stderr(StringIO()):
+            problem_code = main(
+                ["memory", "--paper-root", str(self.paper_root), "check"]
+            )
+        self.assertEqual(problem_code, 1)
+        self.assertGreater(
+            json.loads(problem_stdout.getvalue())["problem_count"],
+            0,
+        )
+
+        self._write(IDEAS_FILE, "- id: [broken\n")
+        stderr = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            broken_code = main(
+                ["memory", "--paper-root", str(self.paper_root), "check"]
+            )
+        self.assertEqual(broken_code, 2)
+        self.assertIn("工具错误", stderr.getvalue())
+
+    def test_search_no_match_exits_zero_and_empty_query_exits_two(self):
+        stdout = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            no_match_code = main(
+                [
+                    "memory",
+                    "--paper-root",
+                    str(self.paper_root),
+                    "search",
+                    "not present",
+                ]
+            )
+        self.assertEqual(no_match_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["ideas"], [])
+
+        stderr = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            empty_code = main(
+                ["memory", "--paper-root", str(self.paper_root), "search", ""]
+            )
+        self.assertEqual(empty_code, 2)
+        self.assertIn("工具错误", stderr.getvalue())
 
     def test_invalid_add_is_a_tool_error(self):
         stderr = StringIO()
