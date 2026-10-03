@@ -54,7 +54,7 @@
 | --- | --- | --- |
 | 任意阶段的状态校验 | `scripts/validate.ps1` | 校验状态文件结构与 stage/gate 合法性 |
 | 读取当前阶段 | `scripts/milestones.ps1` | 调用 `stage` 子命令输出 `current`、`gate`、`updated_at` |
-| 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-14、T-7、T-3 与 gate 缺口 |
+| 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-90、T-60、T-30、T-21、T-14、T-7、T-3、T-1 与 gate 缺口；T-30 之后出现新实验运行会报 `t30-new-experiment` |
 | `idea`、`grounded` | `scripts/library.ps1` | 索引和检索共享文献库，支撑近邻工作与新颖性核对 |
 | `idea`、`grounded` | `scripts/memory.ps1` | 追加 idea 或 dead-end，检查是否重复 |
 | `data-ready` | `scripts/provenance.ps1` | 登记数据来源、分类、校验和并检查完整性 |

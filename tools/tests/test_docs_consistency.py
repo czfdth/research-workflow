@@ -6,8 +6,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
+from ccfa.milestones import checkpoints
 from ccfa.stages import all_gates, stages_for
 from newpaper.checklists import render_checklist
 
@@ -234,6 +236,13 @@ class TestReadmeWorkflowGuidance(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertIn(command, readme)
+
+    def test_every_countdown_node_is_named_in_readme(self):
+        readme = _readme_text()
+        for node in checkpoints(date(2027, 1, 1)):
+            with self.subTest(node=node):
+                # A digit boundary keeps T-1 from matching inside T-14.
+                self.assertRegex(readme, re.escape(node) + r"(?!\d)")
 
     def test_automation_pointer_and_silent_policy_are_present(self):
         readme = _readme_text()
