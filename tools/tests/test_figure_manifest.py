@@ -47,6 +47,16 @@ class TestCheckManifest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
         self.figures = self.root / "figures"
         self.figures.mkdir()
+        self.run_id = "20261003T142530-01"
+        self.log_dir = self.root / "experiments" / "log"
+        self.log_dir.mkdir(parents=True)
+        (self.log_dir / f"{self.run_id}.json").write_text(
+            '{"run_id": "20261003T142530-01"}\n',
+            encoding="utf-8",
+        )
+        self.source_data = self.root / "experiments" / "results" / "plot.csv"
+        self.source_data.parent.mkdir(parents=True)
+        self.source_data.write_text("x,y\n1,2\n", encoding="utf-8")
 
     def _item(self, **overrides):
         item = {
@@ -55,6 +65,8 @@ class TestCheckManifest(unittest.TestCase):
             "bytes_format": "png",
             "generator": "src/plot.py",
             "generator_hash": "",
+            "source_run_ids": [self.run_id],
+            "source_data": "experiments/results/plot.csv",
             "referenced_in": ["manuscript/main.tex:1"],
         }
         item.update(overrides)
@@ -103,6 +115,99 @@ class TestCheckManifest(unittest.TestCase):
         item = self._item(generator="src/gone.py", generator_hash="sha256:x")
         problems, _ = check_manifest([item], self.root)
         self.assertIn("figure-hash", [p.code for p in problems])
+
+    def test_missing_generator_and_hash_report_one_provenance_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for field in ("generator", "generator_hash"):
+            with self.subTest(field=field):
+                item = self._item(generator_hash=self._write_generator())
+                del item[field]
+                problems, _ = check_manifest([item], self.root)
+                matching = [
+                    problem
+                    for problem in problems
+                    if problem.code == "figure-provenance-missing"
+                ]
+                self.assertEqual(len(matching), 1)
+                self.assertIn(field, matching[0].message)
+
+    def test_missing_or_empty_run_ids_report_provenance_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for value in (None, []):
+            with self.subTest(value=value):
+                item = self._item(generator_hash=self._write_generator())
+                if value is None:
+                    del item["source_run_ids"]
+                else:
+                    item["source_run_ids"] = value
+                problems, _ = check_manifest([item], self.root)
+                self.assertIn("figure-provenance-missing", [p.code for p in problems])
+
+    def test_non_list_run_ids_report_provenance_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_run_ids="20261003T142530-01",
+        )
+        problems, _ = check_manifest([item], self.root)
+        self.assertIn("figure-provenance-missing", [p.code for p in problems])
+
+    def test_unknown_run_id_reports_the_missing_log_path(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_run_ids=["20261003T142530-99"],
+        )
+        problems, _ = check_manifest([item], self.root)
+        matching = [p for p in problems if p.code == "figure-source-run"]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("20261003T142530-99.json", matching[0].path)
+
+    def test_missing_or_empty_source_data_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        for value in (None, "", "   "):
+            with self.subTest(value=value):
+                item = self._item(generator_hash=self._write_generator())
+                if value is None:
+                    del item["source_data"]
+                else:
+                    item["source_data"] = value
+                problems, _ = check_manifest([item], self.root)
+                self.assertIn("figure-source-data", [p.code for p in problems])
+
+    def test_missing_source_data_file_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            source_data="experiments/results/gone.csv",
+        )
+        problems, _ = check_manifest([item], self.root)
+        self.assertIn("figure-source-data", [p.code for p in problems])
+
+    def test_manual_edit_without_note_reports_problem(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(generator_hash=self._write_generator(), manual_edit=True)
+        problems, _ = check_manifest([item], self.root)
+        self.assertIn("figure-manual-edit", [p.code for p in problems])
+
+    def test_manual_edit_with_note_is_clean(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        item = self._item(
+            generator_hash=self._write_generator(),
+            manual_edit=True,
+            manual_edit_note="Moved the legend; data unchanged.",
+        )
+        problems, advisories = check_manifest([item], self.root)
+        self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+
+    def test_complete_provenance_still_reports_a_bad_delivery_path(self):
+        item = self._item(
+            generator_hash=self._write_generator(),
+            file="figures/elsewhere.png",
+        )
+        problems, _ = check_manifest([item], self.root)
+        self.assertIn("figure-missing", [p.code for p in problems])
 
     def test_missing_delivered_figure_is_reported(self):
         item = self._item(generator_hash=self._write_generator())

@@ -15,6 +15,7 @@ import yaml
 
 from ccfa.cli import Problem
 from ccfa.figurebytes import JPEG_SUFFIXES, sniff
+from ccfa.run_log import record_path
 
 
 def load_manifest(path: Path) -> list[dict]:
@@ -44,6 +45,10 @@ def _sha256(path: Path) -> str | None:
         return None
 
 
+def _blank(value: object) -> bool:
+    return value is None or not str(value).strip()
+
+
 def _resolve_figure(item: dict, paper_root: Path) -> tuple[Path, Problem | None]:
     explicit = item.get("file")
     if explicit:
@@ -71,6 +76,79 @@ def check_manifest(
         figure, fallback_advisory = _resolve_figure(item, paper_root)
         if fallback_advisory is not None:
             advisories.append(fallback_advisory)
+
+        missing_provenance = [
+            field
+            for field in ("generator", "generator_hash")
+            if _blank(item.get(field))
+        ]
+        if missing_provenance:
+            fields = "、".join(missing_provenance)
+            problems.append(
+                Problem(
+                    "figure-provenance-missing",
+                    str(figure),
+                    None,
+                    f"条目 {name} 缺必填字段 {fields}，请补写生成脚本及其哈希",
+                )
+            )
+
+        source_run_ids = item.get("source_run_ids")
+        if not isinstance(source_run_ids, list) or not source_run_ids:
+            problems.append(
+                Problem(
+                    "figure-provenance-missing",
+                    str(figure),
+                    None,
+                    f"条目 {name} 缺可追溯的 source_run_ids（必须是非空列表）",
+                )
+            )
+        else:
+            log_dir = paper_root / "experiments" / "log"
+            for run_id in source_run_ids:
+                run_label = str(run_id)
+                run_path = record_path(log_dir, run_label)
+                if not run_path.is_file():
+                    problems.append(
+                        Problem(
+                            "figure-source-run",
+                            str(run_path),
+                            None,
+                            f"条目 {name} 的 source_run_ids 指向不存在的运行记录: {run_label}",
+                        )
+                    )
+
+        source_data = item.get("source_data")
+        if not isinstance(source_data, str) or not source_data.strip():
+            problems.append(
+                Problem(
+                    "figure-source-data",
+                    str(figure),
+                    None,
+                    f"条目 {name} 缺 source_data（相对 paper root 的非空路径）",
+                )
+            )
+        else:
+            source_path = paper_root / source_data
+            if not source_path.is_file():
+                problems.append(
+                    Problem(
+                        "figure-source-data",
+                        str(source_path),
+                        None,
+                        f"条目 {name} 的 source_data 文件不存在: {source_data}",
+                    )
+                )
+
+        if item.get("manual_edit") is True and _blank(item.get("manual_edit_note")):
+            problems.append(
+                Problem(
+                    "figure-manual-edit",
+                    str(figure),
+                    None,
+                    f"条目 {name} 标记 manual_edit: true，但缺 manual_edit_note",
+                )
+            )
 
         if not figure.is_file():
             problems.append(

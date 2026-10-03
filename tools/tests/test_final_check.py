@@ -18,6 +18,8 @@ MANIFEST = (
     "  bytes_format: png\n"
     "  generator: src/plot.py\n"
     "  generator_hash: \"{hash}\"\n"
+    "  source_run_ids: [\"20261003T142530-01\"]\n"
+    "  source_data: experiments/results/main.csv\n"
     "  referenced_in: [\"manuscript/main.tex:1\"]\n"
 )
 
@@ -32,6 +34,15 @@ class BaseCase(unittest.TestCase):
         self.pdf.write_bytes(b"%PDF-1.4\n")
         self.figures = self.root / "figures"
         self.figures.mkdir()
+        self.log_dir = self.root / "experiments" / "log"
+        self.log_dir.mkdir(parents=True)
+        (self.log_dir / "20261003T142530-01.json").write_text(
+            '{"run_id": "20261003T142530-01"}\n',
+            encoding="utf-8",
+        )
+        self.source_data = self.root / "experiments" / "results" / "main.csv"
+        self.source_data.parent.mkdir(parents=True)
+        self.source_data.write_text("x,y\n1,2\n", encoding="utf-8")
         self.reader = lambda path: CLEAN_TEXT
 
     def run_check(self, **kwargs):
@@ -91,6 +102,31 @@ class TestCheck(BaseCase):
         )
         problems, _ = self.run_check()
         self.assertIn("figure-hash", self.codes(problems))
+
+    def test_cli_manifest_provenance_uses_paper_root(self):
+        (self.figures / "plot.png").write_bytes(PNG)
+        manifest = self.write_manifest(
+            MANIFEST.format(hash=self.write_generator())
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("ccfa.final_check.extract_text", return_value=CLEAN_TEXT):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                        "--paper-root",
+                        str(self.root),
+                        "--manifest",
+                        str(manifest),
+                    ]
+                )
+        self.assertEqual(code, 0, stderr.getvalue())
+        self.assertEqual(json.loads(stdout.getvalue())["problem_count"], 0)
 
     def test_malformed_manifest_raises_value_error(self):
         manifest = self.write_manifest("name: not-a-list\n")
