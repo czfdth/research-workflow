@@ -14,6 +14,7 @@
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
 | `papers/` | 派生论文项目的默认目标目录（已在 `.gitignore` 中忽略） |
 | `tools/` | 确定性工具（Python） |
+| `automation/` | 四类本地自动化 prompt 与接线说明 |
 
 ## 派生一篇新论文
 

@@ -24,7 +24,7 @@ $env:PYTHONPATH = "$ROOT/tools"
 ## 通知规则
 
 - `due=[]` 且 `problems=[]` 时，没有实质变化就不通知。
-- `sequential` 模式没有具体日期，只给下一建议动作。
+- `sequential` 模式下 `due=[]`，下一建议动作只在 advisory；没有具体日期。
 - 命中 checkpoint 时只报告 checkpoint、日期与缺失 gate。
 - `problems` 非空时原样报告 code，不自行解释成“已通过”。
 

@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `weekly-watch.md` | 每周文献增量监控 | `baseline`, `new`, `seen_total`, `skipped` |
 | `deadline-check.md` | T-14/T-7/T-3 倒排检查 | `mode`, `deadline`, `due`, `missing_gates`, `problems` |
-| `stage-advance.md` | 读状态并给出下一阶段建议 | `stage.current`, `stage.gate`, `due`, `missing_gates` |
+| `stage-advance.md` | 手动读取状态并给出下一阶段建议 | `current`, `gate`, `updated_at` |
 | `experiment-queue.md` | 顺序运行实验队列 | `runs[].name`, `runs[].attempts`, `runs[].status`, `stopped` |
 
 ## 静默策略
@@ -39,6 +39,8 @@
 3. 在 Codex automations 中选择本地项目，把对应模板作为 prompt。
 4. 在 prompt 中替换 `<repo-root>` 与 `<paper-root>`。
 5. 先用手动命令验证输出，再启用定时触发。
+
+`stage-advance.md` 是手动模板，不挂定时任务。
 
 模板中的命令统一设置 `PYTHONPATH` 并调用 `tools/.venv/Scripts/python.exe`，
 避免依赖系统 Python 环境。

@@ -68,13 +68,25 @@ class AutomationDocumentationTests(unittest.TestCase):
                 self.assertIn(name, text)
 
     def test_prompt_templates_contain_command_fields_quiet_rule_and_no_write_rule(self):
-        expected_scripts = {
-            "weekly-watch.md": "tools/ccfa/watch.py",
-            "deadline-check.md": "tools/ccfa/milestones.py",
-            "stage-advance.md": "ccfa.yaml",
-            "experiment-queue.md": "tools/ccfa/queue.py",
+        expected = {
+            "weekly-watch.md": (
+                "tools/ccfa/watch.py",
+                ("baseline", "new", "seen_total", "skipped"),
+            ),
+            "deadline-check.md": (
+                "tools/ccfa/milestones.py",
+                ("mode", "due", "missing_gates", "problems"),
+            ),
+            "stage-advance.md": (
+                "tools/ccfa/milestones.py",
+                ("current", "gate", "updated_at"),
+            ),
+            "experiment-queue.md": (
+                "tools/ccfa/queue.py",
+                ("runs", "runs[].name", "runs[].attempts", "runs[].status", "stopped"),
+            ),
         }
-        for name, script in expected_scripts.items():
+        for name, (script, fields) in expected.items():
             with self.subTest(name=name):
                 text = (AUTOMATION_DIR / name).read_text(encoding="utf-8")
                 self.assertIn(script, text)
@@ -83,7 +95,86 @@ class AutomationDocumentationTests(unittest.TestCase):
                 self.assertIn("没有实质变化就不通知", text)
                 self.assertIn("不得修改论文正文", text)
                 self.assertIn("结论字段", text)
-                self.assertRegex(text, r"`(mode|new|runs|stage\.current|result)`")
+                for field in fields:
+                    with self.subTest(field=field):
+                        self.assertIn(f"`{field}`", text)
+
+    def test_root_readme_lists_automation_directory(self):
+        text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("| `automation/` |", text)
+
+    def test_stage_template_is_manual_and_matches_stage_output_fields(self):
+        text = (AUTOMATION_DIR / "stage-advance.md").read_text(encoding="utf-8")
+        self.assertIn("仅手动触发", text)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "ccfa.yaml"
+            state_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "stage": {
+                            "current": "writing",
+                            "gate": "draft_complete",
+                            "updated_at": "2026-10-03",
+                        }
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = milestones_main(
+                    [
+                        "milestones",
+                        "stage",
+                        "--paper-root",
+                        str(state_path.parent),
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        for field in json.loads(stdout.getvalue()):
+            self.assertIn(f"`{field}`", text)
+
+    def test_deadline_template_fields_match_real_due_output(self):
+        text = (AUTOMATION_DIR / "deadline-check.md").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "ccfa.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "target_venue": {
+                            "name": "Smoke",
+                            "mode": "conference",
+                            "deadline": None,
+                        },
+                        "stage": {"current": "idea"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = milestones_main(
+                    [
+                        "milestones",
+                        "due",
+                        "--paper-root",
+                        str(root),
+                        "--today",
+                        "2026-10-03",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        report = json.loads(stdout.getvalue())
+        for field in ("due", "problems"):
+            self.assertIn(field, report)
+            self.assertIn(f"`{field}`", text)
 
 
 class AutomationEndToEndTests(unittest.TestCase):

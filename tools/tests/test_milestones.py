@@ -144,9 +144,9 @@ class TestDueReport(MilestoneTests):
 
         self.assertEqual(report["mode"], "sequential")
         self.assertIsNone(report["deadline"])
-        self.assertEqual(report["due"][0]["checkpoint"], "next")
-        self.assertIsNone(report["due"][0]["date"])
+        self.assertEqual(report["due"], [])
         self.assertIn("无投稿目标日", report["advisory"])
+        self.assertIn("scope_defined", report["advisory"])
         self.assertIsNone(re.search(r"\d{4}-\d{2}-\d{2}", json.dumps(report)))
 
     def test_invalid_deadline_is_a_problem(self):
@@ -196,6 +196,64 @@ class TestDueReport(MilestoneTests):
 
 
 class TestMilestonesMain(MilestoneTests):
+    def test_stage_command_outputs_current_gate_and_updated_at(self):
+        self._write_state(stage="writing", deadline=None)
+        data = yaml.safe_load(
+            (self.paper_root / "ccfa.yaml").read_text(encoding="utf-8")
+        )
+        data["stage"]["gate"] = "draft_complete"
+        data["stage"]["updated_at"] = "2026-10-03"
+        (self.paper_root / "ccfa.yaml").write_text(
+            yaml.safe_dump(data, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "stage",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            json.loads(stdout),
+            {
+                "current": "writing",
+                "gate": "draft_complete",
+                "updated_at": "2026-10-03",
+            },
+        )
+
+    def test_stage_command_missing_file_or_fields_exits_two(self):
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "stage",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("工具错误", stderr)
+
+        self._write_state(stage="writing", deadline=None)
+        code, stdout, stderr = self._run(
+            [
+                "milestones",
+                "stage",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("工具错误", stderr)
+
     def test_due_non_checkpoint_exits_zero_with_json(self):
         self._write_state(deadline="2027-05-01", stage="idea")
 

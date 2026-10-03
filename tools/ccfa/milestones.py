@@ -154,14 +154,17 @@ def due_report(paper_root: Path, today: date) -> dict:
         }
 
     if deadline is None:
-        due: list[dict] = []
         advisory = _SEQUENTIAL_ADVISORY
         if stage_known:
-            due.append(_due_item("next", None, mode, current))
+            gate = gate_for(mode, current)
+            advisory = (
+                f"{_SEQUENTIAL_ADVISORY}；下一动作: stage {current} "
+                f"gate {gate.id}: {gate.criterion}"
+            )
         return {
             "mode": "sequential",
             "deadline": None,
-            "due": due,
+            "due": [],
             "missing_gates": [],
             "problems": problems,
             "advisory": advisory,
@@ -231,15 +234,57 @@ def due_report(paper_root: Path, today: date) -> dict:
     }
 
 
+def _stage_report(paper_root: Path) -> dict:
+    paper_root = Path(paper_root)
+    state_path = paper_root / "ccfa.yaml"
+    state = _load_state(paper_root)
+    stage = state.get("stage")
+    if not isinstance(stage, dict):
+        raise ValueError(f"{state_path} 的 stage 必须是映射")
+    result: dict[str, str] = {}
+    for field in ("current", "gate", "updated_at"):
+        value = stage.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"stage.{field} 必须是非空字符串")
+        result[field] = value
+    try:
+        date.fromisoformat(result["updated_at"])
+    except ValueError as exc:
+        raise ValueError(
+            f"stage.updated_at 不是合法日期: {result['updated_at']!r}"
+        ) from exc
+
+    venue = state.get("target_venue")
+    mode = venue.get("mode", "conference") if isinstance(venue, dict) else "conference"
+    if mode not in ("conference", "journal"):
+        raise ValueError(f"未知 mode: {mode!r}")
+    if result["current"] not in stages_for(mode):
+        raise ValueError(
+            f"stage.current 不在 stages.py 中: {result['current']!r}"
+        )
+    return result
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="检查投稿倒排里程碑")
     subparsers = parser.add_subparsers(dest="command", required=True)
     due = subparsers.add_parser("due", help="检查到期 checkpoint 与 gate 缺口")
     due.add_argument("--paper-root", default=".")
     due.add_argument("--today", help="注入今天日期 YYYY-MM-DD（默认系统日期）")
+    stage = subparsers.add_parser("stage", help="读取当前 stage/gate/updated_at")
+    stage.add_argument("--paper-root", default=".")
     args = parser.parse_args(argv[1:])
 
     try:
+        if args.command == "stage":
+            print(
+                json.dumps(
+                    _stage_report(Path(args.paper_root)),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 0
         today = parse_deadline(args.today) if args.today else date.today()
         if today is None:
             raise ValueError("--today 不能为空")
