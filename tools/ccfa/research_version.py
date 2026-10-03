@@ -75,20 +75,6 @@ def assert_own_repository(
             f"{repo}（git toplevel: {toplevel}）"
         )
     return repo
-    output = git_output(["rev-parse", "--show-toplevel"], repo, runner=runner)
-    toplevel = output.strip()
-    if not toplevel:
-        raise ValueError("git rev-parse --show-toplevel 未返回仓库路径")
-    try:
-        same_repository = Path(toplevel).resolve() == repo.resolve()
-    except OSError as exc:
-        raise ValueError(f"无法解析论文目录与 git toplevel: {exc}") from exc
-    if not same_repository:
-        raise ValueError(
-            "论文目录不是独立 git 仓库，拒绝在父仓库上打 tag: "
-            f"{repo}（git toplevel: {toplevel}）"
-        )
-    return repo
 
 
 def _version_number(tag: str) -> int:
