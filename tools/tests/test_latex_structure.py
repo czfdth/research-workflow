@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ccfa.latex_structure import check_braces, check_citations, check_environments, check_figures, scan_structure
+from ccfa.latex_structure import (
+    check_braces,
+    check_citations,
+    check_environments,
+    check_figures,
+    find_stray_percent,
+    scan_structure,
+)
 
 
 def _write(root: Path, body: str) -> Path:
@@ -101,6 +108,11 @@ class TestCitations(unittest.TestCase):
         tex = _write(self.root, "% " + r"\cite{ghost}")
         self.assertEqual(check_citations([tex], self.bib), [])
 
+    def test_duplicate_key_on_one_line_is_reported_once(self):
+        tex = _write(self.root, r"\cite{ghost} and \cite{ghost}")
+        problems = check_citations([tex], self.bib)
+        self.assertEqual([p.code for p in problems], ["missing-cite-key"])
+
 
 class TestFigures(unittest.TestCase):
     def setUp(self):
@@ -127,6 +139,36 @@ class TestFigures(unittest.TestCase):
     def test_commented_include_is_ignored(self):
         tex = _write(self.root, "% " + r"\includegraphics{gone.png}")
         self.assertEqual(check_figures([tex], self.figures), [])
+
+    def test_spaced_include_with_missing_figure_is_reported(self):
+        tex = _write(self.root, r"\includegraphics {gone.png}")
+        problems = check_figures([tex], self.figures)
+        self.assertEqual([p.code for p in problems], ["missing-figure"])
+
+
+class TestStrayPercent(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+
+    def test_inline_percent_with_trailing_text_is_reported(self):
+        problems = find_stray_percent(_write(self.root, "50% faster than baseline\n"))
+        self.assertEqual([p.code for p in problems], ["stray-percent"])
+        self.assertEqual(problems[0].line, 1)
+
+    def test_trailing_percent_with_nothing_after_is_not_reported(self):
+        self.assertEqual(find_stray_percent(_write(self.root, "text %\n")), [])
+
+    def test_whole_line_comment_is_not_reported(self):
+        self.assertEqual(find_stray_percent(_write(self.root, "% a note\n")), [])
+
+    def test_escaped_percent_is_not_reported(self):
+        self.assertEqual(find_stray_percent(_write(self.root, r"50\% faster")), [])
+
+    def test_literal_backslash_then_comment_with_text_is_reported(self):
+        self.assertEqual(
+            [p.code for p in find_stray_percent(_write(self.root, "line\\\\% lost text\n"))],
+            ["stray-percent"],
+        )
 
 
 if __name__ == "__main__":

@@ -104,7 +104,7 @@ def scan_structure(path: Path) -> list[Problem]:
     return check_braces(path) + check_environments(path)
 
 
-_INCLUDE = re.compile(r"\\includegraphics(?:\[[^\]]*\]\s*)?\{([^}]+)\}")
+_INCLUDE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\]\s*)?\{([^}]+)\}")
 _FIGURE_SUFFIXES = (".pdf", ".png", ".jpg", ".jpeg", ".eps")
 
 
@@ -115,7 +115,7 @@ def check_citations(paths: Iterable[Path], bib_path: Path) -> list[Problem]:
     for key, locations in sorted(cited.items()):
         if key in entries:
             continue
-        for location in locations:
+        for location in dict.fromkeys(locations):
             problems.append(
                 Problem(
                     "missing-cite-key",
@@ -153,3 +153,28 @@ def check_figures(paths: Iterable[Path], figures_root: Path) -> list[Problem]:
                         )
                     )
     return problems
+
+
+def find_stray_percent(path: Path) -> list[Problem]:
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    found: list[Problem] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = strip_comment(line)
+        if stripped == line:
+            continue
+        if not stripped.strip():
+            continue
+        if line[len(stripped) + 1:].strip():
+            found.append(
+                Problem(
+                    "stray-percent",
+                    str(path),
+                    number,
+                    f"行内未转义 '%' 会截断该行: {line.strip()[:60]}",
+                )
+            )
+    return found
