@@ -1,0 +1,609 @@
+# 科研工作流设计文档
+
+日期：2026-10-03
+版本：v6（v1 初稿 → v2 依据 GitHub 参考核查修订 → v3 补齐确定性工具契约、跨模型评审机制、记忆与索引 schema、长任务安全 → v4 依据 research-suite 代码级深读补齐数字溯源契约 → v5 补齐编译检查契约 → v6 补齐终稿检查契约）
+状态：v3 已评审；v4 已随 Plan 3 落地（trace-claims）；v5 已随 Plan 4 落地（latex-check，253 tests）；v6 增补第 6.6 节，待随 Plan 5 实施
+主路径：LaTeX + BibTeX
+形态：可复用模板，每篇论文派生一份
+
+## 1. 目标
+
+建立一套个人科研工作流，覆盖 CS 会议与 CS 期刊两类投稿，特征是：
+
+- 可复用：模板库固定一份，每开一篇新论文派生一个独立项目目录。
+- 两套尾部：会议走 rebuttal，期刊走 major revision，前段共用。
+- 五层结构：业务流程层、Agent 执行层、Skills 工具层、工具适配层、知识资源层。
+- 状态可恢复：任何阶段中断后，凭 `ccfa.yaml` 与目录内容即可回到原位继续。
+- 确定性优先：凡能机械化判定的，写成脚本，让证据落在文件上而不是对话里。需要"模型自述已完成"才能通过的 gate 不算通过。
+
+## 2. 非目标
+
+- 不把 Word 作为主路径。保留导出能力，但不进入主链。
+- 不做多人实时协作与云端同步。
+- 第一版不做语义检索，只做全文检索。
+- 不覆盖本机未安装的桌面软件（EndNote、MathType、Origin、Photoshop），只能文件交换或替换方案，见第 7 节。
+- 不做传播与影响力追踪（综述的第 9 阶段）。它与投稿是两件不同的事，混进来会稀释主链。需要时单独加一条轨。
+- 同一工作不同时投中文期刊与英文会议。跨语言并行投稿必须先核实两个 venue 的政策，否则按一稿多投处理。
+
+## 3. 整体架构
+
+### 3.1 位置
+
+- 模板库：`C:\Users\best\Documents\Codex\paper-template\`
+- 论文库：`C:\Users\best\Documents\Codex\papers\<slug>\`
+
+模板库纳入 git 管理，改坏可回滚。
+
+### 3.2 五层
+
+| 层 | 职责 | 实现方式 |
+| --- | --- | --- |
+| 1 业务流程层 | 阶段推进与闭环回流 | `ccfa.yaml` 状态机 + gate 判据 |
+| 2 Agent 执行层 | 五类角色路由，执行与评审分离 | 按 stage 路由到技能；gate 节点用独立模型评审 |
+| 3 Skills 工具层 | 可复用能力 + 确定性工具 | 现有技能 + 自建校验、追踪、审计脚本 |
+| 4 工具适配层 | 对接外部工具 | COM 原生操作 + 本地库 + 文件交换 + 浏览器自动化 |
+| 5 知识资源层 | 检索、复用与记忆 | 文献库 + FTS5 全文索引 + 研究记忆（含反重复） |
+
+## 4. 业务流程层
+
+### 4.1 阶段流
+
+会议模式：
+
+```
+idea -> grounded -> data-ready -> experiment-design -> experiments-running
+     -> results-ready -> writing -> internal-review -> submission-check
+     -> submitted -> rebuttal -> camera-ready -> archived
+```
+
+期刊模式与会议模式共用前十个阶段（`idea` 到 `submitted`），尾部替换为：
+
+```
+submitted -> major-revision -> response-letter -> resubmitted -> accepted -> archived
+```
+
+### 4.2 Gate 判据
+
+每个阶段有可检验的通过条件，不满足则不算通过。
+
+| Stage | Gate | 通过条件 |
+| --- | --- | --- |
+| idea | scope_defined | 问题陈述、至少一条可检验假设、目标 venue 均写明 |
+| grounded | novelty_grounded | 列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个"无人测量的合取"。禁止"没人做过"式表述 |
+| data-ready | provenance_recorded | 逐份数据有来源、分类与校验和；执行 `provenance check --scan data` 确认无未登记数据；来源文档可被脚本核对；不合规来源已排除 |
+| experiment-design | design_frozen | 每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；含种子计划、失败判据与平台画像（阶段零微基准） |
+| experiments-running | results_recorded | `experiments/log/` 逐次运行留有配置、种子、commit、退出码、指标 |
+| results-ready | claims_supported | 每个 claim 指到具体数值，且该数值通过行内标记脚本核对；无支撑项标记待验证或删除 |
+| writing | draft_complete | 正文、图表、引用齐备；页数符合 venue；所有引用条目来自检索期已核验的条目 |
+| internal-review | review_cleared | 跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过 |
+| submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功 |
+
+会议尾部：
+
+| Stage | Gate | 通过条件 |
+| --- | --- | --- |
+| submitted | venue_decided | 收到 venue 决定，评审意见归档 |
+| rebuttal | rebuttal_submitted | 逐条回应完成，修改范围与承诺一致 |
+| camera-ready | final_package_ready | 终稿符合 camera-ready 规范；确定性终稿检查通过 |
+| archived | archived | 终稿、复现包、数据来源文档归档 |
+
+期刊尾部：
+
+| Stage | Gate | 通过条件 |
+| --- | --- | --- |
+| submitted | venue_decided | 收到决定，评审意见归档 |
+| major-revision | revision_planned | 每条意见有明确处置方案，含不采纳的正当理由 |
+| response-letter | response_complete | 逐点回复完成，与实际改动一致 |
+| resubmitted | resubmission_ready | 改动稿与回复信齐备，修改痕迹保留 |
+| accepted | archived | 数据来源文档、model card、data card 齐备 |
+| archived | archived | 确定性终稿检查通过；全部材料归档 |
+
+### 4.2.1 状态文件
+
+沿用 CCFA 的 `ccfa.yaml` v0.4.0 schema，不新增顶层字段。venue 模式通过已有字段表达：
+
+```yaml
+target_venue:
+  name: "NeurIPS"
+  year: "2027"
+  mode: "conference"   # conference | journal
+```
+
+`mode` 决定第 4.1 节采用哪套尾部阶段与 gate 清单。其余字段保持原 schema。
+
+`claims` 与 `experiments` 用数组承载结构化记录，这是"每个 claim 可追溯到证据"的落点。每条 claim 至少含：
+
+```yaml
+claims:
+  - id: C1
+    statement: "方法 A 在数据集 D 上优于基线 B"
+    status: supported        # supported | provisional | dropped
+    evidence:
+      run_ids: [R12, R13, R14]
+      commit: "abc1234"
+      dataset_version: "D-v2.1"
+      metric: "accuracy"
+      statistic: "mean +/- 95% CI"
+      figure: "figures/main-results.pdf"
+    reviewer_concerns: []
+```
+
+指不到 `run_ids` 的 claim 不允许标为 `supported`。种子、统计口径与图号都在同一条记录里，这是把"结论"与"证据"绑在一起的最小结构。
+
+### 4.3 闭环回流
+
+任一阶段发现前置结论不成立时，允许回退。回退必须记录在 `ccfa.yaml`：
+
+- 从哪个阶段回退到哪个阶段。
+- 触发原因（一条具体事实，不写"感觉不对"）。
+- 哪些已完成产物仍然有效，哪些作废。
+
+### 4.4 审稿意见矩阵
+
+`reviews/revision-ledger.md` 沿用 CCFA 的字段，补两列：
+
+| 列 | 内容 |
+| --- | --- |
+| Concern ID | 稳定编号，跨版本复用 |
+| 来源 | 哪位审稿人，第几轮 |
+| 类型 | 证据不足 / 表述不清 / 需要新实验 / 误解 |
+| 需要的新证据 | 指向 `run_id`、引用键或明确写"无" |
+| 处置 | 改稿位置或回复要点 |
+| **承诺风险** | 这条回复是否承诺了尚未完成的工作 |
+| 状态 | 待处理 / 已处理 / 不采纳（须写理由） |
+
+承诺风险这一列是关键。绝大多数 rebuttal 翻车不是回应写得不好，而是回复里承诺了做不出来的实验。"需要的新证据"与"承诺风险"必须同时填，两者对不上就说明这条回复在冒险。
+
+### 4.5 倒排时间表
+
+会议模式以 deadline 为锚点倒排（T 为截止日）：
+
+| 节点 | 要求 |
+| --- | --- |
+| T-90 | 端到端流程跑通，能力冻结，不再引入新方法 |
+| T-60 | 主实验结果冻结，只补消融 |
+| T-30 | 全部 claim 锁定，进入写作。此后不接受新实验 |
+| T-21 | 初稿完成 |
+| T-14 | 跨模型评审完成 |
+| T-7 | 引用、数字、图表三项核验完成 |
+| T-3 | 终稿确定性检查通过，打包完成 |
+| T-1 | 只做格式与提交，不动内容 |
+
+T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产最常见的单一原因。
+
+期刊模式没有硬 deadline，用同样的相对节点由投稿目标日倒推；若暂无投稿目标日，则按"结果冻结 → 3 周写作 → 2 周评审 → 1 周核验"的顺序推进。
+
+## 5. Agent 执行层
+
+五个角色不新建实体，按 stage 路由到已有技能。
+
+| 角色 | 承担技能 |
+| --- | --- |
+| 文献与证据 | `ccf-literature-searcher`、`ccf-literature-monitor`、`ccf-integrity-auditor` |
+| 创新与方案 | `ccf-idea-optimizer`、`ccf-idea-reviewer` |
+| 代码与实验 | `ccf-experiment-designer` + 通用代码执行 |
+| 分析与写作 | `ccf-visual-composer`、`ccf-paper-writer` |
+| 审稿与质量控制 | `ccf-paper-reviewer`、`ccf-integrity-auditor`、`ccf-submission-checker` |
+
+路由规则由 `ccf-pipeline-orchestrator` 统一执行：读 `ccfa.yaml` 定位当前 stage，确定 gate 缺失项，调起对应技能，最后更新状态。
+
+### 5.1 执行与评审分离
+
+参考 ARIS 的做法：执行者与评审者使用不同模型。同模型自查有系统性盲区。
+
+本机实测（2026-10-03）：
+
+- `codex` CLI 在 PATH 上，版本 0.160.0，支持 `codex exec` 非交互执行，可用 `-c model="..."` 覆盖模型。
+- 本地代理 `cc-switch` 监听 `127.0.0.1:15721`，提供 OpenAI 兼容接口，模型目录含 `deepseek-v4-flash` 与 `deepseek-v4-pro`。
+- 当前执行模型是 `deepseek-v4-flash`，评审可用 `deepseek-v4-pro` 起一个独立会话。
+
+| 环节 | 执行 | 评审 |
+| --- | --- | --- |
+| 选题与实验设计 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
+| 正文写作 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
+| 终稿检查 | 脚本（确定性） | 不需要模型 |
+
+**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列，这是"同族不同规模"，比自查强，但不是严格意义的跨族评审。真正的跨族需要另一个 provider，本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 未在配置中定义，需要转换器在跑才能用。第一版按 v4-pro 落地，跨族评审列为可选升级。
+
+触发约束：跨模型评审只在 gate 关键节点触发（T-14、内部审稿），不逐轮触发。
+
+## 6. Skills 工具层
+
+直接复用，不新建：
+
+- CCFA 家族 17 个技能。
+- Nature 家族用于文献检索、引用核验、统计审查。
+- 绘图技能用于出版级图表。
+- 代码执行与数据处理属于通用能力，不单独封装。
+
+明确不覆盖：Photoshop、Origin 的桌面端自动化（本机未安装）。
+
+### 6.1 确定性工具（必须自建）
+
+机械可判定的工作不靠提示词反复推导，写成脚本。参考 `research-suite` 的 8 个工具：
+
+**实现语言：Python 3.12**（不是 v2 写的 PowerShell）。理由：这些工具的核心工作是文本解析、字节嗅探、PDF 抽取、SQLite 和子进程编排，Python 的对应库本机全部就绪；PowerShell 在这几件事上没有优势。本机内置 Python 3.12.14，`hashlib`、`sqlite3`、`urllib`、`csv`、`subprocess`、`pathlib` 与 PyMuPDF、Pillow、pandas 均可用。
+
+唯一缺的依赖是 `PyYAML`。处理方式：在 `paper-template/tools/` 下建独立虚拟环境装它，不改动 Codex 的托管运行时。
+
+| 工具 | 作用 |
+| --- | --- |
+| `citation-guard` | 引用只在检索期入库；Crossref / DataCite 核验存在性；DOI 去重；悬空 `\cite{}` 检测 |
+| `trace-claims` | 行内标记 `\dataval{path:key}{value}`，机械化比对活的 JSON / CSV / YAML，契约见 6.4 |
+| `provenance` | 逐文件来源、分类、校验和；生成来源文档并可反查 |
+| `run-log` | 每次实验运行的配置、种子、commit、退出码、指标 |
+| `repro-package` | 打包并在干净环境实际重跑，不只看包是否完整 |
+| `latex-check` | 结构校验（括号、环境、未解析引用、缺失图片、未转义 `%`）+ 多引擎编译 |
+| `research-version` | 自动编号的版本快照与任意两版之间的真实 diff，替代手工 `v2` / `final-final` |
+| `final-check` | 终稿确定性检查，见 6.2 |
+| `friction-log` | 记录工具缺陷与指令缺口，跨论文聚合 |
+
+**分期说明（v6 补记）**：`research-version` 推迟到"复现与归档"计划实施，且默认按 **git 的薄封装**（tag + 真实 diff）而非独立版本库来做。理由：论文库本身已是 git 仓库，独立快照库会制造"两个版本真相"——同一份稿子的"第几版"到底以哪个为准。先不建与 git 打架的东西，比建了再拆便宜。
+
+**写盘工具的补充契约（v6 补记）**：第 6.1.1 节的三条约束针对检查类工具。本层的 `provenance` 与 `run-log` 会写文件，除退出码与输出契约外，另须满足：**原子写**（先写临时文件再改名，避免半截 JSON）、**不覆盖**（同名记录已存在时拒绝写入，除非显式 `--force`）、**幂等可查**（重复执行同一检查不产生新记录）。"失败必须留档"（§9.2）要求单条记录的耐久性，因此运行记录一运行一文件，而不是一个会被整体重写的聚合文件。
+
+### 6.1.1 通用接口契约
+
+九个工具遵循同一份契约，否则它们会各自变成需要模型解释的黑盒。
+
+- **输入**：文件路径或 stage 名。不读对话历史，不依赖上下文。
+- **输出**：机器可读的 JSON 到 stdout，人读摘要到 stderr。两者分离，便于脚本串联。
+- **点名例外**：`run-log` 的 `run` 子命令是直通包装器，子进程 stdout 与 stderr 原样透传，`run` 自身的控制摘要写 stderr，§6.1.1 的“JSON 到 stdout”只适用于 `check` 与 `log-metrics`。
+- **退出码**：`0` 通过，`1` 发现问题，`2` 工具自身出错（输入缺失、依赖缺失、解析失败）。
+- **幂等**：同一输入重复运行结果一致。
+- **无副作用**：检查类工具（`latex-check`、`final-check`、`citation-guard` 检查模式）只读，不写文件。
+- **定位**：返回 `1` 时，每条问题带 `文件:行` 定位。
+
+退出码 `2` 与 `1` 必须分开。把"工具坏了"混进"检查通过"，比检查本身失效更危险。
+
+### 6.2 终稿确定性检查项
+
+基线是渲染后的 PDF，不是编译日志。
+
+- 渲染结果中是否存在未解析的 `?` 引用标记
+- 图片字节格式与扩展名是否一致（JPEG 存成 `.png` 会让视觉模型直接报错）
+- 是否存在没有任何正文引用的图或表
+- 是否有数字缺少 `\dataval` 标记
+- 声明类内容（局限、数据可用性）是否齐备
+
+### 6.3 图表溯源契约
+
+综述把"图表溯源"列为尚未解决的问题。每个图必须能回答四个问题，答案写在 `figures/manifest.yaml`：
+
+```yaml
+- name: main-results
+  file: figures/main-results.pdf
+  source_run_ids: [R12, R13, R14]
+  source_data: experiments/results/main.csv
+  generator: ccfa-workfiles/figures/main-results/source/plot.py
+  generator_hash: "sha256:..."
+  bytes_format: pdf
+  referenced_in: ["manuscript/sections/experiments.tex:142"]
+```
+
+`file` 是交付图相对论文根目录的路径，**必填**：校验"bytes_format 与实际字节是否一致"必须先定位到文件，靠"名字约定"去猜会在图被放到别处时静默失配。若历史 manifest 缺该字段，回退到 `<paper-root>/figures/<name>.<bytes_format>`，并在报告中记一条 advisory 提示补写。
+
+`bytes_format` 必须与文件的**真实字节**一致，取值限 `png` / `jpg` / `jpeg` / `gif` / `pdf`。矢量图（论文里最常见）用 `pdf`，与 `file` 的扩展名必须自洽——示例里 `file` 与 `bytes_format` 不一致的写法会被 `final-check` 判为 `figure-manifest-format`。
+
+两条硬规则：
+
+1. 交付的图必须由脚本生成，字节格式与扩展名一致。手工编辑过的导出图不得直接交付。
+2. 若确实需要手工修图（排版遮挡、标注修正），必须在 `manifest.yaml` 里注明并写明改了什么。静默修图属于学术诚信问题，不是格式问题。
+
+### 6.4 数字溯源契约（trace-claims）
+
+第 6.2 节要求"数字缺少 `\dataval` 标记"可被检出，前提是标记本身有确定语义。本节依据 `15b4t/research-suite`（MIT）的 `traceable-claims` 实现深读后定稿，六条为 v4 新增。
+
+**标记语法**：`\dataval{<source_path>:<key_path>}{<claimed_value>}`。编译期由导言区 `\newcommand{\dataval}[2]{#2}` 渲染为 `claimed_value`，脚本独立核验。source_path 相对 `--base-dir` 解析，不得是绝对路径，不得经 `..` 逃逸出 base_dir。
+
+**key_path 解析规则**：
+
+- JSON / YAML：点分隔路径；键名中含字面点时写 `\.` 转义（如 `sweep.0\.5x_4ms.stat`）；列表用整数下标。
+- CSV：`<row>.<column>`，row 从 0 起算且不计表头（`0.x` 是第一条数据行）。
+- 标签指向的源文件不存在、键不存在、行越界或源文件解析失败，都是**稿件证据缺陷**，属 problem，退出码 1。
+
+**比较语义**（六条中的第 1、4 条在 v3 完全缺失，会导致每个正常四舍五入的数字都误报）：
+
+1. **隐含舍入容差**：按 claimed_value 自身的小数位数推容差——`0.143` 表示源值被舍入到 3 位，容忍 `0.5e-3`。整数写法不推容差。这条让同一篇稿件里不同显示精度共存，无需手工挑一个全局容差。
+2. **绝对容差**：`--tolerance`，默认 `1e-9`。
+3. **相对容差**：`--rel-tolerance`，默认关闭；开启后差值不超过较大者绝对值的该比例即算通过，用于同一文档跨数量级（`0.143` 与 `1.2e9`）的取值。
+4. **数字与布尔归一**：先剥 US 式千分位逗号（仅当形如 `1,234` 时才剥）；`true` / `false` 大小写不敏感（JSON 小写，Python `str(bool)` 首字母大写）。
+5. **字符串兜底**：非数字且非布尔的取值要求精确字符串相等。
+
+**未标记数字扫描**：`--untagged` 开启后输出 advisory，启发式识别未包裹的数值字面量，过滤年份、图表/章节编号、方括号引用。**advisory 永不影响退出码**：它是待人工复核的线索，不是判决。
+
+**退出码判定**（与第 6.1.1 节一致，且比参考实现严格）：
+
+- `0`：全部标签通过（零标签也算通过；"有数字没标记"由 `--untagged` 的 advisory 承担，不是 problem）。
+- `1`：任一 claimed_value 与源值不符，或任一标签指向的源不可解析。
+- `2`：工具自身出错——被检查的文档路径不存在或不可读、`--base-dir` 非法、依赖缺失、参数错误。
+
+参考实现把所有异常都归为 1；本设计把"文档传参错误"（2）与"稿件证据缺陷"（1）分开。两者混淆会让"检查没跑成"看起来像"检查发现了问题"，与第 6.1.1 节的立节理由直接冲突。
+
+**只读**：trace-claims 不写入任何被检查文件。
+
+**配套改进**：v3 遗留的 `texscan._COMMENT` 只回溯一个字符，`text\\%` 后接注释会被误判（见 Plan 2 deferred minors 第 1 条）。数字扫描同样依赖注释剥离，两者共用一个正确的剥离函数（`%` 前的反斜杠为偶数个时才是注释），在 Plan 3 一并修掉，不再各写一份。
+
+### 6.5 编译检查契约（latex-check）
+
+本节依据 `research-suite/tools/latex-tools`（MIT）与 `paper-machine/scripts/verify_paper.py`（MIT）的代码级深读定稿。参考实现的注释剥离仍是"只回溯一个字符"的旧缺陷；本仓库的 `ccfa.texcomment.strip_comment` 已是偶数反斜杠版本，直接复用即可，不要再实现一遍。
+
+**检查项（默认只读，不写任何文件）**：
+
+| 条件 | code | 归类 |
+| --- | --- | --- |
+| 花括号不配平（`\{` / `\}` 不计数） | `unbalanced-brace` | problem |
+| 环境 `\begin` / `\end` 不匹配或未闭合 | `unmatched-environment` | problem |
+| 正文引用的键不在 bib 中 | `missing-cite-key` | problem |
+| `\includegraphics` 指向的文件不存在 | `missing-figure` | problem |
+| 行内未转义 `%`（会静默截断该行） | `stray-percent` | advisory |
+
+`stray-percent` 归 advisory 的理由与 trace-claims 的未标记数字相同：`%` 的合法性依赖上下文（数学模式、`verbatim`、URL），机械扫描只能产出线索。整行注释（`%` 为该行第一个非空白字符）永不报。
+
+结构扫描必须先剥离注释——落在注释里的花括号与环境不该参与配平——并逐文件独立配平，不能把多个 `.tex` 拼接后再数。
+
+**编译（`--compile` 显式开启，是唯一写盘路径）**：本机实测 `latexmk` 不可用（缺 Perl），因此编译器自己按 `pdflatex → bibtex → pdflatex → pdflatex` 四步驱动，逐步判退出码；`.aux` 中无 `\bibdata` 时跳过 bibtex 并记为 skipped。产物写在手稿目录（LaTeX 常规行为）；不开 `--compile` 时一个字节也不写。
+
+**退出码**：`0` 通过；`1` 结构问题，或 `--compile` 时编译失败；`2` 工具错误（手稿目录缺失、开了 `--compile` 但找不到引擎、参数错误）。
+
+### 6.6 终稿检查契约（final-check）
+
+第 6.2 节列了检查项，本节给出可执行的判定与归类。参考实现 `paper-machine/scripts/verify_paper.py`（MIT），采纳其两条设计原则：**基线是渲染后的 PDF 文本，不是编译日志**；**可选依赖缺失时该项记为 skipped，绝不降级为通过**。
+
+| 条件 | code | 归类 |
+| --- | --- | --- |
+| PDF 文本中存在未解析的引用标记（孤立 `?`） | `unresolved-marker` | problem |
+| 图片字节的魔数与扩展名不符（如 JPEG 存成 `.png`） | `figure-format` | problem |
+| `figures/manifest.yaml` 里记录的 `generator_hash` 与实际脚本不符 | `figure-hash` | problem |
+| manifest 记录的 `bytes_format` 与该图实际字节不符 | `figure-manifest-format` | problem |
+| manifest 的 `file`（或回退路径）指向的交付图不存在 | `figure-missing` | problem |
+| manifest 条目缺 `file` 字段（用了回退路径） | `manifest-missing-file` | advisory |
+| manifest 中的 `referenced_in` 为空，或正文从未引用该图 | `unreferenced-figure` | advisory |
+| 正文数字缺少 `\dataval` 标记 | 委托 `trace-claims --untagged` 的结果 | advisory |
+| 声明类内容缺失（局限 / 数据可用性） | `missing-declaration` | advisory |
+
+**依赖与降级**：PDF 文本提取用 PyMuPDF（已装入 `tools/.venv`，版本 1.28.2）。若某台机器上不可用，`unresolved-marker` 与依赖 PDF 文本的检查记为 **skipped**，其余检查照常执行、照常报告。**skipped 不是通过，且不得以退出码 0 结束**：本轮存在任何跳过项时，退出码为 **2**（§6.1.1："依赖缺失"属工具错误）——一份闸门报告若因缺依赖而没跑全，就不能对外声称成功。
+
+**退出码**：`0` 通过；`1` 有 problem；`2` 工具错误——手稿目录或渲染后的 PDF 缺失、`manifest.yaml` 存在但不可解析、参数错误。
+
+**自动发现**：未显式传入 `--manifest` 时，如果 `<paper-root>/figures/manifest.yaml` 存在，final-check 必须自动校验该文件；该文件不存在时不进行 manifest 校验，也不记 skipped。
+
+**只读**：final-check 不写入任何被检查文件，也不修改 manifest。
+
+**skipped 的表示**：跳过项以 advisory 形式进入 JSON，code 为 `check-skipped`。理由：`ccfa.cli` 的契约只有 problems 与 advisories 两个数组，扩展它会影响三个既有工具的报告形状；而"跳过"在语义上确实是"需要人注意、但不是判决"，与 advisory 的定义一致。这样 skipped 在机器可读输出里与"通过"（不出现在报告中）天然可区分。
+
+## 7. 工具适配层
+
+本机没有 Word / PPT / EndNote / MathType 的 MCP server，但 COM 自动化可用，因此该层按实测能力设计。
+
+实测 COM 注册情况（2026-10-03）：
+
+| 组件 | 状态 | 含义 |
+| --- | --- | --- |
+| `Word.Application` | 已注册 | 可生成含原生公式、交叉引用、字段的真实 docx |
+| `PowerPoint.Application` | 已注册 | 可生成原生可编辑 pptx |
+| `Excel.Application` | 已注册 | 可生成含原生图表的 xlsx |
+| `KWPS.Application` | 已注册 | WPS 可用 |
+| `EndNote.Application` | 未安装 | 走 RIS / BibTeX 文件交换 |
+| `MathType.Application` | 未安装 | 公式走 Office 原生 OMML |
+| `Origin.ApplicationSI` | 未安装 | 图表走 matplotlib / seaborn |
+
+| 需求 | 实现手段 | 可用性 |
+| --- | --- | --- |
+| LaTeX 编译 | 本机 MiKTeX 工具链（见下方实测） | 可用 |
+| BibTeX 管理 | `references.bib` 直接读写 | 可用 |
+| 数据整理 | pandas、openpyxl、CSV | 可用 |
+| 统计图 | matplotlib、seaborn | 可用 |
+| 论文配图 | 绘图技能 + Python | 可用 |
+| PDF 解析与生成 | PyMuPDF、pdfplumber、pdf-lib | 可用 |
+| 幻灯片 | COM 驱动 PowerPoint（原生可编辑）或 python-pptx | 可用 |
+| 原生 Office 文稿 | COM 驱动 Word / Excel | 可用 |
+| 公式 | LaTeX 原生；Word 内为 Office OMML | 可用 |
+| 文献库交换 | BibTeX / RIS 文件导入导出 | 可用 |
+| 学术网站检索 | 浏览器自动化 | 可用 |
+| Overleaf 协作 | 双向 git 同步 | 待建 |
+| EndNote / MathType / Origin | 未安装，走 RIS / OMML / CSV 替代 | 不可用 |
+
+COM 只用于生成和读取原生文件，不用于无人值守地点击界面。需要人工判断的操作一律停下来问。
+
+### 7.1 LaTeX 工具链实测（2026-10-03）
+
+v1 写的"内置 LaTeX 编译器，无需本地 TeX 安装"不准确。本机装了 MiKTeX，位置在 `C:\Users\best\AppData\Local\Programs\MiKTeX\miktex\bin\x64\`。逐项实测：
+
+| 工具 | 状态 | 实测结果 |
+| --- | --- | --- |
+| `pdflatex` | 可用 | 英文文档 exit 0，产出 PDF |
+| `xelatex` + `ctex` | 可用 | 中文文档 exit 0，产出 PDF，字体与断行正常 |
+| `bibtex` | 可用 | `pdflatex → bibtex → pdflatex → pdflatex` 四步全 exit 0，PDF 产出 44 KB，`.aux` 中 `\bibcite` 正确生成 |
+| `biber` | 已安装，未实测 | 存在，未做端到端验证 |
+| `latexmk` | **不可用** | 依赖 Perl，本机未安装，直接报 `MiKTeX could not find the script engine 'perl'` |
+
+这条决定了编译驱动怎么写：**不能调 `latexmk`**，必须由 `latex-check` 自己按 `pdflatex → bibtex → pdflatex → pdflatex` 的顺序执行。反过来这也是好事——显式四步比 `latexmk` 更容易判断"哪一步失败、失败在哪"。
+
+Codex 内置的 LaTeX 编辑器编译器仍然保留，用于交互式预览；脚本化的批量编译走 MiKTeX。
+
+## 8. 知识资源层
+
+### 8.1 第一版
+
+- 共享文献库：`paper-template/library/`，存放读过的 PDF 与 BibTeX。
+- 每篇论文的引用从共享库选取，避免重复下载和重复录入。
+- 全文检索：SQLite FTS5（零外部依赖，本机已确认可用，SQLite 3.53.1）。
+
+### 8.2 研究记忆
+
+文献库只是存储，记忆是另一层语义。参考 ARIS 的研究记忆，需要四个行为：
+
+1. 读过的文献自动入库，形成可检索条目。
+2. 每次选题前先读记忆，避免重复自己。
+3. 实验结果能回写 claim 状态。
+4. 失败的想法与走不通的路线作为反重复记忆保留，下次选题时主动提示。
+
+第 4 条在 v1 完全缺失。没有它，同一批想法会被反复捡起来撞同一面墙。
+
+记忆文件用固定字段，便于脚本读写：
+
+```yaml
+# memory/dead-ends.md 中的一条
+- id: DE3
+  date: "2026-09-14"
+  idea: "用对比学习替代现有多任务损失"
+  reason: "消融显示增益来自 batch size 变化，不是损失函数"
+  evidence: experiments/results/ablation-contrastive.csv
+  reopen_if: "出现新的负样本采样策略"
+```
+
+`reopen_if` 这一条让死路可被重新打开。没有它，反重复记忆会变成永久排除，误伤本来可行的方向。
+
+### 8.3 索引 schema
+
+实测结论（SQLite 3.53.1，本机验证）：
+
+| 分词器 | 中文检索 | 结论 |
+| --- | --- | --- |
+| `unicode61` | 完全失效（连续汉字被当作单个 token，`注意力`、`推理` 均返回 0） | 不可用于中文 |
+| `trigram` | 可用，但查询至少需 3 个字符（`注意力` 命中，2 字的 `推理` 不命中） | 主索引用它 |
+
+因此索引分两路：
+
+```sql
+CREATE VIRTUAL TABLE papers USING fts5(
+  key, title, authors, year, venue, abstract, notes, path,
+  tokenize='trigram'
+);
+```
+
+三字符以上的查询走 FTS5；两字以内的中文查询回退到 `LIKE '%q%'`。个人文献库规模下 `LIKE` 的开销可以接受，不必为此引入分词库。
+
+### 8.4 第二阶段（按需）
+
+语义检索：安装向量库，对 PDF 全文与实验记录建立向量索引。
+
+触发条件：全文检索出现明显召回不足时再上，不提前引入依赖。
+
+## 9. 自动化层
+
+三类定时任务，默认安静，无实质变化不通知。
+
+| 任务 | 频率 | 行为 |
+| --- | --- | --- |
+| 文献监控 | 每周 | 扫指定关键词与对标工作，仅在有实质重叠或新竞品时通知 |
+| 里程碑提醒 | 按 deadline 倒排 | 投稿前 14 / 7 / 3 天检查 gate 缺失项 |
+| 阶段推进 | 手动触发 | 读状态、定位阶段、调用技能、更新状态 |
+| 实验队列 | 长任务运行期 | 多组种子排队执行，失败重试有上限，看门狗检测卡死 |
+
+硬约束一：自动化只做信息收集与提醒。修改论文正文、修改 `ccfa.yaml` 中的结论字段，必须经明确授权。
+
+硬约束二：长任务必须可中断、可观察、有停止条件。失控的运行脚本会污染结果，比跑得慢更糟。
+
+### 9.1 成本与上下文预算
+
+`paper-machine` 的实测：为省钱把历史上下文压到 24k，成本反而从 $11.99 涨到 $29.75 并最终失败（输入 token 从 11.4M 涨到 27.6M，单会话动作数达到 463）。被饿死的上下文让 Agent 反复重读文件、重跑命令、重新规划。
+
+因此：设定工作上下文的下限，不做盲目压缩；对长会话设动作数上限，触发即停下来汇报，而不是继续消耗。
+
+### 9.2 长任务安全执行
+
+综述把"安全自主执行"列为未解决问题。长任务（多组种子、多小时训练、批量消融）需要四件事：
+
+| 项 | 要求 |
+| --- | --- |
+| 沙箱 | 实验代码在受控目录运行，只读挂载原始数据，防止脚本改写数据集 |
+| 预算 | 每个实验队列声明 GPU 时长上限与并发上限，超限即停 |
+| 停止条件 | 声明最大步数、最大时长、失败重试上限，三者任一触发即停 |
+| 失败分流 | 运行失败分为"环境问题（可重试）"与"结果问题（必须记录）"，不得静默重试到成功 |
+
+最后一条是要害。把失败的运行重试掉、只留下成功的那次，会直接制造不可复现的结果。失败必须留在 `experiments/log/` 里。
+
+## 10. 目录结构
+
+模板库：
+
+```
+paper-template/
+  ccfa.yaml.template
+  README.md
+  docs/
+  scripts/
+    new-paper.ps1
+    citation-guard.ps1
+    trace-claims.ps1
+    provenance.ps1
+    run-log.ps1
+    repro-package.ps1
+    latex-check.ps1
+    final-check.ps1
+  checklists/conference.md
+  checklists/journal.md
+  library/
+    refs.bib        # 共享 BibTeX，纳入 git
+    papers/         # PDF 原件，不纳入 git
+    index.db        # FTS5 索引
+```
+
+单篇论文：
+
+```
+papers/<slug>/
+  ccfa.yaml
+  manuscript/
+    main.tex
+    sections/
+    references.bib
+  data/
+    provenance.json  # 机器可读来源登记，纳入 git
+    provenance.md    # provenance export 生成的人读来源文档
+  experiments/
+    design.md
+    log/            # 每次运行的配置、种子、commit、退出码、指标
+    results/
+  figures/
+    manifest.yaml   # 图表溯源：来源 run、生成脚本、哈希、正文引用位置
+  tables/
+  reviews/
+    revision-ledger.md
+  submission/
+    checks.md
+    repro/
+  memory/
+    ideas.md        # 选题记忆
+    dead-ends.md    # 反重复记忆
+  ccfa-workfiles/
+    literature/
+    figures/
+    writing/
+```
+
+## 11. 待确认
+
+- 模板库位置是否确定为 `C:\Users\best\Documents\Codex\paper-template\`。
+- 是否现在建立示例论文目录跑通派生流程。
+- 文献监控的初始关键词与对标工作。
+- 共享文献库是否纳入 git（PDF 默认不纳入，只纳入 BibTeX）。
+- 跨模型评审第一版用 `deepseek-v4-pro`（同族不同规模）是否够用，还是必须配跨族 provider。
+**已定**：第 6.1 节的 9 个工具全建（用户 2026-10-03 决定），分六个实施计划推进。
+
+## 12. 验收标准
+
+- 能通过一条命令派生出一篇新论文的完整目录，且 LaTeX 模板可编译。
+- 会议与期刊两种模式切换后，阶段流与 gate 清单正确变化。
+- `ccfa.yaml` 能被正确读取和更新，中断后可恢复。
+- 全文检索能对共享文献库返回有效结果。
+- 四类自动化任务建立后，默认不产生噪声通知。
+- `citation-guard` 能对含虚构条目的草稿报出全部虚构引用（用已知的 4 条虚构样本做回归）。
+- `trace-claims` 能在凭空改掉一个 `\dataval` 数字后成功报错；正文写 `0.143`、源值为 `0.142857…` 时**不**误报（第 6.4 节隐含舍入容差生效）。
+- `trace-claims` 能正确解析含字面点的键（`sweep.0\.5x_4ms.stat`）与 CSV 行寻址（`4.lcoe`）。
+- `trace-claims` 对试图经 `..` 逃出 `--base-dir` 的标签报 problem（退出码 1），对被检查文档路径不存在报工具错误（退出码 2）。
+- `trace-claims --untagged` 能列出未标记的数字线索，且 advisory 不改变退出码。
+- `latex-check` 能在五类输入上分别报出对应 code：`unbalanced-brace`、`unmatched-environment`、`missing-cite-key`、`missing-figure`，以及 advisory `stray-percent`。
+- `latex-check` 的结构扫描忽略注释内的花括号与环境（注释里写 `{` 不得造成误报）。
+- `latex-check` 不开 `--compile` 时一个字节也不写；开了 `--compile` 且引擎缺失时退出码 2，编译失败时退出码 1。
+- `final-check` 能在渲染后的 PDF 文本含未解析 `?` 标记时报 `unresolved-marker`；PyMuPDF 不可用时该项记为 skipped（以 advisory 形式可见），**不是通过**。
+- `final-check` 的 skipped 结果在 JSON 里与"通过"可区分（通过不出现在报告中，skipped 出现在 advisory 列表里）。
+- `final-check` 能在故意把 JPEG 改名成 `.png` 的文件上报警。
+- 复现包在干净环境实际重跑成功。
+- 审稿意见矩阵的"承诺风险"列能挡住一条"承诺了未完成实验"的回复样例。
+- 图表 manifest 能检出无正文引用、生成脚本哈希不符、字节格式与扩展名不符三种情况。
+- 索引对三字以上中文查询走 FTS5、两字查询回退 `LIKE`，两者均能命中。
+- 实验队列在超过预算或重试上限时停止，且失败运行保留在 `experiments/log/`。
+- 工具自身出错时返回退出码 `2`，不会被误判成检查通过。

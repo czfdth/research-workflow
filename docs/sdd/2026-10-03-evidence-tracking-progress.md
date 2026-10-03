@@ -1,0 +1,1632 @@
+> **仓库正式留档（2026-10-03 从 `.superpowers/sdd/` 工作副本复制）**：
+> 这是 E1–E52 全部裁定、各任务评审结论与挂账清单的唯一正式留档。
+> 之后如再更新，以本文件为准；设计与计划分别见 `docs/design/` 与 `docs/plans/`。
+> 文件里出现的 `C:/Users/best/Documents/Codex/...` 路径是历史来源，保留不改。
+
+# SDD ledger — plan: （待写）evidence-tracking（provenance / run-log / research-version）
+
+状态：**预研完成，实施计划尚未撰写**。本文件是该计划的恢复入口。
+
+Spec: C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md（v6，§6.1、§6.1.1、§9.2、§10）
+Repo root: C:/Users/best/Documents/ChatGPT/科研
+基线: HEAD = `2c87264`，工作树干净，**305 tests OK**
+前置: 四个确定性检查工具已齐备（citation-guard / trace-claims / latex-check / final-check）
+
+## 参考实现（research-suite，MIT，已代码级深读头部与结构）
+
+路径：`C:/Users/best/Documents/Codex/2026-10-03/wo/work/gh-clones/research-suite/tools/`
+
+| 参考 | 结构 | 对我们的价值 |
+| --- | --- | --- |
+| `provenance-manifest/provenance_manifest.py` | 子命令 `add` / `log-calibration` / `check` / `verify-checksums` / `refresh` / `export`；一个 JSON store；`VALID_CLASSIFICATIONS = ("real", "rescaled-real", "documented-substitute")` | 逐文件来源 + 分类 + 校验和；**校验和可反查真实文件**（防"说明与数据漂移"）；分类里专门有"有据可查的替代品"一档 |
+| `experiment-tracker/experiment_tracker.py` | 子命令 `run` / `log-metrics` / `list` / `show` / `find`；`run ... -- <cmd>` 包裹真实命令 | 自动记录 exit code、时长、git commit；`log-metrics` 事后挂指标 |
+| `research-version/research_version.py` | 子命令 `snapshot` / `list` / `diff` / `show`；`.research-versions/` + `manifest.json`；`TEXT_SUFFIXES` 决定哪些文件做真 diff | 自动编号快照 + 任意两版真 diff；动机是替代手工 `mkdir/cp/git mv`（`git mv` 在空目录上会炸） |
+
+### 参考实现的两个教训（我们自己必须避免）
+
+1. **`experiment_tracker` 的静默空指标**：它的文档明写"调了 `run` 却没调 `log-metrics` 的驱动脚本，会把每次运行都记成空指标、且不报错"。这正是本工作流要防的失效方向——**记录看起来完整，其实关键字段空着**。
+2. **`provenance_manifest` 是写盘工具**：它有 store、会改文件。我们的四个现有工具全是只读检查器，契约（§6.1.1 的"检查类工具只读"）不覆盖它们，所以这一层需要**新的写入契约**，不能照搬既有 CLI 约定。
+
+## 本层与现有工具的根本区别
+
+| 维度 | 现有四个检查工具 | 本层三个工具 |
+| --- | --- | --- |
+| 副作用 | 只读 | **写**（store / 日志 / 快照） |
+| 退出码 | 0/1/2（发现/工具错误） | 需要重新定义：写入失败应可区分于"记录里有问题" |
+| 幂等性 | 天然幂等 | 必须显式设计（重复 `run` 同一个命令、重复 `snapshot` 同一状态） |
+
+这一点必须先定，否则会把只读工具的契约硬套到写盘工具上，产出"看起来像检查、实际在写文件"的怪物。
+
+## 待定设计问题（写计划前必须先定）
+
+### Q1 — run-log 的存储形态：单 JSON store 还是每次运行一个文件？
+
+spec §10 写 `experiments/log/`，§9.2 又要求"失败必须留在 log 里"。参考实现用单 JSON store（并发写有覆盖风险）。候选：
+
+- (a) **每次运行一个文件** `experiments/log/<run_id>.json`：天然防并发覆盖、单条损坏不影响其余、失败记录与成功记录同级；
+- (b) 单 store `runs.json`（照搬参考）：查询方便，但并发与损坏风险集中。
+
+倾向 (a)：§9.2 的"失败必须留档"要求单条记录的耐久性，而不是一个会被整体重写的聚合文件。
+
+### Q2 — 指标空缺怎么办？
+
+参考实现的致命弱点是"空指标静默通过"。我们的 `run-log` 若照抄，就会重演。候选：
+
+- (a) `run` 结束时记为 `metrics: null`，并**另设一个检查**（`run-log check`）把"有 run 无指标"报出来；
+- (b) `run` 拒绝在无指标时结束（不现实，指标通常事后才算）；
+- (c) 记 `status: "metrics-pending"`，由后续 `log-metrics` 改为 `"complete"`，`check` 把 pending 当 problem 报。
+
+倾向 (c)：状态显式，且"未完成"与"完成但指标为空"可区分——后者本身也是异常。
+
+### Q3 — `--paper-root` / store 位置
+
+spec §10 的布局已经把位置写死：`data/provenance.md`、`experiments/log/`。机器可读的 store 建议与人类文档并存（`data/provenance.json` + 生成的 `provenance.md`），而不是另找地方。research-version 的 store 建议 `.research-versions/`（gitignored 或入库需定）。
+
+### Q4 — research-version 与 git 的关系（最需要想清楚的一条）
+
+论文库已是 git 仓库，`snapshot` 与 `git commit` 功能重叠。参考实现的动机（替代手工 `mkdir/cp`、`git mv` 在空目录上炸）在 git 工作流里并不成立。
+
+候选：
+
+- (a) 照搬参考实现（独立版本库），与 git 并存；
+- (b) 降级为 git 的薄封装（`tag` + `git diff`），保持"任意两版真 diff"的能力但不另建存储；
+- (c) 本轮**不做** research-version，把它并入后面"复现与归档"计划，理由是它与 git 的边界没想清楚之前，独立实现大概率是重复建设。
+
+倾向 (c) 或 (b)：**先不写一个与 git 打架的版本库**。这条要在写计划前定，因为它直接决定本计划是三个工具还是两个。
+
+## 计划轮廓（待 Q4 定夺后确定任务数）
+
+若 Q4 取 (b)/(c)：
+
+1. `tools/ccfa/provenance.py` — store 的读写与校验（add / 校验和核对 / 导出 markdown）
+2. `tools/ccfa/provenance_check.py` — 检查模式：文件与 store 漂移、缺来源、分类非法 → problem；**只读**
+3. `tools/ccfa/run_log.py` — 包裹命令执行并落单文件记录（exit code / 时长 / git commit / 配置 / 种子 / 状态）
+4. `tools/ccfa/run_log_check.py` — 检查模式：pending 指标、失败运行未留档 → problem；**只读**
+5. 端到端回归（含"失败运行确实留在 log 里"与"空指标不会被当成完成"两条）
+
+## 下一步
+
+1. 先定 Q1–Q4（尤其 Q4），必要时改 spec（§6.1 的工具表 + 新的写入契约小节）。
+2. 按 `superpowers:writing-plans` 写出含完整代码的实施计划（每任务带判别力检查）。
+3. 再按 `superpowers:subagent-driven-development` 逐任务执行：task-brief → 派实施者 → review-package → 派评审者 → 记本 ledger。
+
+## 控制器裁定（写计划前已定，Q1–Q4）
+
+### Ruling E1（Q1）— run-log 每次运行落一个文件
+
+Ruling: `experiments/log/<run_id>.json`，一运行一文件。
+理由: spec §9.2 要求"失败必须留在 log 里"——这要求单条记录的耐久性，而不是一个会被整体重写的聚合文件；并发训练多个种子时单 store 还有覆盖风险。
+代价: 跨运行查询需要自己聚合（后续若需要，再加一个只读的 `run-log list` 读全部文件，而不是改存储形态）。
+
+### Ruling E2（Q2）— 指标空缺必须显式，且可被检查报出
+
+Ruling: 记 `status: "metrics-pending"`；`log-metrics` 成功后改为 `"complete"`；`run-log check` 把 `metrics-pending` 与"complete 但 metrics 为空"都报为 problem。
+理由: 参考实现的致命弱点正是"调了 run 忘了 log-metrics → 每次运行都记成空指标且不报错"。把"未完成"做成显式状态，是把那个静默陷阱变成可检测项。
+代价: 每次实验多一次 `log-metrics` 调用；但少这一次调用会被检查抓住，而不是静默通过。
+
+### Ruling E3（Q3）— store 位置沿用 spec §10 的布局
+
+Ruling: `data/provenance.json`（机器可读）+ 由它生成的 `data/provenance.md`（人读）；运行记录在 `experiments/log/`。不另找位置。
+理由: spec §10 已经把目录结构定死，新增约定会让"可恢复"这件事变差。
+代价: provenance 与 run-log 分处两个目录，跨层查询要靠路径约定。
+
+### Ruling E4（Q4）— research-version 本轮不做，并入后面的归档计划
+
+Ruling: 本计划只做 `provenance` 与 `run-log` 两个工具；`research-version` 推迟到"复现与归档"计划，且默认按 **(b) git 的薄封装**（tag + diff）实现，除非届时有明确理由另建独立版本库。
+理由: 论文库本身已是 git 仓库，`snapshot` 与 `git commit` 的功能重叠；参考实现的动机（替代手工 `mkdir/cp`、`git mv` 在空目录上炸）在 git 工作流里并不成立。在"它和 git 的边界"想清楚之前实现独立版本库，大概率是**重复建设**，而且会制造"两个版本真相"的风险——同一份稿子的"第几版"到底看哪个。
+代价: 本计划少交付一个 spec 里列过的工具；但 spec §6.1 的工具表本来就标注了分阶段实施，且"先不建与 git 打架的东西"比"建了再拆"便宜。
+
+### 由此确定的计划范围（两个工具、四个任务）
+
+1. `tools/ccfa/provenance.py` — store 读写 + 校验和 + 导出 markdown（**写盘工具**，需新的写入契约）
+2. `tools/ccfa/provenance_check.py` — 检查模式：与真实文件漂移、缺来源、分类非法（**只读**）
+3. `tools/ccfa/run_log.py` — 包裹命令执行并落单文件记录（exit code / 时长 / git commit / 配置 / 种子 / status）
+4. `tools/ccfa/run_log_check.py` — 检查模式：`metrics-pending`、`complete` 但指标为空、失败运行未留档（**只读**）
+
+外加一次端到端回归，其中必须包含两条判别性用例："失败运行确实留在 log 里"与"空指标不会被当成完成"。
+
+### 新的写入契约（写进 spec §6.1.1 的补充分支）
+
+检查类工具只读不变；写盘工具（本层）另立三条：
+
+- **原子写**：先写临时文件再改名，避免半截 JSON；
+- **不覆盖**：同名 `run_id` 已存在时拒绝写入（除非显式 `--force`），避免把已经失败的记录悄悄盖掉；
+- **幂等可查**：重复执行同一检查不产生新记录；重复 `snapshot`/`add` 同一目标必须报"已存在"而非静默重写。
+
+## 设计修正（写计划时发现预研的一处不自洽）
+
+预研轮廓把 provenance 拆成"写模块 + 独立检查模块"，但 spec §6.1 把它列为**一个**工具，而 §6.1.1 的写法是"检查类工具（…）只读"——同一工具存在只读的 check 模式是被允许的（先例：`citation-guard`）。拆两块会让 store 解析出现两份。
+
+修正：`provenance` 按**单工具 + 三子命令**（`add` / `check` / `export`）实现，其中 `add` 是唯一写路径。已在计划里写明理由。
+
+## Plan 已写（Part A）
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-provenance.md`
+- Task 1（store 写入路径 `add`）：含完整实现与完整测试代码；终态 **319**（305 + 14）。
+- 自审修掉两处：一是我自己写进计划的中文命名测试（违反 ASCII 约束、且是容易被照抄的陷阱）；二是测试条数数错（14 不是 16）。
+- **一处诚实的局限**：`save_store` 的原子性（临时文件 + `os.replace`）**无法被单测证伪**——把 `os.replace` 换回直接写，测试仍全绿。计划里已声明这一点，改用实现审查 + 评审者核对，而不是假装有测试覆盖。
+- Task 2（`check` 只读漂移核对 + `export`）与 `run-log` 的两个任务留待后续。
+
+## 下一步
+
+1. 按既有模式执行 Task 1：`scripts/task-brief <plan> 1` → 派实施者（deepseek-v4-flash）→ `scripts/review-package` → 派评审者（deepseek-v4-pro）→ 记本 ledger。
+2. Task 1 通过后写 Part B（`check` + `export` + e2e），再写 `run-log` 的两个任务。
+
+## Plan A（provenance）执行进度
+
+- Task 1: dispatched. Implementer agent `Bernoulli` = `01a1011f-e46d-78a2-9f69-81079ec27c47`, model `deepseek-v4-flash`.
+  BASE = `2c87264`。Brief: `.superpowers/sdd/2026-10-03-provenance/task-1-brief.md`；Report: 同目录 `task-1-report.md`。
+- Task 1: implementer reported DONE, commit `5e5c892`，**319/319**。判别力检查给出**负结果**（把 `os.replace` 换成直接写，套件仍全绿），实施者如实报告并改用代码审查核对原子性——与计划预先声明的局限完全一致，没有编造假测试。
+- Task 1: review dispatched → 评审者 `Euclid` = `01a10121-8a80-73c3-98a4-960d8a0e9ddb`, `deepseek-v4-pro`。
+  评审结果：Spec ✅，Approved，无 Critical。评审者确认实施者处理"不可测不变量"的方式诚实（跑负结果实验 → 回退 → 单独按代码核对），并核实工作树干净、无实验残留、两文件无 BOM。
+
+### Ruling E5 — 写盘路径的 `OSError` 必须归为工具错误（控制器裁定：阻塞级）
+
+评审列的第一条是 Minor：`save_store` 的 `mkdir`/`write_text`/`os.replace` 与 `add_entry` 的 `sha256_of`/`stat` 都可能抛 `OSError`，而 `main` 只捕 `(ValueError, ToolEnvironmentError)`——磁盘满或权限失败会变成 traceback + shell 退出 1，违反 §6.1.1 的 2-vs-1 分离。
+
+控制器不接受"Minor"：这与 **R26a（latex-check）**、**P9/P11（final-check）**是同一条规则的第三次出现——**工具坏了不能看起来像检查发现了问题**。前两次都判了阻塞级，这里同样处理，否则规则就只是口号。
+
+Ruling: 把写盘路径的 `OSError` 统一折成 `ValueError`（`load_store` 已经是这么做的，保持全工具一致），并补一条用例。
+代价: 需要一条能可移植触发写失败的用例；若不可移植，沿用既有做法——受控 mock 或明确记录为按检查兜底。
+
+### Ruling E6 — store 的 `version` 必须校验（控制器裁定：随 E5 一并修）
+
+评审指出 `{"files": {}}`（缺 `version`）与 `{"version": 2, ...}` 都会被原样接受并保留。而同仓库的 `citation_ledger.py` **拒绝**缺失 `version`。同一套代码里两个 store 对同一字段采取相反态度，是不可接受的漂移。
+
+Ruling: `load_store` 要求 `version` 存在且为整数（暂只接受 1），与 `citation_ledger` 的先例对齐。
+代价: 未来升版需要显式处理迁移，而不是静默带着旧/新版本号继续读写——这正是我们想要的摩擦。
+
+### 待执行的一轮修复波（E5 + E6）
+
+两条都在 `tools/ccfa/provenance.py` 内，属小改动；按 skill 要求**一个**修复者处理，随后**一次**定向复审，预计终态 **321**（319 + 2）。完成后再进 Part B（`check` + `export`）。
+
+### 其余 deferred minor（不阻塞）
+
+- 校验和用例自指（比对的是同一个 `sha256_of`），一个"稳定但错误"的摘要在两处都会通过；实现本身用的是 `hashlib.sha256`，属覆盖盲区而非缺陷。
+- 固定临时文件名 `<name>.tmp` 在并发写下会互踩（已声明不在本层目标内）。
+- `read_bytes()` 整文件入内存（大文件场景未考量）。
+- `Problem` 与测试文件里的 `json` 是未使用导入（逐字来自计划）。
+
+## Plan A Task 1 结项
+
+- 修复波：修复者 `Mill` = `01a10124-2c3c-7cb3-b7b9-661ae1b1f05b`，commit `748c78e`，**322/322**（319 + 3 条新用例）。
+  E5：`save_store` 的 `mkdir`/`write_text`/`os.replace` 与 `add_entry` 的 `sha256_of`/`stat` 各自包住并折成 `ValueError`（与 `load_store` 的读路径风格一致）；新用例只 patch `os.replace`，`mkdir`/`write_text` 仍走真实临时文件，因此确实触达了真实写入。
+  E6：缺 `version` 与 `version != 1` 都 `ValueError`，缺文件仍是空 store；与 `citation_ledger.py` 的先例对齐。
+- 定向复审（`Epicurus` = `01a10125-7e82-7f92-961b-8ada394d19be`）：**两条均 ADDRESSED，无新 issue，fix accepted**。评审者另确认：被拒的 `add` 仍然在任何写入/校验和之前抛错（重复检查在读取块之前），store 保持字节不变；成功路径的 round-trip 未被改动。
+  Task 1: complete (commits 2c87264..748c78e, review clean)
+
+### Ruling E5/E6 的执行结果（一致性说明）
+
+这两条与 **R26a（latex-check）**、**P9/P11（final-check）** 同源，都是"工具自身坏了不能看起来像检查发现了问题"。到这一层，"写盘路径的 OSError 必须归为退出码 2"已经从单个发现升级为**跨工具的固定规则**——后续任何会写文件的工具都应照此处理，不必再逐次论证。
+
+## 当前状态
+
+- Plan 6（证据追踪）进度：**provenance 的写入路径完成**（Task 1）。
+- HEAD = `748c78e`，工作树干净，**322 tests OK**。
+- 待办：provenance Part B（只读 `check` 漂移核对 + `export` 生成 `data/provenance.md` + e2e）；随后 run-log 的两个任务（包裹命令执行 + 只读检查 `metrics-pending`）。
+- 全部裁定 E1–E6 已记录；Part A 的 deferred minor 见上。
+
+## Plan 已写（provenance Part B）
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-provenance-part-b.md`
+- 三个任务：Task 2（只读 `check` 漂移核对，4 个新 code）、Task 3（`export` markdown + 原子写不覆盖）、Task 4（e2e）。终态依次 **328 / 334 / 339**。
+- 计划里写明两处需要评审者知道的判断：
+  1. **"写入时校验不构成读取时的信任"**——store 是人可编辑的 JSON，`check` 必须重新校验分类，不能因为 `add` 拒绝过非法值就信任读取结果。
+  2. **`export` 不给 `--out` 时 stdout 是 markdown 本身、不是 JSON**——这是对 §6.1.1 的有意偏离，理由是 export 的产物就是人读文档；`check` 与 `add` 仍走 JSON。
+- 自审又抓到并修掉两处：`text.count("\n| ")` 我写成 2（实际 3：表头、分隔行、数据行），会让用例直接失败；以及上面第 2 条的契约说明原先缺失。
+- 一处允许的重构：把 `save_store` 里的"临时文件 + `os.replace` + `OSError → ValueError`"抽成共用的 `save_text_atomically`，供 `write_markdown` 复用；要求行为逐位不变（含临时文件名与 JSON 缩进），评审者需核对这一点。
+
+## 恢复指引（下一次会话）
+
+1. 确认 `git log` 有 `748c78e`、工作树干净、`Ran 322 tests ... OK`。
+2. 按既有模式执行 Part B Task 2：`scripts/task-brief <part-b 计划> 2` → 派实施者（deepseek-v4-flash）→ `scripts/review-package` → 派评审者（deepseek-v4-pro）→ 记本 ledger。
+3. 三个任务全绿后跑 provenance 的最终全分支评审（base `2c87264`），再进 `run-log`。
+4. **跨工具规则提醒**：写盘路径的 `OSError` 一律折成 `ValueError` → 退出码 2（E5）；store 的 `version` 必须校验（E6）。这两条已定为跨工具规则，新工具照办，不必重新论证。
+
+## Part B 执行进度
+
+- Part B workspace：`.superpowers/sdd/2026-10-03-provenance-part-b/`。
+- Task 2（只读 `check`）: implementer `Herschel` = `01a10128-a005-75c3-bc8a-6091e323ad27`，commit `b20b75b`，**328/328**。判别力检查（把漂移比较改成恒 False）实测让 `test_modified_file_is_reported_as_drift` 失败，随后恢复。
+- Task 2 review: 评审者 `Schrodinger` = `01a1012a-6689-7c13-83f0-f30b7c37afae`。
+  **Spec ✅，Approved，无 Critical/Important。** 评审者逐条核实：
+  - **"写入时校验不构成读取时的信任"这一核心设计点确实实现**——`source` 与 `classification` 是从加载后的 store 重新校验的，与 `add_entry` 的写入时拒绝相互独立；
+  - 四个 code 与判定表一致；`continue` 的位置正确（先报来源/分类，文件不存在时才跳过漂移检查，绝不会对不存在的路径算校验和）；
+  - `check` 全程只读（`check_store` 不调用 `save_store`，`check` 分支只调 `emit`）；
+  - E5（`sha256_of` 的 `OSError` 折成 `ValueError`）与 E6（复用 `load_store` 的版本校验、未重复实现）均满足；
+  - `--store`/`--paper-root` 仍作为顶层参数位于子命令之前。
+  Task 2: complete (commits 748c78e..b20b75b, review clean)
+
+- Task 2: minor (deferred): 一条条目可能同时产出多个 code（缺来源 + 文件不存在等），行为正确但无用例钉住；手改 store 删掉 `sha256` 键会走 `provenance-drift` 且消息渲染成"记录 None"（结果可辩护，措辞待改）；`main` 的 `check` 分支缺 0/1 退出码的直接用例（Task 4 的 e2e 会覆盖）。
+
+## 当前状态
+
+- Plan 6（证据追踪）进度：provenance 的**写入路径 + 只读核对**完成；剩 Task 3（`export`）与 Task 4（e2e）。
+- HEAD = `b20b75b`，工作树干净，**328 tests OK**。
+- 终态：Task 3 → **334**，Task 4 → **339**。
+- 账本裁定 E1–E6；跨工具规则（E5/E6）已固化。
+
+## Part B Task 3（`export`）
+
+- 实施者 `Lagrange` = `01a1012c-a28a-7531-81a6-21741b6f2d66`，commit `4feff44`，**334/334**。
+  自报的重构验证是**实测**而非口头保证：新 `save_store` 的输出字节与改动前逐位相同，临时文件名、`mkdir`、错误消息字符串都不变，且不残留临时文件。
+- 评审者 `Anscombe` = `01a1012e-8aa7-73d2-88cb-e6481bd36738`：**Spec ✅，Approved，无 Critical/Important**。评审者独立对照 `b20b75b` 确认抽取是逐位等价的（唯一的额外物是 `description="store"` 关键字，存在的目的正是**保住原来那句错误消息**）；`write_markdown` 在任何写入之前检查"存在且未 force"，失败写入因 `os.replace` 是提交点而不会破坏旧文件；`render_markdown` 对缺字段渲染空白而非崩溃、行序确定；`export` 不给 `--out` 时只调 `load_store`/`render_markdown`/`print`，一个字节都不写——那条有意的 stdout 偏离被正确尊重。
+  Task 3: complete (commits b20b75b..4feff44, review clean)
+
+### Ruling E7 — 一个"几乎不测任何东西"的测试必须重写（控制器裁定：必改）
+
+评审指出 `test_render_does_not_write` 只断言 `self.store.exists()`——而那在 `setUp` 里 `add()` 之后就成立了。**就算 `render_markdown` 把 store 覆写了，这条测试照样通过**。它与 Plan 3 的 `Table 3`、Plan 5 的哈希分支用例同属一族：**看起来有测试，其实没有判别力**。
+
+Ruling: 必改。改成捕获 render 前后的 store 字节并断言相等（`before = self.store.read_bytes(); render_markdown(...); assertEqual(before, self.store.read_bytes())`）。
+理由: 这条测试的**唯一**目的就是证明"渲染不写盘"；它现在连这个目的都没做到，等于这条设计约束没有任何证据。
+代价: 一处 3 行改动 + 一次定向复审；无行为变更。
+
+### 其余 deferred minor（不阻塞）
+
+- `print(render_markdown(store))` 会多一个尾随空行（文档本身已以 `\n` 结尾）——逐字来自计划，无害。
+- 报告里把"改动前"写成 `git show HEAD:...`，而提交后 HEAD 已变；应写基准 `b20b75b` 才可复现。证据本身成立。
+
+## 当前状态
+
+- Plan 6 进度：provenance 的写入路径、只读核对、导出三块完成；剩 **Task 4（e2e）** 与 **E7 的修复**。
+- HEAD = `4feff44`，工作树干净，**334 tests OK**。
+- 下一步：先做 E7 修复（含定向复审），再执行 Task 4（终态 **339**），随后跑 provenance 的最终全分支评审（base `2c87264`）。
+- **跨工具规则（已固化，新工具照办）**：写盘 `OSError` → `ValueError` → 退出码 2；store 的 `version` 必须校验；**"有测试"不等于"有判别力"——每条判别力检查必须实测其能在错误实现下失败**。
+
+## Part B Task 4（e2e）与 E7 修复
+
+- 实施者 `Carver` = `01a10130-19a5-72f3-b52e-aa16e5b6dccf`，两个 commit：`d536f32`（E7 修复）+ `9eae7b7`（5 条 e2e），**339/339**。
+  **取证方式值得记**：yòng 变异副本验证 e2e 有判别力——把 `check_store` 强制返回空列表后，漂移用例确实失败；E7 修复也用模拟"会写盘的 render"证明旧断言仍会通过、新断言会失败。这正是这条规则要的"实测而非声称"。
+- 评审者 `Darwin` = `01a10132-6053-77f3-976f-9a26f0597393`：**Spec ✅，Approved，无 Critical/Important**。评审者独立核实：diff 只碰两个测试文件、`provenance.py` 未被改动；E7 断言读的是"`add` 写盘之后、render 之后"两个正确时刻的真实字节，不可能在文件不存在时静默通过；漂移用例同时钉住退出码 1、`provenance-drift` 与 stderr 里的绝对路径；子进程设置（`sys.executable`、`PYTHONPATH=tools`、`encoding="utf-8"`）符合既有惯例；还独立复现了顶层参数位置陷阱（flags 放在子命令之后 → 退出 2、stderr 有 usage、stdout 为空）。
+  Task 4: complete (commits 4feff44..9eae7b7, review clean)
+
+- Task 4: minor (deferred): 两条退出码 2 的用例只断言"退出码 2 + stdout 空"，无法区分工具自身的 `tool_error` 与 argparse 的 `SystemExit(2)`（加 `assertIn("工具错误", stderr)` 即可钉住，非阻塞）；e2e 无 `tearDown` 清理临时目录；位置陷阱只是手工验证、未固化为用例（brief 未要求）；`test_add_then_check_is_clean` 是最弱的一条——`add` 静默什么都不做也能过，但被漂移用例兜住。
+
+## provenance（Plan 6 前半）结项状态
+
+- **四个任务全部完成并通过任务级评审**：Task 1 写入路径、Task 2 只读核对、Task 3 导出、Task 4 e2e。
+- HEAD = `9eae7b7`，工作树干净，**339 tests OK**。
+- 分支范围：`2c87264..9eae7b7`（provenance 全部 7 个 commit）。
+- 工具现状：`provenance.py` 三个子命令 `add` / `check` / `export`，写盘契约（原子写、不覆盖、`OSError`→2、`version` 校验）与只读契约并存。
+
+## 下一步
+
+1. **provenance 的最终全分支评审**（base `2c87264`，head `9eae7b7`），并把全部 deferred minors 交给它分流。
+2. 随后 **`run-log`**：两个任务（包裹命令执行并落单文件记录 + 只读检查 `metrics-pending`），按 E1/E2 的设计——一运行一文件、`metrics-pending` 显式状态、把参考实现那个"忘了 log-metrics 就记成空指标且不报错"的陷阱变成可检测项。
+3. 之后按 spec §6.1：「复现与归档」计划（含被 E4 推迟的 `research-version`，走 git 薄封装）→ 知识层（FTS5 + 记忆）→ 自动化与跨模型评审 → 模板库与派生流程。
+
+### 已固化的跨工具规则（新工具照办，不必逐次论证）
+
+1. 写盘路径的 `OSError` → `ValueError` → 退出码 2（来源：latex-check R26a、final-check P9/P11、provenance E5）。
+2. store 的 `version` 必须校验（E6）。
+3. "有测试"不等于"有判别力"——每条判别力检查必须实测其在错误实现下失败（来源：Table 3、哈希分支、E7）。
+4. 闸门没跑全不能报成功（final-check P8：含 `check-skipped` 的一轮退出码为 2）。
+
+## provenance 最终全分支评审
+
+- 评审者 `Poincare` = `01a10135-9050-7e91-9ac5-ee1486826108`, `deepseek-v4-pro`（最高档）。Diff: `.superpowers/sdd/2026-10-03-provenance-part-b/review-2c87264..9eae7b7.diff`（6 commits）。
+- **Verdict: Needs fixes**（1 Critical + 3 Important）。
+- §6.1.1 写盘契约逐条核实**满足**：原子写（同目录 `.tmp` + `os.replace`）、`add` 与 `export --out` 都不静默覆盖、`check` 幂等不写、`OSError` 折成 `ValueError` 覆盖写/读/哈希三条路径。核心设计点（`check` 重新校验来源与分类，不信任写入时校验）被确认真实存在。
+
+### Ruling E8 — 逐条 store 未校验 → 工具崩溃（Critical，必改）
+
+评审者**实测复现**：`load_store` 只校验顶层与 `files` 是对象，**没校验每个值也是对象**。手改 store 成 `{"version":1,"files":{"data/a.csv":"oops"}}` 后，`check_store` 的 `entry.get(...)` 抛 `AttributeError` → traceback + shell 退出 1，而契约要求工具错误 2。这是本分支存在的意义所要防的那类混淆（工具坏了看起来像检查发现问题），也是同一条跨工具规则的第四次出现。
+
+Ruling: 在 `load_store` 里要求 `files` 的每个值都是对象（键须为字符串），使该路径收敛为 `ValueError` → 退出 2。补一条用例（手改 store 塞入非对象条目 → `main` 返回 2 且 stdout 为空）。
+代价: 无；这是把已有的严格性补全。
+
+### Ruling E9 — 脚手架预置的 `provenance.md` 与 `export` 的不覆盖规则冲突（Important，必改）
+
+评审者发现：Plan 1 的脚手架会预建 `data/provenance.md`，而本工具 `export --out data/provenance.md` 在不带 `--force` 时**拒绝覆盖**——于是一篇新论文的第一次规范导出直接退 2。同时机器可读的 `data/provenance.json` 既不在 spec §10 里、也没被脚手架预置。
+
+Ruling: **在源头消除冲突**——脚手架改为预置空的 `data/provenance.json`（`{"version":1,"files":{}}`），不再预建 `provenance.md`；`provenance.md` 由用户首次 `export` 生成，路径本来就不存在，不覆盖规则自然成立。同时把 `data/provenance.json` 补进 spec §10 的目录树。
+理由: 不覆盖规则的目的是保护**用户写下的记录**；脚手架预置的是一个空占位符，用"允许覆盖"去兼容它会让不覆盖规则变得有条件、容易失守。改脚手架是一处小改动，且让"机器可读 store 是被跟踪的产物"这件事变得明确。
+代价: 需要改 Plan 1 已评审过的 `tools/newpaper/create.py` 与其测试；§10 目录树要补一行。
+
+### Ruling E10 — "从未登记的数据文件"看不见（Important，定为可选扫描）
+
+`check_store` 只遍历 store 里已有的条目，`data/` 下从未登记的 CSV 完全不可见——而 §4.2 的 `data-ready` gate 要求"逐份数据有来源、分类与校验和"。这半条目前没有任何机制见证。
+
+Ruling: `check` 增加 `--scan DIR`（可选）；给了就列出该目录下**没有条目**的文件，code `provenance-unrecorded`，归 problem。默认关闭，避免对只想核对已有条目的用法产生意外噪声；spec §4.2 的 `data-ready` gate 应显式用 `--scan data` 调用。
+理由: 机械可判定的完整性检查必须有入口，但默认开会对"尚未登记任何数据"的早期项目造成满屏噪声；可选开关把选择权留给 gate。
+代价: gate 的调用方必须记得带 `--scan`，否则这半条仍然没人查——这一点要写进 spec 的 gate 描述里。
+
+### 待执行的一轮修复波（E8 + E9 + E10）
+
+三个发现中：E8 是 `provenance.py` 内的窄修；E9 跨到 `newpaper/create.py` 与 spec §10；E10 是 `check` 的新可选参数。按 skill 要求**一个**修复者处理全部，随后**一次**定向复审。预计新增 3–4 条用例。
+
+### 其余 deferred minor（评审判定可 defer）
+
+临时文件名固定、并发写会互踩；`read_bytes()` 整文件入内存；`export` stdout 多一个尾随空行；`--classification` 由 argparse `choices` 拦截因而 CLI 走不到 `add_entry` 自己的校验（两处校验的报错呈现不同）；`--source ""` 会被写入然后立刻被 `check` 报缺失；两条退出码 2 的 e2e 用例无法区分 `tool_error` 与 argparse 自身的退出 2（加一句 stderr 断言即可钉住）。
+
+## 修复波（E8 + E9 + E10）与定向复审
+
+- 修复者 `Arendt` = `01a10138-7217-7290-b6dd-92f8ff094d1a`，commit `defe288`，**342/342**。
+- 定向复审（`Poincare`）：**E8 / E9 / E10 全部 ADDRESSED，fix accepted，无新 Critical/Important**。评审者逐条核实：
+  - **E8**：`load_store` 在任何 `.get(...)` 之前就拒绝非字符串键与非对象值；新用例走的是 `main("check")`，断言退出 2 + stdout 空 + 错误文案——测的是 CLI 映射，不只是 `load_store`。
+  - **E9**：脚手架改为预置 `data/provenance.json`（`{"version":1,"files":{}}`）并去掉了 `.md` 预置；既有脚手架**测试被更新而非删除**，且新增断言"JSON 可解析"与"`.md` 不存在"；`write_markdown` 的不覆盖规则**未被放松**；§10 已列两个文件。
+  - **E10**：`--scan` 默认关闭（并有用例钉住默认关闭时不报），未登记文件每个恰好产出一条 `provenance-unrecorded`；`--scan` 指向不存在或非目录时 `ValueError` → 退出 2。
+  - 退出码与写盘契约未被改动，diff 无新破坏。
+
+- 修复波新增 minor (deferred)：`scan` 把路径规范化为 `data/a.csv` 却与 store 的**原始键**比较，因此若有人用 `data/../data/a.csv` 或 Windows 反斜杠登记，扫描会把它误报为未登记（与此前那条"非规范键"同源，现在在 scan 里显形）；`version: true` / `1.0` 仍被当作 1（E6 的"整数"只说了一半，且不触达 `.get`）；非字符串键分支无回归用例。
+
+## provenance 结项
+
+- **六个 commit 全部落地并通过任务级评审 + 最终全分支评审 + 一轮修复波复审。**
+- HEAD = `defe288`，工作树干净，**342 tests OK**。
+- 工具形态：`provenance` 三子命令 `add` / `check` / `export`；写盘契约（原子写、不覆盖、`OSError`→2、`version` 校验、逐条对象校验）、只读契约（`check` 重校验来源与分类）、可选完整性扫描（`--scan` → `provenance-unrecorded`）。
+- Plan 1 的脚手架随之改为预置 `data/provenance.json`，`provenance.md` 改由首次 `export` 生成。
+
+## 下一步
+
+1. **`run-log`**：两个任务（包裹命令执行并落单文件记录 + 只读检查 `metrics-pending`），按 E1/E2 —— 一运行一文件、`metrics-pending` 显式状态、把参考实现"忘了 log-metrics 就记成空指标且不报错"的陷阱变成可检测项。需先按惯例深读参考实现主体（本轮只读了头部）。
+2. 之后：「复现与归档」计划（含 E4 推迟的 `research-version`，走 git 薄封装）→ 知识层（FTS5 + 记忆）→ 自动化与跨模型评审 → 模板库与派生流程。
+
+## run-log 预研（参考实现主体已深读）
+
+`research-suite/tools/experiment-tracker/experiment_tracker.py` 的关键实现：
+
+| 它的做法 | 对我们的意义 |
+| --- | --- |
+| `get_git_state()` 同时取 `git rev-parse HEAD` **与** `git status --porcelain`，记录 `git_commit` + `git_dirty` | **直接吸收**：脏树上的运行无法仅凭 commit 复现，"脏"这个事实必须进记录 |
+| 用 `<store>.lock` 锁住"读 store → 分配 run_id → 保存" | 由于我们已裁定一运行一文件（E1），**不需要 store 锁**；run_id 的竞争改用 `open(path, "x")` 原子占位解决 |
+| 在命令启动**之前**分配 run_id 并落盘（注释明说"在长命令开始前分配，而不是之后"） | **直接吸收**：进程被杀也留下 `running` 记录——这正是 §9.2"失败必须留在 log 里"要的耐久性 |
+| `run` 结束后把指标留空，等 `log-metrics` 补齐；忘了调用**不报错** | **必须偏离**（E2）：把静默空指标改成显式 `metrics-pending` 状态 + 可检测 |
+| `run` 的 summary 行同时打到 stdout 与 stderr（因为"只捕获其中一路的驱动脚本也该看到 run_id"） | 吸收其意图，但我们的契约是 stdout 走 JSON、stderr 走人读摘要，run_id 进 JSON 即可 |
+| `run` 返回被包裹命令的退出码 | **需裁定**（见 E11） |
+
+### Ruling E11 — `run` 的退出码：默认不传播被包裹命令的码
+
+冲突：`run` 作为包装器，直觉上应把被包裹命令的退出码传出去（脚本/CI 依赖它）；但本项目已把 `0/1/2` 定为"工具自身状态"的机器契约，若被包裹命令恰好退 2，就与"工具自身出错"不可区分。
+
+Ruling: **默认 `run` 退出 0（只要记录成功落盘），被包裹命令的退出码写进记录与 JSON；工具自身失败（无法占位 run_id、无法写记录）退 2。另给 `--propagate-exit` 开关**，需要脚本直接消费被包裹命令状态时显式启用。
+理由: 一次失败的实验是**被记录下来的结果**，不是工具故障；把两者混在同一个码上，会让"闸门没跑全"与"实验失败"再次不可区分——这正是本项目反复付出代价的那类混淆。默认干净 + 显式逃逸口，比默认含糊好。
+代价: 现有习惯"包装器返回内部命令的码"需要改；用 `--propagate-exit` 可恢复。
+
+### Ruling E12 — 运行记录的结构与写入时机
+
+Ruling: 一运行一文件 `experiments/log/<run_id>.json`，字段：`run_id`、`command`（argv 数组）、`cwd`、`config`（路径 + `sha256` + 解析后的内容）、`seed`、`git_commit`、`git_dirty`、`started_at`、`finished_at`、`duration_s`、`exit_code`、`status`（`running` → `completed` / `failed`）、`metrics`（未记录时为 `null`）、`notes`。
+**关键时机**：命令启动**之前**先落一条 `status: "running"` 的记录；结束后再原子更新为 `completed`/`failed`。
+理由: 长任务被杀、断电、卡死都应留下证据（§9.2）。只在结束时写记录，等于"跑挂了的实验没有痕迹"。
+代价: 每次运行多一次写盘；`running` 状态的收尾依赖下一次调用（`check` 会把长期停留在 `running` 的记录报出来）。
+
+### Ruling E13 — run_id 的原子占位
+
+Ruling: run_id 由时间戳加序号构成（如 `20261003T142530-01`）；用 `open(path, "x")` 创建文件作为**原子占位**，`FileExistsError` 就顺延序号。不引入锁文件。
+理由: 一运行一文件之后，并发安全只需保证"同一 id 不被两个进程同时认领"，`O_EXCL` 语义正好够用；锁文件是为单 store 设计的，我们不需要。
+代价: 同一秒内并发启动多个运行会顺延序号，这是期望行为。
+
+### Ruling E14 — `run-log check` 的判定表
+
+| 条件 | code | 归类 |
+| --- | --- | --- |
+| `status == "metrics-pending"`（运行完成但未记录指标） | `run-log-metrics-pending` | problem |
+| `status == "completed"` 但 `metrics` 为空对象 | `run-log-empty-metrics` | problem |
+| `status == "running"` 且 `started_at` 早于阈值（默认 24 小时） | `run-log-stale-running` | problem |
+| `git_commit` 为空 | `run-log-missing-commit` | problem |
+| `git_dirty == true` | `run-log-dirty-tree` | advisory |
+| `status == "failed"` | 不报 | —— |
+
+Ruling: 上表为准。**失败的运行不报**——它是被记录下来的合法结果，不是缺陷；闸门要防的是"跑了但没有记录"与"记了但没有指标"。
+代价: `git_dirty` 只是 advisory，脏树运行不会被闸门拦下；如将来要收紧，把它升为 problem 即可。
+
+## run-log 计划轮廓（待写）
+
+1. `tools/ccfa/run_log.py` — 记录结构、原子占位、`run` 包裹执行（含 config/seed/git 采集）、`log-metrics`
+2. `tools/ccfa/run_log_check.py`（或同一工具的 `check` 子命令）— 只读判定表实现
+3. 端到端回归：必须包含"被 kill 的运行留下 `running` 记录"与"空指标不会被当成完成"两条判别性用例
+
+## 参考清单核查（用户 2026-10-03 提供的截图，已 clone 三个新仓库）
+
+来源：用户截图列出的"核心方法论参考 + 社区 Skill/模板 + 底层执行器"。按惯例做代码级浅读，不看名字下结论。
+
+### 最重要的结论：清单里大部分**本机已经装了**
+
+| 清单项 | 核查结果 |
+| --- | --- |
+| `K-Dense-AI/scientific-agent-skills` | 已 clone（2809 文件）；其 `skills/` 是**领域工具箱**（生物/化学/物理/统计等 100+ 个，如 `aeon`、`astropy`、`dask`、`citation-management`、`experimental-design`）。**本机已装其中多个**（`kdense-scientific-brainstorming`、`kdense-statistical-analysis` 等）。 |
+| `huangwb8/ChineseResearchLaTeX` | 已 clone（1433 文件）；其 `skills/` 下 **27 个技能本机全部已装**（`nsfc-abstract` / `nsfc-budget` / `nsfc-qc` / `make-latex-model` / `paper-write-sci` / `research-literature-*` 等）。 |
+| `wanshuiyin/Auto-claude-code-research-in-sleep` | 早前已核查（83 skills，见 `2026-10-03-github-workflow-review.md`），是设计文档 §5.1 跨模型评审与 §8.2 研究记忆的来源。 |
+| `WUBING2023/PaperSpine` | 已 clone（1479 文件）；见下。 |
+| `ganzhi-black/humanities-thesis-skill`、`Doryoku1223/lunwen-skill` | 未 clone（本轮预算所限）；从命名看面向人文社科与中文论文写作，与本工作流的英文 CS 会议主路径重叠度低。 |
+| `Anthropic Claude Code`（底层执行器） | 与我们的执行器（Codex）不同。这是**适配层问题**，不是方法论问题；PaperSpine 的 `src/adapters` 正是为这种多运行时做的。 |
+
+**由此得出的行动结论**：这份清单的价值**不是"去重建这些能力"，而是"去接线"**——领域技能与中文 LaTeX 技能已在环境里，缺的是工作流把它们按 stage 路由起来（设计文档 §5 的 `ccf-pipeline-orchestrator` 路由规则）。
+
+### 两处对我们后续计划有直接价值的新发现
+
+1. **`ChineseResearchLaTeX` 带真实模板包**：`packages/` 下有 `bensz-nsfc`、`bensz-paper`、`bensz-thesis`、`bensz-cv`、`bensz-fonts`。这直接影响**"模板库与派生流程"计划**——原计划是要自建 `paper-template/`，现在应当先评估复用 `bensz-paper`（论文）与 `bensz-nsfc`（基金），而不是闭门造模板。
+   代价/风险: 该仓库的模板面向中文科研与 NSFC，与我们主路径（英文 CS 会议 LaTeX）的版式要求不同；复用前要确认它的模板是否可参数化到英文会议。
+
+2. **`PaperSpine5` 是端到端全流程 Skill，且是多运行时适配设计**：它覆盖查文献→梳理论点→大纲→全文→科研配图→引用核验→审阅→排版，交付可编辑 Word / LaTeX / PDF；`src/` 下有 `adapters` / `scripts` / `skill`，说明它同时适配多种底层执行器。它的自述原则与我们的确定性层**同向**："研究材料优先保存在本地；论点、引用和图表均以真实资料与证据为依据"。
+   对我们的意义: (a) 它的 `adapters` 结构回答了"如何不绑死单一执行器"；(b) 它的全流程覆盖说明我们手搓的五个工具在**功能上不是空白**，我们的差异化在于**机械可核验**（它是靠流程与提示词约束，我们靠退出码与 JSON）；(c) 后续"模板库与派生流程"计划应参考它的 section 骨架与交付形态（Word + LaTeX + PDF 三份）。
+
+### 与现有设计的对照结论
+
+- 设计文档 §6 "直接复用，不新建"的判断**被证实是对的且比原先写的更充分**：可复用的面比 CCFA 17 个技能宽得多（加 K-Dense 领域技能与 ChineseResearchLaTeX 的 27 个）。
+- 我们的差异化仍然成立且更清晰：**已建成的五个工具做的是机械可核验**（引用/数字/结构/终稿/来源），这一层在上述参考项目里都没有等价的退出码级契约。
+- 待办不变：`run-log` → 复现与归档 → 知识层 → 自动化与跨模型评审 → **模板库与派生流程（新增强制前置：先评估 `bensz-paper` / `bensz-nsfc` 的复用可行性）**。
+
+## run-log Part A 计划已写
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-run-log.md`
+- Task 1（记录结构 + 原子占位 + `run` 包裹）：含完整实现与完整测试代码，终态 **353**（342 + 11）。
+- 计划里写死的关键点：
+  - **命令启动前落 `running` 记录**，判别力检查会实测这点（把落盘挪到命令之后，相关用例必须失败）；
+  - `config` 以"路径 + sha256 + 解析后内容"三件套记录，使记录**自包含**；
+  - `git_dirty` 进记录（脏树运行无法仅凭 commit 复现）；
+  - run_id 用 `open(path, "x")` 原子占位，**不引入锁文件**（一运行一文件后锁是多余的）；
+  - E11 的退出码例外：`run` 默认退 0（记录成功即成功），`--propagate-exit` 才透传被包裹命令的码，工具自身失败退 2。
+- **跨工具重构**：把原子写抽成 `cli.save_text_atomically`，`provenance.py` 改为调用它——写盘契约只应有一份实现。计划特别标注：`provenance` 原来的描述词是 `"store"`，调用时必须显式传 `description="store"` 才能保住原错误消息，评审者会专门核对。
+- 自审修掉两处：不可写目录的用例原用根路径（Windows 上权限因机器而异），改为"用文件当目录父级"（每个 OS 都确定性失败）；`cli.py` 的代码片段原把 import 写在函数内，已改为顶部 import。
+- **必须传给 Part B 的边界**：`O_EXCL` 占位文件先是 `{}`；若进程在"占位"与"写入 running"之间被杀，会留下**没有 `status` 字段**的记录。Part B 的 `check` 必须把它报成 problem（建议 `run-log-malformed`），否则这类损坏会静默通过。
+
+## 当前状态
+
+- HEAD = `defe288`，工作树干净，**342 tests OK**。
+- 已建成五个工具（citation-guard / trace-claims / latex-check / final-check / provenance）；
+  `run-log` 设计与 Part A 计划就绪，待执行。
+- 剩余：run-log Part A/B → 复现与归档 → 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## run-log Task 1 执行记录
+
+- 实施者 `Locke` = `01a10145-9acb-7c53-8a43-d2fb925d4037`，commit `f5f2126`，**353/353**。
+  **它对我计划里的计数错误处理得比我写的好**：计划写"11 条测试"却只给了 10 条。它没有把数字改小，而是**补上了缺的那条覆盖**（`main` 的 E11 退出码规则回归）——我的算术错误恰好暴露了一个真实覆盖空洞。这条值得作为"计划散文数字让位于测试代码"（C6/R4 先例）的正面案例记下来。
+  另一处好判断：`save_text_atomically` 的抽取里，它保留了 `provenance` 原来 `无法写入 store` 的**空格格式**，而没有照抄计划片段里的无空格写法——以"保住原消息"的裁定为准，而不是以计划字面为准。
+- 评审者 `Nietzsche` = `01a1014b-bbcb-7f33-84b2-cdec591e3b94`：首轮 **Needs fixes**（1 Important），其余全部核实通过——耐久性次序正确（`write_text` 关文件 + `os.replace` 之后才调 runner；把写盘挪到命令后会让该用例以 `KeyError` 失败，是"因正确原因失败"）、抽取逐位等价、`new_run_id` 是真 `O_EXCL`、`git_state` 三种失败都不抛、E11/E12/E13 全部符合、测试不依赖工作区自身 git 状态。
+
+### Ruling E15 — 相对配置路径必须按 `paper_root` 解析（评审发现，必改）
+
+评审者**复现**了：`read_config` 用 `path.resolve()`，相对路径会按**进程 CWD**解析，而不是 `paper_root`。于是从论文根目录之外调用 `run-log --paper-root X run --config configs/a.yaml` 直接退 2。计划里那条测试只传了绝对路径，正好漏掉这条主路径。
+
+Ruling: 相对路径先与 `paper_root` 拼接再 `resolve()`；绝对路径行为不变（根内可用、根外仍拒）。补一条不改 CWD 的回归用例。
+理由: "路径相对 paper_root" 是记录在案的文件契约；按 CWD 解析会让同一条命令在不同目录下行为不同——对可复现性工具来说这是最不该有的不确定性。
+代价: 无。
+
+- 修复 commit `3a37f37`，**354/354**（353 + 1）。定向复审（`Nietzsche`）：**ADDRESSED，无新 issue，fix accepted**。评审者确认绝对路径在根内仍可用且仍返回根相对路径、根外仍被拒；新用例在旧实现下确实会失败（测试进程 CWD 是仓库根，不在临时 paper_root 之下）。
+  Task 1: complete (commits defe288..3a37f37, review clean)
+
+- Task 1: minor (deferred): `provenance` 的那条写失败用例只断言退出码与 stdout 为空、不校验错误消息，所以"`store` 一词被逐位保留"这件事**没有自动化测试钉住**（实现正确，属覆盖缺口）；`main` 的退出码 2 路径（空命令、不可写日志目录）无用例直接走 `main`；`main` 把 run id 打到 stdout、`git_state` 用 10 秒超时，都是计划未规定的设计选择。
+
+## 当前状态
+
+- HEAD = `3a37f37`，工作树干净，**354 tests OK**。
+- 五个确定性工具 + **run-log 的耐久记录与包裹执行**已完成并过评审。
+- 剩余：run-log Part B（`log-metrics` + 只读 `check` 实现 E14 判定表 + e2e，含 `run-log-malformed` 那条边界）→ 复现与归档 → 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+- run-log Part B 计划已写：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-run-log-part-b.md`（Task 2 = `log-metrics` + `check`，终态 369；Task 3 = e2e，终态 373）。
+
+### Ruling E16 — E2 的 `metrics-pending` 状态值作废，以 Part A 冻结的形状为准
+
+写 Part B 计划时发现控制器自己造成的矛盾：预研 E2 说"记 `status: "metrics-pending"`，`log-metrics` 后改为 `complete`"；但 Part A 的 E12 冻结了记录形状——`status` 只取 `running` / `completed` / `failed`，`metrics: null` 表示尚未记录。两者不可能同时成立。
+
+Ruling: **以 Part A 已实现并过评审的形状为准**；E2 的意图（把静默空指标变成显式可检测）改由 `check` 的判定实现，不再多一个状态值。
+理由: `status` 回答"命令跑成没有"，`metrics` 回答"指标记了没有"——两个正交事实塞进一个字段会互相覆盖。分开放，判定表同时读二者即可。
+代价: E2 里那个具体状态名作废；将来若要单独表达"指标未记"，应加 `metrics_status` 字段，而不是复用 `status`。
+
+### Part B 判定表（已定，含两条边界）
+
+`run-log-malformed`（缺 `status`，即 `O_EXCL` 占位后进程即死的 `{}` 残留 / JSON 不可读 / `running` 却无有效 `started_at`）、`run-log-metrics-pending`（completed 且 `metrics is None`）、`run-log-empty-metrics`（completed 且 `metrics == {}`）、`run-log-stale-running`（running 超过 `--stale-hours`，默认 24）、`run-log-missing-commit` 均为 problem；`run-log-dirty-tree` 为 advisory；**`status == "failed"` 不报**（失败的实验是被记录下来的合法结果）。
+
+两条边界写进了计划：**单条记录损坏不得让整轮检查崩掉**（报该条 malformed 后继续）；**没有 `started_at` 的 running 记录归 malformed**（宁可报畸形，不要静默跳过）。
+
+## run-log Part B Task 2 执行记录
+
+- 实施者 `Carson` = `01a10152-63a1-7933-a104-ad5912031076`，commit `c45ecea`，**369/369**。判别力检查（删掉 completed+metrics None 那条判定）实测让 `test_completed_without_metrics_is_a_problem` 失败，随后恢复。
+- 评审者 `Faraday` = `01a10155-1a93-7a00-9ed2-acd2fb76e952`：首轮 **Needs fixes**（1 Important），其余全部核实通过——判定表逐行落实、`status`/`metrics` 正交未被破坏（E16 遵守）、`failed` 记录只跳过指标分支而 git 检查仍在跑（与表中"`run-log-missing-commit` 无状态限定"一致）、`>` 与"older than"语义相符、只读字节比对有效。
+
+### Ruling E17 — 一条坏记录不得打断整轮（评审发现，必改，含同族一条）
+
+**Important**：`check_runs` 的 `except` 只捕获 `(OSError, json.JSONDecodeError)`，而 `UnicodeDecodeError` 是 `ValueError`、不是 `OSError`——**一条非 UTF-8 的记录会冲出循环，让整轮检查崩掉**，直接违反计划里写明的"单条损坏不得打断整轮"。
+
+控制器同时判定一条同族问题：`log_metrics` 在记录解析成非对象（如 `[]`）时抛未捕获 `TypeError` → traceback + shell 退出 1，而非工具错误 2。这与 latex-check R26a、final-check P9/P11、provenance E5/E8 是同一条规则的第五、六次出现。
+
+Ruling: 两处一并修——`check_runs` 的 `except` 扩到含 `UnicodeDecodeError`；`log_metrics` 在解析后要求是对象，否则 `ValueError`（且在**任何变更之前**判定，保证坏文件字节不变）。
+理由: "一条坏记录不得让整份审计失效"是这一层存在的意义之一；而工具自身崩成 1 是本项目已立过五次的规则。
+代价: 无。
+
+- 修复 commit `1f37de1`，**371/371**（369 + 2）。定向复审（`Faraday`）：**两条均 ADDRESSED，无新 issue，fix accepted**。评审者核实：新用例用的是**真正的非法 UTF-8 字节**（`b"\xff\xfe\x00garbage"`）而非仅畸形 JSON，且好记录仍被扫描到；`isinstance(record, dict)` 判定发生在赋值与落盘**之前**，坏文件字节不变；退出码契约与冻结的判定表均未改动。
+  Task 2: complete (commits 3a37f37..1f37de1, review clean)
+
+- Task 2: minor (deferred)：注入 naive 的 `now` 会因时区相减抛 `TypeError`（测试都用 aware，属 API 硬化）；`completed` 且 `metrics` 为**非对象非空**（如列表）时两个判定都不命中，静默通过——这是判定表的空缺而非崩溃，需要一次裁定；无 `exit_code`/其他字段在 `log_metrics` 后保持不变的直接断言。
+
+## 当前状态
+
+- HEAD = `1f37de1`，工作树干净，**371 tests OK**。
+- run-log 已完成：耐久记录与包裹执行（Task 1）、指标登记与只读检查（Task 2）。
+- 剩余：run-log Task 3（e2e，终态 375）→ 复现与归档 → 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## run-log Task 3 与最终全分支评审
+
+- Task 3（e2e）: implementer `Rawls` = `01a10159-4a45-78e2-bd33-076ee070f240`，commit `61ad9d3`，**375/375**。
+- 评审者 `Ampere` = `01a1015b-120f-73f0-b5f4-5205f76d057d`：Spec ✅，Approved。四条 e2e 断言均有判别力；"跑完没记指标"的陷阱**在 CLI 路径上被真正触发并证明可清除**（case 1 报 pending，case 2 记完指标后 check 归零）；被包裹命令用 `sys.executable` 不依赖 PATH；顶层参数位置正确；子进程按 UTF-8 解码。
+- 评审者的规划注记：计划里 Step 2 写"369 + 4"、验收写"354 + 19 = 373"，而 E16/E17 两轮修复把基线推到了 371——**又是我的算术滞后于修复轮**（同 C6/R4/R24 一族）。代码本身按 371 + 4 = 375 是对的。
+
+### 最终全分支评审（`Feynman` = `01a1015c-948b-7512-8737-652a9a8a03d9`）：Verdict = Needs fixes
+
+§9.2 与 §6.1.1 逐条核实**基本满足**：命令启动前落 running 记录、失败路径（非零退出与 `OSError`→exit_code 127）都保留记录、无重试路径因而"不得静默重试到成功"成立；原子写与不覆盖成立；`check` 只读成立。
+
+### Ruling E18 — 配置里的日期让 `run` 崩成退出 1 并留下 `{}` 占位（Critical，评审者真机复现，必改）
+
+`yaml.safe_load` 把 `date: 2026-10-03` 解析成 `datetime.date`，而 `_dump_record` 用裸 `json.dumps` → **TypeError: Object of type date is not JSON serializable**。`main` 只捕 `(ValueError, ToolEnvironmentError)`，于是 traceback 逃逸、进程退 **1**（契约要求 2）、stdout 为空，且 `new_run_id` 的 `{}` 占位文件留在盘上——§9.2 的"失败必须留档"在一半程度上被破坏。
+
+Ruling: 在 `read_config` 里把 `content` 规范化为 JSON 安全的基本类型（日期/时间转 ISO 字符串，其余不可序列化的转其字符串形式）；补一条带日期配置的回归用例，断言 `run` 正常落记录而非崩溃。
+理由: 配置里写日期是最普通不过的事，这条路径任何真实用户都会撞上；而且它同时踩中两条已固化的跨工具规则（工具不能崩成 1、失败必须留档）。
+代价: 非标量类型会被字符串化，记录里的 `content` 不再是 YAML 原样对象——但保住"可读、可复现"，比保住类型保真重要。
+
+### Ruling E19 — `run` 的 stdout 必须是 JSON（Important，必改）
+
+`print(run_id)` 与 §6.1.1 的"机器可读 JSON 走 stdout"冲突，也与同工具的 `log-metrics` / `check` 不一致。评审者把它从"未规定的设计选择"提为契约偏离。
+
+Ruling: 改为输出 `{"run_id": ..., "status": ..., "exit_code": ...}` 形状的 JSON；人读摘要仍走 stderr（这正是参考实现"summary 同时打两路"的意图，只是按我们的契约拆分）。
+代价: 既有"把 run id 打到 stdout"的直觉用法要改为解析 JSON；e2e 用例需相应调整。
+
+### Ruling E20 — `check` 必须校验 `status` 枚举（Important，必改）
+
+`check_runs` 只对 `running` 与 `completed` 分支，**任何其它 `status` 值都静默落到 git 检查上**——包括手写的 `"complete"` 与 E16 里作废的 `"metrics-pending"`。冻结形状写着 `status ∈ {running, completed, failed}`，未知值就是畸形，应当报出而不是静默接受。
+
+Ruling: 未知 `status` 报 `run-log-malformed`；补一条用例（手写 `"metrics-pending"` 的记录必须被报出而非静默通过）。
+理由: 这正是"静默通过"——这一层存在的理由所要防的事；而且它恰好会放过 E16 作废的那个值，等于把已被否决的设计从后门放回来。
+代价: 无。
+
+### 其余 deferred minor（评审判定可 defer）
+
+`completed` 且 `metrics` 为**非对象非空**（如列表）时两个判定都不命中、静默通过——评审者同意不阻塞，但建议顺手加一句 `isinstance(metrics, dict)` 守卫（**控制器意见：这条与 E20 同族，应在同一轮修掉**）；注入 naive `now` 抛 `TypeError`（仅测试注入缝，无 CLI 开关）；`main` 的退出码 2 路径缺 `main` 级用例；记录里没有区分 §9.2 的"环境问题（可重试）"与"结果问题（必须记录）"（冻结形状从未包含该字段）；§10 未规定 `--config` 的规范位置；固定临时文件名的并发问题（继承自 provenance，属误用场景）。
+
+## 当前状态与下一步
+
+- HEAD = `61ad9d3`，工作树干净，**375 tests OK**。
+- **待执行一轮修复波（E18 + E19 + E20，另建议带上 metrics 非对象守卫）**：全部在 `tools/ccfa/run_log.py` 与其测试内；按 skill 要求一个修复者处理全部发现，随后一次定向复审。
+- 之后：run-log 结项 → 复现与归档 → 知识层 → 自动化与跨模型评审 → 模板库与派生流程（强制前置：先评估 `bensz-paper` / `bensz-nsfc`）。
+
+## 修复波（E18–E20）与定向复审
+
+- 修复者 `Socrates` = `01a10160-8b80-7252-bd51-94336e1a4c60`，commit `033e1c9`，**379/379**（修复前实测 2 failures + 4 errors）。
+- 定向复审（`Feynman`）：**E18 / E20 / metrics 守卫均 ADDRESSED，E19 按指令范围也算 ADDRESSED，但新增一条 Important**。逐条证据：`_json_safe` 递归处理 dict/list/tuple、把 `datetime`/`date`/`time` 经 `isoformat()` 转换，其余原生类型原样返回；未知 `status` 在 running/completed 分支之前短路为 `run-log-malformed`；completed + 非对象非空 `metrics` 也归 malformed；E11 的 `--propagate-exit` 行为未变。
+
+### Ruling E21 — `run` 不得夺走被包裹命令的 stdout（Important，必改）
+
+为实现 E19（`run` 输出 JSON），实施者把**被包裹命令的 stdout 重定向到 stderr**。评审者当场实测：子进程打印 `7` 到 stdout、`8` 到 stderr，结果 stdout 只有 `{"exit_code":0,...}`，而 stderr 里是 `8\n7\n…`——两路被合并。
+
+后果是包装器的**核心用途被破坏**：`run-log run -- python train.py > out.txt` 再也捕获不到训练输出；而 stdout/stderr 合并毁掉了研究者依赖的"结果 vs 日志"分离。评审者指出"把 JSON 打在子进程输出之后"也不可行——同一个 fd 上既 passthrough 又可解析是做不到的。
+
+Ruling: **让子进程原样继承两路流**（不重定向），把本工具的控制信息（run_id / status / exit_code 的摘要）打到 **stderr**；并把这记为 `run` 这一个 passthrough 子命令对 §6.1.1 "JSON 走 stdout" 的**具名例外**，在 spec §6.1.1 里写明。
+理由: `run` 的本质是包装器，它的第一职责是让被包裹的命令像没被包装一样工作；把子命令的输出挪走，等于为了工具的契约便利牺牲用户的主要用途。`check` 与 `log-metrics` 仍走 JSON stdout，机器可读契约在检查侧完好。
+代价: `run` 的机器可读输出移到 stderr（与"人读摘要走 stderr"有混用），需要 spec 里具名说明；若将来有人想脚本化 `run`，应使用 `--propagate-exit` + 解析 stderr 或另加 `--json-file`。
+
+## 当前状态与下一步
+
+- HEAD = `033e1c9`，工作树干净，**379 tests OK**。E18/E20/metrics 守卫已清；**E21 待修**。
+- 下一步：一轮修复波处理 E21（改造 `run` 的流处理 + 调整 e2e 用例 + 在 spec §6.1.1 写明具名例外），随后一次定向复审；两者通过后 run-log 即可结项。
+- 之后：复现与归档 → 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## E21 修复与 run-log 结项
+
+- 修复者 `Einstein` = `01a10165-6990-7191-b246-4540f0b3214b`，commit `2440356`，**379/379**。E21 回归（子进程标记必须到达调用方 stdout）改前失败、改后通过。
+- 定向复审（`Feynman`）：**E21 ADDRESSED，无回归，fix accepted**。评审者核实：`_subprocess_runner` 现在 `subprocess.run(list(argv), cwd=..., check=False)`，**两路流都不重定向**，子进程原样继承；`run` 自身只往 stderr 打摘要；E18（日期配置）、E20（status 枚举）、metrics 守卫、E11（`--propagate-exit`）全部未回归；spec §6.1.1 第 251 行已写入**只覆盖 `run`** 的具名例外，`check`/`log-metrics` 仍走 JSON stdout；run_id 的恢复用正则在整个 stderr 上搜（`\b\d{8}T\d{6}-\d{2}\b`），因此不受子进程自身 stderr 输出干扰。
+- 新增 minor (deferred)：`run` 的 run_id 只能从中文人读摘要里正则提取，没有结构化通道（确定性且有用例钉住，不阻塞）。
+
+## run-log 结项
+
+- **五个 commit 全部落地**：`f5f2126`（耐久记录与包裹）、`3a37f37`（相对配置路径按 paper_root 解析）、`c45ecea`（log-metrics + check）、`1f37de1`（非 UTF-8 记录不打断整轮 / 非对象记录归工具错误）、`61ad9d3`（e2e）、`033e1c9`（E18–E20）、`2440356`（E21）。
+- HEAD = `2440356`，工作树干净，**379 tests OK**。
+- 工具形态：`run`（包装器，命令启动前落 running 记录、O_EXCL 占位、E11 退出码例外、两路流原样透传）、`log-metrics`（只改 metrics，status 与 exit_code 不动）、`check`（只读判定表 + `run-log-malformed` 兜住一切畸形记录）。
+- **"忘了 log-metrics"的陷阱已在 CLI 路径上被关闭并有用例证明可清除**——这正是参考实现文档里自己承认的那个"每次运行都记成空指标且不报错"。
+
+## 全局进度
+
+六个工具全部成形并各自过审：`citation_guard` / `trace_claims` / `latex_check` / `final_check` / `provenance` / `run_log`。测试从最初的 125 增至 **379**。
+
+## 下一步
+
+按 spec §6.1：「复现与归档」计划（含 E4 推迟的 `research-version`，走 git 薄封装）→ 知识层（FTS5 + 记忆，含反重复）→ 自动化与跨模型评审 → 模板库与派生流程（强制前置：先评估 `bensz-paper` / `bensz-nsfc` 的复用可行性）。
+
+### 已固化的跨工具规则（新工具照办，不必逐次论证）
+
+1. 写盘路径的 `OSError` → `ValueError` → 退出码 2；
+2. store / 记录的 `version` 与枚举字段必须校验；
+3. **"有测试"不等于"有判别力"**——每条判别力检查必须实测其能在错误实现下失败；
+4. **闸门没跑全不能报成功**（含跳过项的一轮退出码为 2）；
+5. **一条坏记录不得打断整轮审计**；
+6. **包装器不得夺走被包裹命令的流**——工具的契约便利不能牺牲用户的主要用途。
+
+## 「复现与归档」层预研（参考实现主体已深读）
+
+参考：`research-suite/tools/repro-package/repro_package.py` 与 `friction-log/friction_log.py`（MIT）。
+
+### 参考实现里值得吸收的两点
+
+1. **`repro_package` 把"干净环境"的范围写在文档第一段**：它明说自己指的是"一个只装了 bundle 声明依赖的新 venv"，**不是**容器级隔离（不隔离系统库、网络、PATH 上已有的非 Python 工具），并且写明"这是一份诚实、可实现的保证，不是对完全隔离的宣称"。这种"先说清保证的边界"正是本工作流的风格。
+2. **`friction_log` 的 `aggregate`**：以 `PATH=LABEL` 接收多个 store 并合并，其文档给的理由是"跨若干不相关领域重复出现的模式，才能被聚合真正浮出来，而不是埋在各个没人会一起重读的文件里"。这正是 spec §6.1 要的"跨论文聚合"。
+
+### 参考实现里必须偏离的一点
+
+`repro_package` 在 `verify` 时**通过 shell 执行 bundle 的命令**，并在文档里加了"只对你信任的命令构建与验证 bundle"的警告。我们已经有 `run-log` 的 argv 包装先例，没有必要引入 shell 注入面。
+
+## 裁定（E22–E26）
+
+### Ruling E22 — repro-package 的"干净环境"必须诚实定义范围
+
+Ruling: 采纳参考实现的诚实口径并写进 spec 与工具输出——"干净环境"= 一个只装 bundle 声明依赖的**新 venv**，不含容器级隔离。报告里必须显式说明这次验证覆盖了什么、没覆盖什么。
+理由: 把"我看了一遍包"说成"我验证了可复现"是本层最容易犯的谎；先把保证边界写死，才谈得上后面的判定。
+代价: 用户可能误以为它比实际更强——所以这条必须出现在 `--help` 与每次 verify 的输出里，而不只是文档里。
+
+### Ruling E23 — 命令用 argv 数组，不用 shell 字符串
+
+Ruling: `repro-package` 的命令以 **argv 数组**表达（与 `run-log` 一致），`{python}` 占位符在 verify 时替换为新 venv 的解释器（作为 `argv[0]`）。需要管道/重定向的场景必须写成一个脚本文件，不引入 shell。
+理由: 参考实现的 shell 路径既需要"只信自己的命令"这类免责声明，又把注入面带进一个本该只读的执行环境。argv 让这一类风险不存在，且与既有包装器一致。
+代价: 依赖 shell 特性的复现命令需要多写一个脚本文件；这是有意的摩擦。
+
+### Ruling E24 — verify 必须真的重跑，并区分三类失败
+
+| 情形 | code / 退出码 |
+| --- | --- |
+| bundle 清单与实际文件不符（缺文件、哈希对不上） | problem `repro-bundle-incomplete`（退 1） |
+| 重跑本身非零退出 | problem `repro-rerun-failed`（退 1） |
+| 环境无法建立（找不到解释器、建 venv 失败、超时） | **工具错误（退 2）** |
+
+Ruling: 第三类必须与第一二类分开。**"环境没建起来"不是"这个包复现不了"**——把两者混为一谈，等于让"验证没跑成"看起来像"验证发现问题"（本项目已固化规则的又一次应用）。
+代价: 用户需要分别处理"包的问题"与"机器的问题"；这正是要的区分。
+
+### Ruling E25 — friction-log 沿用既有 store 契约
+
+Ruling: store 为 JSON（带 `version`）；`category` 限 `tool-bug` / `skill-gap` / `environment` / `other`，`severity` 限 `low` / `medium` / `high`；**读取时重新校验枚举**（E20 的教训：写入时校验不构成读取时的信任）；`aggregate` 以 `PATH=LABEL` 合并多个 store，输出**不覆盖**已存在文件，除非 `--force`；原子写。
+理由: 这些都是已固化的跨工具规则，新工具照办。
+代价: 每篇论文一个 store + 一个聚合命令，需要用户记得在阶段收尾时聚合；写到 spec 的 gate 描述里。
+
+### Ruling E26 — research-version 落实为 git 薄封装（E4 的细则）
+
+Ruling:
+- `list` = `git tag -l "paper-v*"`；
+- `snapshot [--label L] [--allow-dirty]` = 打一个带注释的标签 `paper-v<N>`（N 自增），标签消息写入当时的 commit 与 `dirty` 标志；
+- **脏树默认拒绝**（退 2），`--allow-dirty` 时才允许并在标签消息里记 `dirty=true`——因为脏树快照无法被 commit 复现；
+- `diff <a> <b>` = `git diff <a> <b> -- <paths>`（真实 diff，不另存副本）。
+理由（E4 的延续）: 论文库已是 git 仓库，独立版本库会制造"两个版本真相"。薄封装保留"任意两版真 diff"的能力，同时让"第几版"只有一个答案。
+代价: 依赖 git 可用；非 git 环境下 `research-version` 不可用（这是有意的——离开版本控制谈快照本就没有意义）。
+
+## 计划轮廓（待写）
+
+1. `tools/ccfa/repro_package.py` — bundle（清单 + 哈希 + 声明依赖）与 verify（建新 venv、按 argv 重跑、三类失败分流）
+2. `tools/ccfa/friction_log.py` — add / list / export / aggregate（store 契约 + 枚举重校验 + 不覆盖聚合输出）
+3. `tools/ccfa/research_version.py` — list / snapshot / diff（git 薄封装，脏树默认拒绝）
+4. 端到端回归：必须含"bundle 缺文件 → 1""重跑失败 → 1""环境建不起来 → 2""脏树 snapshot 被拒 → 2"四条判别性用例
+
+## repro-package Part A 计划已写
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-repro-package.md`
+- Task 1（bundle 构建与清单）：含完整实现与测试代码，终态 **393**（379 + 14）。
+- 计划里落实的裁定：**E22**（"干净环境"的范围要在 `--help` 与每次 verify 输出里说清——Part B）、**E23**（命令用 argv 数组，`{python}` 占位；`--command` 用 `shlex.split` 切分而**不是 shell 执行**）、**E6 规则**（清单 `version` 必须校验）、**路径规则**（绝对路径与 `..` 逃逸一律拒绝）、**写盘契约**（原子写、不覆盖、`--force` 才重建）。
+- 自审修掉两处：测试条数又数错（14 不是 15，终态 393 不是 394）；Step 4 的判别力检查我写成自我矛盾的一段（先说必须通过、又说必须失败）——已改成一条清晰的检查（把 `shutil.copy2` 换成写空文件后，存在性用例仍过、哈希用例必须失败），并把"若它没失败该怎么办"的判断交给实施者。
+- **这条判别力检查本身值得留意**：它测的是"复制有没有真的把字节带过去"，而存在性断言抓不到这件事——这正是本项目反复强调的"有测试不等于有判别力"的一个新实例。
+
+## repro-package Task 1 执行记录
+
+- 实施者 `Huygens` = `01a1016c-2233-7130-b519-c0a6cddfac83`，commit `a34e741`，**393/393**。
+  两点值得记：(a) 判别力检查**恰好按设计分化**——把 `shutil.copy2` 换成写空文件后，存在性用例仍过、哈希用例失败，无需加强，说明计划里重写的那条检查是站得住的；(b) 它在自查时发现了一个数据丢失隐患并"修复"了：`--force` 原本先 `rmtree` 再校验清单。
+- 评审者 `Euler` = `01a1016f-0cce-79c3-8554-10e1a1185d2a`：**Spec ❌，Needs fixes（1 Critical）**。
+
+### Ruling E27 — `--force` 的删除必须晚于**全部**校验（评审发现，Critical，必改）
+
+评审者指出并**复现**：实施者的自查修复是**不完整**的——它只把**形状**校验（`version`、`files` 是列表、`path` 是字符串）移到了 `rmtree` 之前，而**路径包含性与文件存在性**校验（`_resolve_member`）仍在删除**之后**执行。实测：建好一个有效 bundle → 加一个 `KEEP` 文件 → 篡改清单条目为 `"src/gone.py"` → `create_bundle(..., force=True)` → 抛 `ValueError`，但 `KEEP` **已被删除**。
+
+这条直接推翻了实施者报告里"清单在任何意义上无效时都不会删除已存在目录"的声称。CLI 正常流程之所以没暴露，只是因为 `main` 里恰好先跑了 `build_manifest`；库函数 `create_bundle`、以及"构建与复制之间文件被删"的时序窗口，都没有被保护。
+
+Ruling: 在**任何**破坏性操作之前，把全部成员的 `(相对路径, 源路径)` 解析完（含 `requirements`），把路径包含性与存在性一次验完；之后再删除、再复制。并补一条用例把"`--force` + 路径无效不得破坏已有 bundle"钉死。
+理由: 这是数据丢失路径，而本工具的本职正是保存可复现产物——一个在报错前先毁掉旧产物的实现，方向与它的存在意义相反。另外，实施者"我已修好"的声称被证明只覆盖了一半，这本身说明**自查结论必须由独立评审核实**，不能当作证据。
+代价: 无；校验顺序调整而已。
+
+## 当前状态与下一步
+
+- HEAD = `a34e741`，工作树干净，**393 tests OK**。
+- **待执行一轮修复波（E27）**：`create_bundle` 把全部解析与校验提到删除之前；补一条 `--force` + 路径无效的回归用例。
+- 之后：repro-package Part B（verify：建新 venv、按 argv 重跑、三类失败分流 E24）→ friction-log → research-version（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## E27 修复与 repro-package Task 1 结项
+
+- 修复者 `Godel` = `01a10171-2b73-7d71-92da-aae77b8e48f0`，commit `9b6b0e2`，**394/394**。新回归用例 RED→GREEN 实测（旧顺序下 `KEEP` 标记会消失）。实施者在报告里如实写明："先前的自查安全声称被夸大了，实际只覆盖了形状校验"——这句比修好的代码更值钱。
+- 定向复审（`Euler`）：**ADDRESSED，无新 issue，fix accepted**。评审者核实：`_resolve_member` 现在把**全部** `files` 条目与 `requirements` 解析成 `members` 列表（`repro_package.py:118-126`）之后才 `rmtree`（`:128-133`），复制循环消费的是已解析对（`:137-140`），删除之后不再有任何路径校验；有效路径的布局与清单字节未变；既有 `ValueError` 路径不变；唯一的行为位移是"非 force + 目录已存在 + 路径无效"现在先报路径错误——仍是 `ValueError` / 退出 2。
+  Task 1: complete (commits 2440356..9b6b0e2, review clean)
+
+### 这一轮暴露的流程教训（值得单独记）
+
+实施者自查时"发现并修复了一个数据丢失隐患"，报告里写成"清单在任何意义上无效时都不会删除已存在目录"——但评审者复现证明它只覆盖了形状校验，路径与存在性校验仍在删除之后。**一个被夸大的安全声称，比没有声称更危险**：它会让人停止检查。
+
+由此补一条操作惯例（不新增工具规则，只记流程）：**凡自查里声称"已堵住某类危险"的，必须给出能证明它的失败用例；没有失败用例的安全声称，视为未验证。**
+
+## 当前状态
+
+- HEAD = `9b6b0e2`，工作树干净，**394 tests OK**。
+- repro-package 的打包侧完成；剩 verify（Part B）→ friction-log → research-version → 知识层 → 自动化 → 模板库。
+- 账本裁定 E1–E27。
+
+## repro-package Part B 计划已写
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-repro-package-part-b.md`
+- Task 2（`verify`）：判定表 + 三个可注入点（`venv_factory` / `runner` / `timeout`），7 条测试；Task 3（e2e + 一次真实 venv 冒烟），4 条测试。终态依次 **401 / 405**。
+- 计划落实的裁定：
+  - **E24**：三类失败分流——bundle 哈希不符 → 1；依赖装不上 / 重跑非零 / 超时 → 1；**清单非法或建 venv 失败 → 2**（"环境建不起来"是机器的问题，不是包的问题）；
+  - **E22**：`repro-scope` advisory 固定文案，**无论通过与否**都出现在报告里，写明本次"干净环境"覆盖了什么、没覆盖什么；
+  - **E23**：`{python}` 只替换 `argv[0]`，绝不经过 shell。
+- 自审收紧一处：**哈希核对失败时不执行命令**。跑一个已损坏的包正是本工具要拦下的事；但仍要把全部哈希问题一次报全（逐条比完再决定，不是遇到第一条就返回），且 `repro-scope` 仍出现，说明本次验证停在哪一步。
+- 另一处刻意的取舍写进了边界：`pip install` 失败不区分"依赖无法解析"与"无网络"，都归 `repro-install-failed` 并在 detail 里附原始输出供人判断——因为工具**分不出来**，假装分得出来才是错的。
+
+## 当前状态
+
+- HEAD = `9b6b0e2`，工作树干净，**394 tests OK**。
+- repro-package 打包侧完成；verify 计划就绪待执行。之后：friction-log → research-version → 知识层 → 自动化 → 模板库。
+- 账本裁定 E1–E27 + 一条流程惯例（无失败用例的安全声称视为未验证）。
+
+## repro-package Part B Task 2 执行记录
+
+- 实施者 `Erdos` = `01a10175-7e0f-78d0-a40b-e520f41c62b2`，commit `5c3c33a`，**401/401**。判别力检查（删掉哈希核对步）实测让 `test_tampered_file_is_reported_as_incomplete` 以 `[] != ['repro-bundle-incomplete']` 失败，随后恢复。额外做了两件对的事：把 `requirements` 的哈希也纳入核对（安装消费的正是那份字节），以及按规则把 `repro-scope` 写成中文（面向用户）。
+- 评审者 `Laplace` = `01a10179-8bd9-7ea1-97ea-dc0e91dcbd49`：**Approved，无 Critical，1 Important + 若干 Minor**。核实：E24 三类分流正确；E23 只替换 `argv[0]`、`shell=False`、命令里后出现的 `{python}` 原样保留（正确）；哈希失败时**确实**在建立 venv 与执行之前返回，且逐条报全；`verify` 不写 bundle；临时 venv 在 `finally` 里清理，`--keep` 才保留。
+
+### Ruling E28 — 安装失败时不得把"重跑失败"当主因（Important，必改；根因在我的测试设计）
+
+评审者指出：安装失败而重跑也失败时，代码只返回 `repro-rerun-failed`，把安装失败塞进消息末尾（"；依赖安装也未成功"）。**依赖缺失导致的重跑失败是症状**；机器消费者只看到"重跑失败"，人得读自由文本才能找到病因。
+
+更要紧的是评审者点出的**根因**：我的 brief 只注入了**一个 `runner`**，同时用于 pip install 与重跑——于是测试**分不清**这两次调用，实现也就无法区分，只能把症状当主因。**这是计划层面的测试设计缺陷，不是实施者的判断问题。**
+
+Ruling:
+1. **行为**：安装失败时**不进行重跑**，直接以 `repro-install-failed` 为主因返回（detail 附 pip 输出尾部，并注明"未继续重跑"）。安装成功才重跑。
+2. **测试**：把注入点改成能区分两次调用——保留一个 `runner`，但测试按其 argv 是否含 `pip` 分派；或新增 `install_runner` 与 `run_runner` 两个注入点。必须新增一条"仅安装失败"的用例（安装失败、命令本可成功 → 只报 `repro-install-failed`）。
+理由: 一次验证的价值在于指向病因；把症状当主因报出，等于让用户去修错的东西。而"测试分不清两次调用"这件事本身再次印证那条惯例——**测试的判别力决定了实现对错误的可见度**。
+代价: 注入点从 1 个变 2 个（或测试内加分派）；既有两条用例需相应改造。
+
+### 其余 deferred minor（评审判定可 defer）
+
+`repro-scope` 在**工具错误**路径（清单非法 / 建 venv 失败）不出现——与 E22 的"无条件"措辞有一处小缺口（实际影响有限，因为那时没有产生验证结果）；无"仅安装失败""`requirements` 被篡改""哈希失败不建 venv""`--keep` 清理"的用例；只读测试只钉了 `MANIFEST.json`，抓不到 `files/` 成员被改或新增文件；`_bundle_member` 的 `Path.resolve()` 在 `OSError → ValueError` 包装之外，极端情况下会逃成 traceback；"固定文案"是中文改写而非英文原文（符合"中文只在面向用户消息"的规则，但与计划措辞不一致）。
+
+## 当前状态与下一步
+
+- HEAD = `5c3c33a`，工作树干净，**401 tests OK**。
+- **待执行一轮修复波（E28）**：安装失败即止、以安装失败为主因；把注入点做成可区分；补"仅安装失败"用例。随后一次定向复审。
+- 之后：Task 3（e2e + 真实 venv 冒烟，终态 405）→ friction-log → research-version → 知识层 → 自动化 → 模板库。
+- 账本裁定 E1–E28。
+
+## repro-package 最终全分支评审
+
+- 评审者 `Turing` = `01a10185-8f18-74b0-aabc-85e42ddea734`, `deepseek-v4-pro`（最高档）。Diff: `.superpowers/sdd/2026-10-03-repro-package-part-b/review-2440356..7258d0d.diff`（5 commits）。
+- **Verdict: Merge readiness = Ready**，无 Critical。§6.1 与 §12 的相关条款均核实满足；1-vs-2 分流全程成立；E27（删除晚于全部校验）与 E28（安装失败即止）经代码核验确已落地；真实 venv 冒烟被认可为端到端证据。
+- 评审者还做了一次"真实论文布局走查"，指出四个会绊住用户的地方：`requirements.txt` 里的 `-e .` 或相对引用（只复制了点名文件、安装 cwd 在 bundle 内，因此装不上）；命令参数里的 Windows 绝对路径被 `shlex(posix=True)` 弄坏；**命令省略 `{python}`（跑错解释器）**；命令写相对输出（弄脏 bundle）。
+
+### Ruling E29 — `{python}` 必须校验，不得让工具做不实声明（Important，控制器提为阻塞级）
+
+评审者把它列为 Important 但判"可作后续修"。控制器**不接受"后续"**：`build_manifest` 不校验命令首元素，`verify` 只在 `argv[0] == "{python}"` 时替换——于是用 `--command "python train.py"` 构建的 bundle 会**用系统 PATH 上的 python 重跑**，而 `repro-scope` 那条 advisory 仍然宣称"命令在包含 bundle 声明依赖的新建 venv 中运行"。
+
+这是**工具在自己的输出里做不实声明**。本层存在的全部价值就是"诚实证据"（E22 特意把隔离边界写死，就是为了不夸大）。一条与事实不符的证据声明，比没有声明更危险——它会让人停止怀疑。
+
+Ruling:
+1. **`bundle` 拒绝**首元素不是 `{python}` 的命令（`ValueError` → 2），并在错误消息里说明原因（否则该 bundle 无法被诚实验证）；
+2. **`verify` 同样拒绝**命令首元素不是 `{python}` 的清单（防手工构造的清单绕过第 1 条）；
+3. 补两条用例，分别钉住这两处拒绝。
+理由: 与"闸门没跑全不能报成功"同源——**报告不得声称自己没做到的事**。
+代价: 命令首元素被强制为 `{python}`；非 Python 命令（编译好的二进制等）不能进 bundle，这与"本工具只验证 Python 侧复现"的边界一致（计划已声明）。
+
+### Ruling E30 — 重跑必须在 `files/` 的临时副本里进行（Important，一并修）
+
+`verify` 把重跑的 cwd 设为 `<bundle>/files`，因此**一条会写相对输出的命令会弄脏 bundle**——"只读 bundle"这条不变量只是有条件的。评审者指出只读测试只钉了 `MANIFEST.json`，抓不到这件事。
+
+Ruling: 建 venv 之前把 `<bundle>/files` 整棵复制到临时目录，在副本里重跑；bundle 全程零写入，不变量变成无条件的。只读测试改成对**整个 bundle 目录**做前后比对（文件清单 + 每个文件的哈希）。
+代价: 每次 verify 多一次文件复制（对 bundle 规模而言可接受）。
+
+### Ruling E31 — 成功的重跑输出必须留下痕迹（Important，一并修）
+
+非零退出时输出尾部被保留在 Problem 消息里，成功时却被直接丢弃。**证据是本层的产物**：一条跑了 20 分钟的命令，用户只拿到退出码 0 与空 problems，等于没有任何关于"它到底跑了什么"的记录。
+
+Ruling: 成功时把输出尾部（末 800 字符）打到 **stderr**（人读通道），JSON 契约不动；同时把它作为一条 advisory（code `repro-output-tail`）放进 JSON，便于机器侧留存。
+代价: 长输出会在 stderr 上多一段；用尾部截断控制体量。
+
+## 当前状态与下一步
+
+- HEAD = `7258d0d`，工作树干净，**406 tests OK**。
+- **待执行一轮修复波（E29 + E30 + E31，三条都是控制器提为阻塞级）**：全部在 `tools/ccfa/repro_package.py` 与其测试内；按 skill 要求一个修复者处理全部发现，随后一次定向复审。预计新增 3–5 条用例。
+- 之后：`friction-log` → `research-version`（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+- 账本裁定 E1–E31。
+
+## E29–E31 修复与 repro-package 结项
+
+- 修复者 `Kuhn` = `01a1018a-19fd-76d1-8239-96d25738912c`，commit `e2783b6`，**411/411**。
+- 定向复审（新派 `Nash` = `01a1018c-88cf-7103-b7d5-f084417b7948`，因原评审者已关闭）：**E29 / E30 / E31 全部 ADDRESSED，无回归，fix accepted**。三处证据：
+  1. **E29**：`build_manifest` 在 `command[0] != "{python}"` 时拒绝并解释理由（"无法诚实地在新 venv 中重跑"）；`_validate_manifest` 镜像同一检查，且 `verify_bundle` **在最开头**就调用它——因此手工构造的 `["python", "x.py"]` 在替换之前就抛 `ValueError` → 2。两个方向都堵住了。
+  2. **E30**：`shutil.copytree(files_dir, run_files_dir)` 把 `files/` 复制进临时目录，安装与重跑都以副本为 cwd；只读测试改为对**整个 bundle** 做"相对路径 + 每文件哈希"的前后快照，且用例里的 `writer.py` 会真的往 cwd 写文件——**旧实现下必然失败**。
+  3. **E31**：成功时追加 `repro-output-tail` advisory；`emit` 本就往 stderr 打 advisory，因此标记到达 stderr 而非新增 stdout 行；原先"只有 `repro-scope`"的断言被**更新为期望两条**，不是删除。
+  无回归：三类退出码分流、安装失败即止、哈希失败即止、`repro-scope` 在所有非工具错误路径、`shell=False`、原子写、`--keep` 清理均保持。
+  repro-package: complete (commits 2440356..e2783b6, review clean)
+
+## repro-package 结项
+
+- **7 个 commit 全部落地**：`a34e741`（bundle + 清单）、`9b6b0e2`（E27：删除晚于全部校验）、`5c3c33a`（verify）、`c9646e2`（E28：安装失败即止）、`7258d0d`（e2e + 真实 venv 冒烟）、`e2783b6`（E29–E31）。
+- HEAD = `e2783b6`，工作树干净，**411 tests OK**。
+- 工具形态：`bundle`（文件 + 哈希清单 + argv 命令 + `{python}` 强制 + 清单版本校验 + 原子写 + 不覆盖 + 删除晚于全部校验）、`verify`（哈希全检 → 在新 venv 副本里重跑 → 三类失败分流 → `repro-scope` 恒在 → 成功也留输出尾部）。
+- **真实 venv 冒烟通过**：真建出 stdlib venv 并离线跑通 `{python} hello.py`——这是注入式单测给不了的硬证据（与 latex-check 用真 MiKTeX、final-check 用真 PDF 同类）。
+
+## 全局进度
+
+七个工具成形：`citation_guard` / `trace_claims` / `latex_check` / `final_check` / `provenance` / `run_log` / `repro_package`。测试从 125 增至 **411**；账本裁定 E1–E31。
+
+## 下一步
+
+- `friction-log`（store 契约 + 枚举读取时重校验 + `aggregate` 跨论文合并，Ruling E25）
+- `research-version`（E26 的 git 薄封装：`paper-v<N>` 标签、脏树默认拒绝）
+- 之后：知识层（FTS5 + 记忆）→ 自动化与跨模型评审 → 模板库与派生流程（强制前置：先评估 `bensz-paper` / `bensz-nsfc`）
+
+### 已固化的跨工具规则（新工具照办）
+
+1. 写盘路径的 `OSError` → `ValueError` → 退出码 2；
+2. store / 记录的 `version` 与枚举字段必须校验；
+3. **"有测试"不等于"有判别力"**——每条判别力检查必须实测其能在错误实现下失败；
+4. **闸门没跑全不能报成功**；
+5. **一条坏记录不得打断整轮审计**；
+6. **包装器不得夺走被包裹命令的流**；
+7. **工具不得在自己的输出里做不实声明**（E29）；
+8. **无失败用例的安全声称，视为未验证**；注入点必须能让测试区分被测的两条路径（E27/E28 的教训）。
+
+## friction-log 计划已写
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-friction-log.md`
+- Task 1（store + `add`/`list`/`check`，12 条测试）→ 终态 423；Task 2（`export`/`aggregate`，8 条测试）→ 终态 431。
+- 落实 **E25**：store 的 `version` 校验 + **读取时重校验枚举**（"写入时校验不构成读取时的信任"这条已固化的教训，在 friction-log 是主判定）；`aggregate` 以 `PATH=LABEL` 跨论文合并并给每条打 `source` 标签；聚合输出不覆盖（`--force` 才覆盖）；单条非法**不得打断整轮**（规则 5）。
+- 吸收参考实现的核心论点：跨若干不相关领域重复出现的模式才能被聚合浮出来，而不是埋在各自没人重读的文件里。
+- 自审补写一处语义（否则评审者必问）：`aggregate` 遇到非法输入条目时**仍然写出合并文件**（合并这件事本身成功），但把坏条目录成 problem，退出码为 **1**。理由是——**记录里的坏条目是事实，不该为了"干净"丢掉它**，丢掉正好违背这一层"让重复模式浮出来"的目的；坏条目原样保留，问题列表指出它们。
+- 写计划时踩了一次补丁工具的坑：JSON 示例的续行漏了 `+` 前缀导致整块补丁被拒，改成单行示意后通过。记下来免得重复。
+
+## 当前状态
+
+- HEAD = `e2783b6`，工作树干净，**411 tests OK**。
+- 七个工具成形（引用 / 数字 / 结构编译 / 终稿 / 来源 / 运行记录 / 复现包）；`friction-log` 计划就绪待执行。
+- 之后：`research-version`（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## E32 修复（friction-log）
+
+- 修复者 `Curie` = `01a1019c-44d2-77e1-8a65-d927b9531275`，commit `3c8039a`，**432/432**。
+  改前定向用例以 `0 != 2` 失败（旧行为：拼错的输入路径被当成空 store，退出 0 并写出一个"少了一篇"的合并文件）；改后退出 2、stdout 为空、**且不留下 `--out` 文件**——参数给错不该产生一份半成品的总账。`load_store` 的既有契约（缺文件=空 store）与 `add`/`check`/`list` 行为均未改动，严格规则只加在 `aggregate` 这条显式点名来源的路径上。
+- **待办**：一次定向复审（E32），随后 friction-log 的最终全分支评审（base `e2783b6`）。
+
+## 当前状态
+
+- HEAD = `3c8039a`，工作树干净，**432 tests OK**。
+- `tools/ccfa/` 27 个模块；八个工具成形或接近成形：引用 / 数字 / 结构编译 / 终稿 / 来源 / 运行记录 / 复现包 / 摩擦日志。
+- 剩余路线：`research-version`（E26 的 git 薄封装）→ 知识层（FTS5 + 记忆）→ 自动化与跨模型评审 → 模板库与派生流程（强制前置：先评估 `bensz-paper` / `bensz-nsfc`）。
+
+### 已固化的跨工具规则与流程惯例（共 9 条，新工具照办）
+
+1. 写盘路径的 `OSError` → `ValueError` → 退出码 2；
+2. store / 记录的 `version` 与枚举字段必须校验；
+3. **"有测试"不等于"有判别力"**——每条判别力检查必须实测其能在错误实现下失败；
+4. **闸门没跑全不能报成功**；
+5. **一条坏记录不得打断整轮审计**；
+6. **包装器不得夺走被包裹命令的流**；
+7. **工具不得在自己的输出里做不实声明**；
+8. **记录里的坏条目是事实，不得为了"干净"丢弃**；
+9. （流程）**无失败用例的安全声称，视为未验证**；注入点必须能让测试区分被测的两条路径；**显式点名来源的操作，源必须存在**（E32）。
+
+## E32 定向复审与 friction-log 结项
+
+- 定向复审（`Galileo` = `01a1019f-0dcd-7f11-88e3-bbdd685a52ec`）：**ADDRESSED，无回归，fix accepted**。核实：`aggregate_stores` 在 `load_store` 之前对每个输入做存在性检查（循环覆盖全部输入）；`aggregate_stores` 在 `write_text_output` **之前**执行，因此缺输入时不留 `--out` 文件；`load_store` 与 `add`/`check`/`list` 分支逐行未动；非法条目仍原样进合并结果、仍以退出码 1 + 已写出文件收场。
+- 最终全分支评审（`Goodall` = `01a1019f-b889-7f42-8c1d-6071780fcb14`）：**Merge readiness = Ready**，无 Critical/Important。§6.1 的"记录工具缺陷与指令缺口，跨论文聚合"逐条核实满足。
+  **评审者做了一次往返探针（很有价值）**：把两个 store 先聚合一次，再把聚合结果当作输入**二次聚合**，结果通过自己的 `check`，id 为 `[1, 2]`、来源标签在重新标记的层级上保留。它另外确认：`add` 只会产出 `aggregate` 能接受的 v1 形状；有效 store 合并后能通过自身 `check`。
+  friction-log: complete (commits e2783b6..3c8039a, review clean)
+
+## friction-log 结项
+
+- **3 个 commit**：`7efd38e`（store + `add`/`list`/`check`，读取时重校验枚举）、`43f1f10`（`export` + 跨论文 `aggregate`）、`3c8039a`（E32：聚合输入必须存在）。
+- HEAD = `3c8039a`，工作树干净，**432 tests OK**。
+- 工具形态：`add`（先校验后改）、`check`（只读、重校验、报全）、`list`（JSON 筛选）、`export`（不带 `--out` 只打文档）、`aggregate`（`PATH=LABEL` 跨论文合并、坏条目作为事实保留、缺来源即退 2）。
+
+## 全局进度
+
+八个工具成形：`citation_guard` / `trace_claims` / `latex_check` / `final_check` / `provenance` / `run_log` / `repro_package` / `friction_log`。测试从 125 增至 **432**；账本裁定 E1–E32。
+
+## 剩余路线
+
+1. `research-version`（E26 的 git 薄封装：`paper-v<N>` 带注释标签、脏树默认拒绝、`diff` 用 `git diff`）
+2. 知识层（FTS5 trigram 索引 + 记忆文件，含反重复的 `reopen_if`）
+3. 自动化与跨模型评审（定时任务 + `codex exec` 独立评审接线）
+4. **模板库与派生流程**（把整条链串成"一条命令开一篇新论文"；强制前置：先评估 `huangwb8/ChineseResearchLaTeX` 的 `bensz-paper` / `bensz-nsfc` 复用可行性，而不是闭门造模板）
+
+### 已固化的规则与惯例（9 条，新工具照办，不必逐次论证）
+
+写盘 `OSError`→2；store/记录的 `version` 与枚举必须校验；"有测试"不等于"有判别力"（每条判别力检查必须实测其能失败）；闸门没跑全不能报成功；一条坏记录不得打断整轮；包装器不得夺走被包裹命令的流；工具不得在自己的输出里做不实声明；记录里的坏条目是事实不得为"干净"丢弃；显式点名来源的操作源必须存在。另有两条流程惯例：无失败用例的安全声称视为未验证；注入点必须能让测试区分被测的两条路径。
+
+## research-version 计划已写
+
+- 计划文件：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-research-version.md`
+- Task 1（git 薄封装的 `list`/`snapshot`/`diff`）：11 条注入式用例 + **1 条真实 git 集成用例**，终态 **444**（432 + 12）。
+- 落实 **E4/E26**：
+  - 标签命名 `paper-v<N>`，**按数值排序**（字符串排序会把 v10 排在 v2 前——这是判别力检查的靶点）；
+  - **脏树默认拒绝**（退 2），`--allow-dirty` 时才允许并在 annotated tag 的消息里记 `dirty=true`——脏树快照无法仅凭 commit 复现，这个事实必须留在标签里；
+  - `diff` 用真实 `git diff`，路径参数放在 `--` 之后；
+  - **本工具不写任何自己的存储**，因此不引入"两个版本真相"。
+- 三处需要评审者知道的设计判断：
+  1. **`diff` 有差异也退 0**——差异是这个子命令的**产物**，不是问题；`1` 在本项目里保留给"检查发现了问题"。这是与 Unix `diff` 约定不同的具名例外，必须写进 `--help`。
+  2. **用 annotated tag 而不是轻量标签**，因为轻量标签没有消息，装不下 `dirty` 与 `label`。
+  3. `label` 只进标签消息、**不参与命名**——命名始终是 `paper-v<N>`，保证顺序可数。
+- 自审补一条真实使用会撞上的边界：**annotated tag 需要 git 身份**（`user.name`/`user.email`），未配置时 git 报错 → 折成 `ValueError` → 2；并特别写明真实 git 集成用例**必须在临时仓库里自己配好这两项**，否则会因机器全局配置不同而时灵时不灵（"测试依赖全局状态"的典型陷阱）。
+
+## 当前状态
+
+- HEAD = `3c8039a`，工作树干净，**432 tests OK**。
+- 八个工具成形；`research-version` 计划就绪待执行。
+- 之后：知识层（FTS5 + 记忆）→ 自动化与跨模型评审 → 模板库与派生流程。
+
+## friction-log Task 2 执行记录
+
+- 实施者 `Copernicus` = `01a10197-10e9-7900-885d-93d283b874f7`，commit `43f1f10`，**431/431**。判别力检查（去掉聚合的问题上报）实测只让非法条目那条用例失败、其余全过，随后恢复。brief 同样只有 46 行（枚举清单式规格）。
+- 评审者 `Aristotle` = `01a10199-e977-71a1-adc0-4e2f511478f5`：**Spec ✅，Approved，无 Critical/Important**。关键核实：**"坏条目是事实"这条落实正确**——合并文件在 `emit(problems)` **之前**写出，因此退出码 1 时输出文件仍然完整；`source` 标签、`id` 连续重编号、`version: 1` 均正确；三类退出码无混淆；`export` 不带 `--out` 确实一个文件都不写。
+
+### Ruling E32 — `aggregate` 不得让"路径写错"静默吞掉一整篇论文（控制器提为阻塞级）
+
+评审把它列为 Minor：`load_store` 对**不存在的文件**返回空 store，因此 `aggregate PATH=LABEL` 里路径拼错时，那一篇的摩擦条目**一条都不会进总账**，而工具退出 0。评审者的理由是"继承自既有 `load_store` 契约、与 `add` 一致"。
+
+控制器不接受。`aggregate` 存在的全部理由是"让重复模式浮出来"——**静默丢掉一整篇的来源，正好与它的目的相反**；而且它丢的是"摩擦记录"，这类记录本来就最容易没人注意。这与本项目已多次修正的"静默省略"同族（一条坏记录不得让整轮失效 / 记录里的坏条目不得为整洁而丢弃）。
+
+Ruling: `aggregate` 的每个输入路径**必须存在**；不存在则 `ValueError` → 退出 2（工具错误：参数给错了），而不是当成空 store 参与合并。
+理由: `add`/`check` 面向"某一篇还没建 store"是合理场景（缺文件=空 store）；但 `aggregate` 是显式点名若干来源的合并操作，**点名的文件必须存在**——否则用户拼错一个字母就静默少一篇。
+代价: 需要把"缺文件视为空"这条契约限定在 `add`/`check` 路径上；`aggregate` 走一条更严的读取分支。补一条用例：不存在的 `PATH=LABEL` → 退出 2。
+
+### 其余 deferred minor（评审判定可 defer）
+
+`aggregate` 对每个输入读两遍（`check_store` 一遍、`aggregate_stores` 一遍），两次读之间文件可能变，因此问题报告可能与实际合并的内容不一致（TOCTOU；本地手改日志，风险低，但确实不是单遍）；非 dict 条目原样保留但**不带 `source` 标签、且仍占用一个 id 序号**，混合 store 里 dict 条目的 id 会不连续（如 `[1, 3]`）；`created_at` 为 `None` 时日期列渲染成字面 `"None"`；若干覆盖缺口（`export --out` 无 `--force` 被拒、聚合输入不可读 → 2、markdown 里竖线转义、`workaround` 为 null 的单元格、非 dict 条目）。
+
+## 当前状态与下一步
+
+- HEAD = `43f1f10`，工作树干净，**431 tests OK**。
+- **待执行一轮修复波（E32）**：`aggregate` 的输入路径必须存在，否则退出 2；补一条用例。随后跑 friction-log 的最终全分支评审（base `e2783b6`）。
+- 之后：`research-version`（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## friction-log Task 1 执行记录
+
+- 实施者 `Lorentz` = `01a10190-6d56-7142-a72a-b940417f670c`，commit `7efd38e`，**423/423**。判别力检查（删掉 `check_store` 的枚举重校验）实测失败、恢复后通过。
+  这轮的 brief 只有 56 行——因为我在计划里把测试写成**枚举清单**而非粘贴代码，派发时明确告知"清单即规格，逐条写成真实用例"。实施者照办，12 条全部落到用例。
+- 评审者 `Heisenberg` = `01a10193-fc42-7ff1-9581-21009bf2a91b`：**Spec ✅，Approved，无 Critical/Important**。逐条核实：
+  - **E25 落实到位**——`check_store` 重新加载 store，独立重校验 `category`/`severity`；手改 `category: "whatever"` 的用例会先加合法条目、再篡改、再写回，断言恰好两条 `friction-invalid-enum`（有判别力）；
+  - `load_store` 覆盖全部 `ValueError` 路径（缺 `version`、非整数或非 1、`entries` 非列表、顶层非对象、不可读、非法 JSON），缺文件的默认形状正确；
+  - `add_entry` **先校验后读改写**，被拒的 `add` 不可能碰到 store；`id = max(整数 id, default=0) + 1`，空 store 得 1；
+  - `check_store` 逐条累积、无早退、无写入（只读性有用例字节比对）；
+  - 退出码正确（0 / 1 / 2），`save_store` 走共享原子写。
+  两个文件均 UTF-8 无 BOM。
+
+- Task 1: minor (deferred)：`main` 无单测（退出码与 JSON 行为只做了冒烟，12 条配额全给函数级）；若干廉价覆盖缺口（组合筛选、未知筛选值返回空、被拒 `add` 后字节不变、非整数 `id`、顶层非对象/不可读）；`add_entry` 计算下一个 id 时会**静默忽略非整数或非 dict 条目的 id**（可辩护：避免被手改数据弄崩，且不会与整数 id 冲突），但这个选择没有写在文档里。
+
+## 当前状态
+
+- HEAD = `7efd38e`，工作树干净，**423 tests OK**。
+- friction-log 的 store 与 `add`/`list`/`check` 完成；剩 Task 2（`export` + `aggregate`，终态 431）。
+- 之后：`research-version`（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## repro-package Task 3 执行记录
+
+- 实施者 `Maxwell` = `01a10180-5849-7da0-855d-c1dd817b99dd`，commit `7258d0d`，**406/406**。
+- **真实 venv 冒烟通过**（本任务最重要的一块证据）：CLI `bundle` 退 0；CLI `verify` 退 0 且带 `repro-scope`；`--keep` 下的环境里确实有 `pyvenv.cfg`、`Scripts/python.exe`，Python 3.12.14，并离线跑通了 `{python} hello.py`；冒烟用的临时目录已清理。
+  这条证明了**默认的 `venv_factory` 与默认 runner 真的能建环境并执行**——注入式单测只能证明逻辑，证明不了这件事（与 latex-check 用真 MiKTeX、final-check 用真 PDF 是同一类硬证据）。
+- 评审者 `Sagan` = `01a10183-c939-7570-a61d-087e4450de4a`：**Spec ✅，Approved，无 Critical/Important**。四条 e2e 断言均有判别力（第一条同时钉退出码 + `problem_count` + JSON advisory + stderr；第二条用列表相等，缺一条就过不了；三四条要求退出码 2 **且** stdout 为空）；参数顺序正确；UTF-8 显式；argv 执行不依赖 PATH。
+
+- Task 3: minor (deferred)：**成功时重跑的输出被丢弃**——评审者明确判定这不是正确性缺陷（验证信号是退出码；把子进程输出打上 stdout 会破坏 JSON 契约），但长任务场景下"跑了 20 分钟、退 0、看不到任何输出"是可用的缺口；建议 `--verbose` 或把人读输出走 stderr 的 advisory。另有：e2e 的 `setUp` 用 `mkdtemp` 但无 `tearDown`（bundle 目录与 `report.py` 残留在 `%TEMP%`，venv 本身由 `verify_bundle` 清理）；e2e 首例依赖真实 venv（约 8 秒，且要求 Python 带 `ensurepip`）——评审者认为这对端到端检查是恰当取舍，建议加一句注释说明前提。
+
+## 当前状态与下一步
+
+- HEAD = `7258d0d`，工作树干净，**406 tests OK**。
+- repro-package 三任务全部落地并通过任务级评审；**待跑最终全分支评审**（base `2440356`）。
+- 之后：`friction-log` → `research-version`（E26 的 git 薄封装）→ 知识层 → 自动化与跨模型评审 → 模板库与派生流程。
+- 账本裁定 E1–E28。
+
+## E28 修复与 Task 2 结项
+
+- 修复者 `Ptolemy` = `01a1017c-4c5d-7352-b81a-eb7cd83255ac`，commit `c9646e2`，**402/402**。注入点改为 `install_runner`（keyword-only，默认回退到 `runner`，因此真实 CLI 仍是同一套 `subprocess.run`，向后兼容）。
+- 定向复审（`Laplace`）：**ADDRESSED，无新 issue，fix accepted**。三处关键核实：
+  1. 安装失败时**确实没有走到重跑**（早退在 `try` 内，`finally` 仍清理临时 venv），且 `repro-install-failed` 是唯一 problem；
+  2. 两条重跑用例现在各自注入"成功的 `install_runner` + 独立的失败 `runner`"，只走自己的路径——评审者确认它们**不会再因安装路径坏掉而误过**（各有专属覆盖）；
+  3. 新用例记录重跑调用并断言 `run_calls == []` 与消息含"未尝试重跑"——**在旧的"总是重跑"行为下必然失败**，因此不是装饰性修改。
+  无回归：哈希失败即止、`repro-scope` 在安装失败路径仍出现、E24 三类分流、`argv[0]` 专属替换 + `shell=False`、只读、临时 venv 清理均未变。
+  Task 2: complete (commits 9b6b0e2..c9646e2, review clean)
+
+### 这一轮再次印证的流程惯例
+
+评审者点出：实现之所以把症状当主因，根因是**我的测试设计**——只注入一个 runner，使两次调用在测试里不可区分。这与 E27 那条是同一类：**测试的判别力决定了实现对错误的可见度**。已固化的惯例（无失败用例的安全声称视为未验证）在此再加半条：**注入点必须能让测试区分被测的两条路径，否则覆盖是假的。**
+
+## 当前状态
+
+- HEAD = `c9646e2`，工作树干净，**402 tests OK**。
+- repro-package：打包侧完成、verify 完成；剩 Task 3（e2e + 真实 venv 冒烟，终态 406）。
+- 之后：friction-log → research-version → 知识层 → 自动化 → 模板库。
+- 账本裁定 E1–E28。
+
+## research-version 实施与修复（E26 落地）
+
+- 实施者 `Fermat`，Task 1 唯一任务，commit `99edf1c`，**444/444**（+12 用例）。判别力检查（字符串排序）实测失败，恢复后通过。
+- 评审者 `Lovelace` = `01a101aa-1b6c-7b10-be1c-737ecf7f75b1`：**Spec ✅，1 Important**。
+
+### Ruling E33（评审转裁定）— `--allow-dirty` 的标签消息必须写明"未提交内容没有被捕获"
+
+背景: annotated tag 只能指向 commit；`--allow-dirty` 打的 `paper-v<N>` 指向 HEAD，未提交内容不在任何地方。原实现的标签消息只有 `dirty=true`、help 只写"记录 dirty=true"，用户会把版本号误读成"我当时的状态"。
+Ruling: 保留该 flag（E26 已定要有），但脏树时标签消息追加第二行 `note=uncommitted changes are not captured; tag points at HEAD commit <sha>`（commit 用已解析的 rev-parse 结果），`--allow-dirty` 的 help 追加同一句声明。
+理由: 版本号的可信度来自"它能指向一个可复现状态"；不能指向时必须自己说清楚。这条与第 7 条规则（工具不得在自己的输出里做不实声明）同源。
+代价: 一个已知的不可复现版本号依然可以被制造出来；这是显式 opt-in + 显式声明的平衡，而不是用一个隐蔽的拒绝破坏 E26 的裁定。
+
+### E33 修复 (commit `2ff989a`)
+
+- `_tag_message(dirty, label, commit)`；`snapshot` 只调用一次 `working_tree_dirty`，把已解析 commit 传入消息；help 同步。
+- 测试：`test_allow_dirty_records_dirty_true` 断言 note（含 sha）；真实 git 集成用例同样断言；新增 `test_clean_tree_message_carries_no_uncaptured_content_note` 防误加。
+- 顺带 Minor：`_version_number` 对畸形标签抛具名 `ValueError`（新增用例）；新增 `diff` 未知 revision 经 `main` 退 2 用例（补上原先未用的 `redirect_stderr`）；脏树拒绝用例从"无 `-a`"强化为"无任何 `git tag` 调用"。
+- 判别力实测：把 `_tag_message` 换回旧实现，两条 note 断言确实失败（不是纸面声明）。定向 15 用例 OK；全套 **447 OK**。
+- **待办**：Lovelace 定向复审（review-99edf1c..2ff989a.diff）→ research-version 最终全分支评审（base `3c8039a`）。
+
+## 知识层（knowledge-layer）计划与裁定
+
+计划: `C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-knowledge-layer.md`（5 任务，两个工具 `library` + `memory`）
+实测前提: venv 内 SQLite 3.53.1 `tokenize='trigram'` 可用（2 字中文不命中，须 LIKE 回退）；PyYAML、bibtexparser 2.1.0 可用。
+
+### Ruling E34 — `library` 的真相/派生边界：来源哈希 + 过期拒绝服务
+
+Ruling: 真相是 `library/refs.bib` + `library/notes/<key>.md`；`index.db` 是派生数据，允许 `index` 覆盖重建（"不覆盖"契约的具名例外，理由写进 help）；meta 表记录两枚 sha256；索引缺失或与源不符时 `search` 退 2 并点名"先运行 library index"，**不返回过期结果**。
+理由: 本层最危险的失效是"索引没跟上、搜索给一个有缺口的空/旧结果且看起来正常"——这正是我们反复防的静默失效。重建代价极低，拒绝服务没有真实用户代价。
+代价: 编辑 refs.bib 后必须重跑 index 才能搜；换来的是搜索结果永远可追溯到当时的源。
+
+### Ruling E35 — 查询文本永不解释为 FTS5 语法
+
+Ruling: 去空白后长度 ≥ 3 走 FTS5 `MATCH`，查询整体包成双引号短语、内部 `"` 翻倍；≤ 2 字符走 `LIKE ... ESCAPE '\'`（`%`/`_` 转义）；全部走 `?` 占位符；无命中退 0、空结果（搜索无命中是完整答案，不是问题）。
+理由: 用户输入 `-`、`NOT`、引号不应产生 SQL 错误或语义漂移；trigram 的 2 字限制是分词器的硬事实（已实测），回退是唯一不引额外依赖的诚实做法。
+代价: 2 字查询走 LIKE，个人库规模下可接受；跨库大时会慢，届时按 §8.4 触发条件再评估。
+
+### Ruling E36 — `memory` 的字段契约与"死路必须可重开"
+
+Ruling: `memory/ideas.md` / `memory/dead-ends.md` 是 YAML 列表（`#` 标题行是合法 YAML 注释）；dead-end 的 `reopen_if` 是**必填**字段（缺则 `add` 拒绝、`check` 报 `deadend-missing-reopen-if`）；id 同文件内唯一（`I<N>` / `DE<N>`）；写入前校验 + 读取时逐条重校验，坏条目不打断整轮（规则 5）。
+理由: §8.2 第 4 条是 v1 完全缺失的行为；`reopen_if` 让死路可被重新打开，缺了它反重复记忆会退化成永久排除。与 friction-log E25 的"读取时校验"同一教训。
+代价: 手工编辑记忆文件时字段格式受约束（换来脚本可核对）；YAML 语法错误仍然使整个文件不可审计（退 2），这是解析层的硬边界，不假装能局部恢复。
+
+### Ruling E37 — §8.2 第 3 条（实验结果回写 claim 状态）明确推迟
+
+Ruling: 本层不做 claim 状态回写。当前没有 claim registry——claim 与数字的对应由 `trace-claims` 的 `\dataval` 承担，没有可回写的存储。推迟到"实验-结论"层立项时一并建。
+理由: 没有 claim 存储而先造"状态回写"会是无处安放的字段；按第 7 条与 DoD，未实现的东西必须写进 `--help` 与计划，不许沉默。
+代价: 设计文档 §8.2 的四个行为本轮只交付 1/2/4；第 3 条带理由挂账。
+
+### 本层 Non-goals（写进计划）
+
+语义检索（§8.4 按需）、PDF 全文入索引（schema 无该列）、跨论文记忆聚合、claim 状态回写（E37）。
+
+## 当前状态与下一步
+
+- HEAD = `2ff989a`，工作树干净，**447 tests OK**。
+- research-version：E33 已修，待 Lovelace 定向复审 → 最终全分支评审（base `3c8039a`）。
+- 知识层：计划与 E34–E37 已定；待 research-version 结项后按 SDD 逐任务实施。
+- 之后：知识层 → 自动化与跨模型评审 → 模板库与派生流程（强制前置：先评估 `bensz-paper` / `bensz-nsfc` 复用可行性）。
+
+## research-version 结项
+
+- 定向复审（`Lovelace`，`review-99edf1c..2ff989a.diff`）：**clean / Approved**。Important 关闭；clean 路径、label 顺序、`FakeGit` 调用序列断言无回归；`tag_calls()==[]` 的强化在实现顺序下是正确而非迎合测试；判别力为实（不是纸面）。两条非阻塞观察：note 是英文而 surface 是中文（一致性小缺口）；`_tag_message` 的 `commit or "HEAD"` 兜底实际不可达（无害）。
+- 最终全分支评审（新派 `Peirce` = `01a101b0-020e-7c22-8db2-014d1646aa44`，`review-3c8039a..2ff989a.diff`）：**Merge readiness = Ready**，无新的 Critical/Important。
+  - 独立复测两条判别力（字典序失败、旧无-note 实现失败）+ 真实 git 冒烟（clean → dirty 拒绝 2 → `--allow-dirty` 含 note+sha → commit 后 snapshot → `diff` 退 0 且含差异；annotated tag 对象类型实测为 `tag`）。
+  - 已知 Minor 全部处理（畸形标签具名报错 / diff 未知 revision 退 2 / `tag_calls()==[]` / 无未用 import）。
+  - 残余风险（诚实挂账）：`_default_runner` 把 stdout+stderr 拼接返回（若未来成功路径 stderr 有 warning 会被当标签解析）；`tag -l` 与 `tag -a` 两次调用之间并发可能抢号（退 2 不静默覆盖）；`--path` 真实 diff 行为与 `--repo` 非仓库负例无真实用例；`git status --porcelain` 的目录级折叠无专项用例。
+  research-version: complete (commits 3c8039a..2ff989a, review clean)
+
+## 累计状态（research-version 结项时）
+
+- 九个工具成形：`citation_guard` / `trace_claims` / `latex_check` / `final_check` / `provenance` / `run_log` / `repro_package` / `friction_log` / `research_version`。测试从 125 增至 **447**；账本裁定 E1–E37。
+- HEAD = `2ff989a`，工作树干净。
+- 知识层 Task 1 已派实施者 `Confucius` = `01a101af-c917-7ab1-981c-94e884bc1f89`（计划 `2026-10-03-knowledge-layer.md`，base 届时 HEAD）；待其报告后走 review-package → 独立评审。
+
+## knowledge-layer Task 1 执行记录
+
+- 实施者 `Confucius`，commit `3aced21`，**472/472**（+25 用例；brief 预计 ~16，实施者按检查点拆细）。
+- 三条判别力实测（原始断言已报告）：去短查询回退 → `'fts' != 'like'`；去新鲜度校验 → `ValueError not raised`；去短语转义 → 三条 `sqlite3.OperationalError`（unterminated string / no such column / syntax error near NOT）。
+- 评审者 `Halley` = `01a101b5-b294-7d73-a154-64a2ecaf5d10`：**Approved**，无 Critical/Important。独立复现了三条判别力；另跑了危险面探针（损坏 index.db → ValueError；改一字节 note → 过期退 2；`NEAR`/`Alpha-Beta` 当字面量；`%`/`_`/`\` 转义正确；真实 CLI 子进程 index/search/过期/`--limit abc`）。
+
+### Task 1 Minor 处置（7 条）
+
+折进 Task 2 处理（2 条）：
+- `library search --help` 缺 description，未在自然位置写明"不含 PDF 全文"边界，且字段清单漏 key 与 path（不完整声明）。
+- `path` 字段不参与新鲜度，新增/删除 PDF 后结果滞后 → 改为查询时按文件系统现状解析，规则写进 docstring 与 help，并补 3 条用例。
+
+挂账（5 条，均为已固化的既有边界或极边缘）：
+- `bib.py` 重复 key 的报错文本从 `DuplicateBlockKeyBlock` 改为 `duplicate keys: …`（语义与签名不变，无调用方解析该文本）；DOI 现在先过 `_clean` 再 normalize（仅病态花括号 DOI 有差）。
+- 长度分类用 `strip()` 而非去除全部空白：含内部空格的 3 字符查询走 FTS5（"去空白后"措辞歧义，无用例）。
+- `.tmp` 固定文件名在并发 `library index` 下会撞（与仓库其他工具同一既有非目标）。
+- `parse_args` 在 try 之外（`--limit abc` 走 argparse 退 2，无"工具错误:"前缀，与既有工具一致）。
+- 未覆盖面：`.tmp` 原子性无法单测证明；整文件读入内存是已挂账限制。
+
+## knowledge-layer Task 2 执行记录
+
+- 实施者 `Confucius`，commit `6cdeaa3`，**488/488**（+16 用例，test_library 共 41 条）。三条判别力实测：去 `index-stale` 实质校验 → `'index-stale' not found in []`；check 早退 → `['index-stale']`（缺 `duplicate-bib-key`）；path 改回索引快照 → `'' != 'papers/sample.pdf'`。
+- 评审者 `Halley`：**Approved**，无 Critical/Important。独立复现三条判别力；CLI 实测 check clean→0 / 有问题→1 / 缺 refs→2；目录前后文件集一致（无 `-journal`/`-wal`/临时文件）；7 个 code 全有落点且两种问题并存都报出。
+- Task 2 Minor（4 条）处置：
+  - **当场修（1 条，控制器直改 commit `9a760b2`）**：help 把 `path` 列入可检索字段，而 `papers.path` 列恒为空——这是"声明与实际不符"，按第 7 条规则不挂账。修复：help 字段清单改为 7 个真实可检索字段 + "path 是结果字段、不参与检索"；LIKE 回退删掉恒空的 `path` 死列；docstring 写明 path 列是保留占位列；新增 `test_path_is_an_output_field_never_a_search_term`（结果 path 正确解析，但 path 文本检索零命中）。判别力实测：旧文案下目标断言失败。全套 **489 tests OK**。待 Halley 定向验证。
+  - 挂账（3 条）：`index.db` 存在但无 meta 行时走"工具错误"（可辩护：无法审计即 2，但无对应用例）；`main` 的 `check` 干净→0 / 缺 refs→2 两条退出码路径缺直接断言（CLI 子进程已实测正确）；`check_library` 对 refs.bib 读两次的本地 TOCTOU（既有挂账模式）。
+
+## 当前状态与下一步
+
+- HEAD = `9a760b2`，工作树干净，**489 tests OK**（`9a760b2` 验证与 Task 3 并行在飞）。
+- knowledge-layer：Task 1 / Task 2 Approved；Task 2 修复待定向验证；Task 3（memory store）已派 `Confucius`，base `9a760b2`。
+- 之后：Task 4（memory check + search）→ Task 5（e2e）→ 知识层结项 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## Task 2 修复验证与收尾
+
+- Halley 定向验证 `9a760b2`：**ADDRESSED**，无新 Critical/Important。独立复现"旧文案下断言失败"；确认 help 字段清单只有 7 个真实可检索字段、无新的不实声明；Task 2 的 7 个 code / 只读 / 退出码无回归（全套 489 OK）。
+- Halley 两条纯文案/测试强度 Minor 已当场收尾（commit `0d06e44`）："存在在"连读改顺；help 用例新增负向断言 `notes/path` 不得出现，防止 path 被加回检索清单。`test_library` 42 例 OK。
+  - 说明：`0d06e44` 为控制器直改的文案+断言，未单独送审；将纳入知识层最终全分支评审范围。
+
+## knowledge-layer Task 3 执行记录
+
+- 实施者 `Confucius`，commit `3715520`，**504/504**（+15 用例）。两条判别力实测：删 `reopen_if` 必填 → `ValueError not raised`；id 用 `len+1` → `'I3' != 'I4'`。
+- 规格补充（实施者自述，控制器认可）：`list_memory` 返回形状定为 `{"ideas": [...], "dead_ends": [...]}`，与 Task 4 的 `search` 输出键保持一致；`add_dead_end` 的 `reason`/`evidence`/`reopen_if` 以 `None` 默认值统一校验，保证"省略"与"空串"都得到 `ValueError` 而不是 `TypeError`。
+- 评审者 `Kepler` = `01a101c6-d9da-7691-b524-e44de974717c`，review-0d06e44..3715520.diff，进行中。
+
+## 当前状态与下一步
+
+- HEAD = `3715520`，工作树干净，**504 tests OK**。
+- knowledge-layer：Task 1/2/3 已提交（Task 3 评审在飞）；待 Task 3 评审后派 Task 4（memory check + search）。
+- 之后：Task 4 → Task 5（e2e）→ 知识层结项 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## knowledge-layer Task 3 评审结项
+
+- 评审者 `Kepler`：**Approved**，无 Critical/Important。独立复现两条判别力（删 `reopen_if` 校验 → `ValueError not raised`；id 用 `len+1` → `I3 != I4`）；另实测省略/空串两条路径、BOM=False、追加保留、无 `.tmp`、parent 为文件时 `ValueError`、`date`/`idea` 歧义串（`yes/no/true/123/null`）round-trip 仍为 `str`。
+- Task 3 Minor（5 条，全部是测试覆盖缺口、非行为缺陷）已**全部折进 Task 4 任务书**（Task 4 要改同一个测试文件）：BOM 断言；`load_memory` 的 `OSError`/`UnicodeDecodeError` 折叠；`list_memory` 非法 kind/status 负例；`add-dead-end` CLI happy path；日历非法日期（`2026-13-01`/`2026-02-30`）。
+- 评审者另指出共享基建缺口（挂账）：`save_text_atomically` 的 `OSError→ValueError` 折叠无任何一处测试（跨工具既有缺口，不属本任务）。
+
+## 当前状态与下一步
+
+- HEAD = `3715520`，工作树干净，**504 tests OK**。
+- knowledge-layer：Task 1/2/3 Approved；Task 4（memory check + search + 5 条结转）已派 `Confucius`，base `3715520`。
+- 之后：Task 5（e2e）→ 知识层最终全分支评审 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## knowledge-layer Task 4 评审与修复轮（E38/E39）
+
+- 实施者 `Confucius`，commit `6d549ce`，**524/524**（test_memory 15→35 条）。两条判别力实测：删 status 重校验 → `'memory-invalid-status' not found in []`；search 遇坏条目抛异常 → `ValueError: bad entry`。
+- 评审者 `Kepler`：**Approved**，无 Critical/Important。独立复现两条判别力；CLI 实测 check clean→0 / 有问题→1 / 坏 YAML→2 / search 无命中→0；专项确认"重复 id 时两条都被跳过"不是缺陷（E36 下同 id 两条本身即无效，对称跳过，无偏袒）。
+
+### Ruling E38 — dead-end 的 `reason`/`evidence` 读取时也要重校验
+
+背景: 写入时 reason/evidence/reopen_if 三字段必填，但 Task 4 判定表只要求读取时重校验 reopen_if，形成"写入严、读取松"的不对称；手改清空 reason/evidence 会静默通过 check。
+Ruling: `check_memory` 对 reason/evidence 做与写入时同强度的读取时校验（缺失/空串/非字符串 → `memory-missing-field` 并指明字段），`reopen_if` 保留专门 code。
+理由: 记忆文件的价值在于"脚本可核对"；一个没有 reason 的死路条目正是需要浮出来的坏记忆，读取时漏报等于把写入时校验降级成一次性装饰。
+代价: 手改文件的容错面变窄（这正是意图）。
+
+### Ruling E39 — `search` 的跳过必须可解释
+
+背景: search 只给 `skipped_invalid` 计数，用户在"命中但被跳过"时无法仅凭搜索结果知道发生了什么（评审 Minor）。
+Ruling: 保留计数的同时新增 `skipped` 列表（`{"file","id","codes"}`）；非映射、重复 id、校验失败都带 code 进列表；计数键保持兼容（Task 5 e2e 已按计数写，不变）。
+理由: 与九条规则第 5 条同源——坏条目不打断整轮，但也不能无声；"给数字不给名字"让用户无法行动。
+代价: 返回 JSON 变大（可忽略）；坏条目的 id 可能缺失 → 用 null，诚实表达"连 id 都没有"。
+
+- 修复轮已派 `Confucius`（base `6d549ce`），commit message `fix: revalidate dead-end fields and report skipped memory entries`；随后 `Kepler` 定向验证。
+
+## 当前状态与下一步
+
+- HEAD = `6d549ce`，工作树干净，**524 tests OK**；修复轮在飞。
+- knowledge-layer：Task 1–4 已提交（Task 4 修复待验证）；之后 Task 5（e2e）→ 知识层最终全分支评审。
+
+## E38/E39 修复验证（Task 4 结项）
+
+- 修复者 `Confucius`，commit `c3f851a`，**530/530**（test_memory 41 条）。判别力实测：删 reason/evidence 重校验 → `AssertionError: 0 != 1` ×2；删 `skipped` → `KeyError: 'skipped'`。
+- 定向验证（`Kepler`）：**ADDRESSED**，无新 Critical/Important。E38/E39 落点核实；`skipped_invalid == len(skipped)` 全路径恒等（含空结果 0==0、含坏条目 3==3）；8 个 check code 无回归；上一轮 4 条 Minor 全部关闭（1→E39、2→E38、3/4→补测）。
+- Kepler 新 Minor（2 条）处置：
+  - **待收尾（已排期）**：`skipped[].file` 存的是 kind（`"ideas"`/`"dead-ends"`）而键名叫 `file`——命名与实际不符。决定改为**真实相对路径**（`memory/ideas.md` / `memory/dead-ends.md`），与 Task 5 的 e2e 断言在同一轮改（Task 5 在飞，先不改，避免与其冲突）。
+  - 挂账：非字符串 id 的条目在 `skipped[].id` 里为 `null`（codes 已带 `memory-invalid-id`，值不可见但问题可见）。
+
+## 当前状态与下一步
+
+- HEAD = `c3f851a`，工作树干净，**530 tests OK**。
+- knowledge-layer：Task 1–4 全部 Approved（含修复验证）；Task 5（e2e）在飞。
+- Task 5 落地后：`skipped[].file` 改真实路径 + e2e 断言同轮调整 → 知识层最终全分支评审 → 自动化与跨模型评审 → 模板库与派生流程。
+
+## knowledge-layer Task 5 与 E40
+
+- 实施者 `Confucius`，commit `8000ac3`，**536/536**（+6 条 e2e，真实文件树 + 真实 SQLite，无 mock/注入）。退出码证据：0（index/search/check 正路径、中文 3 字 FTS、2 字 LIKE、无命中空）、1（note 删除+游离 note → `index-stale`+`note-without-entry`；删 `reopen_if` → `deadend-missing-reopen-if`）、2（改 refs 后 search → stdout 空、stderr 含"过期"）。
+- 实施者诚实报告一条未满足项：`memory check` 的人类消息不点名条目 id（计划场景 5 要求），因该任务只许新建测试文件而未越界修改。**控制器判定为真缺口**，立 E40。
+
+### Ruling E40 — check 消息必须点名条目 locator；`skipped[].file` 必须是真实路径
+
+Ruling: (1) `_entry_problems` 的每条 Problem 消息加 locator 前缀——有合法 id → `条目 <id>`，否则 `第 <n> 条`；(2) `skipped[].file` 的值从 kind（`"ideas"`/`"dead-ends"`）改为真实相对路径（`memory/ideas.md` / `memory/dead-ends.md`），Task 5 e2e 断言同步改。
+理由: §6.1.1 要求问题带定位；YAML 列表条目没有行号，id/序号是诚实的等价物。`file` 键存 kind 是命名与实际不符（与 E33/E34 同类）。
+代价: 消息文本变化（无调用方解析文本）；e2e 断言需同步修改。
+
+修复轮已派 `Confucius`（base `8000ac3`）：`fix: name memory entries in check messages and skipped records`；随后 `Kepler` 定向验证。
+
+## 自动化阶段计划（automation-review）与裁定 E41–E45
+
+计划: `C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-automation-review.md`（5 任务：milestones / cross_review / watch / queue / 接线文档+e2e）
+环境实测: `codex-cli 0.160.0`；`codex exec` 支持 `-m`、`-s read-only`、`--ephemeral`、`-C`、`--skip-git-repo-check`、`-o`、`--output-schema`、`--json`。
+
+- **E41 cross_review 的诚实边界**：记录实际 model 与 `family_judgement`（默认 v4-pro 记 `same-family`，help 写明"非跨族"）；verdict 只来自结构化输出（`--output-schema` + `-o`），缺失/不合 schema → `review-malformed`（1）绝不默认通过；输入 sha256 入记录，变化后 `check` 报 `review-stale`；`codex exec` 一律 `-s read-only --ephemeral --skip-git-repo-check`。
+- **E42 deadline 是可选字段**：`target_venue.deadline: "YYYY-MM-DD" | null` 入模板与 validate（存在时校验真实日历日）；`create.py` 支持 `--deadline`；无 deadline → `mode: sequential` 顺序提示，不伪造倒排日期。
+- **E43 watch 只报事实**：只输出结构化新增（id/title/published/summary 截断）；首次运行自动建基线并如实打印数量；state 原子写；网络失败退 2 且**不推进 state**。
+- **E44 queue 失败分流**：每次尝试先 `running` 后终态（失败留档）；重试只针对清单显式 `retry_exit_codes`（默认空=不重试）；超时=一次失败；预算按墙钟，耗尽记 `stopped-budget`、重试耗尽记 `stopped-retries`；禁止静默重试到成功。
+- **E45 默认安静**：工具不产生"我检查过了"叙述；automation prompt 模板必须写明"无新增/无到期/无变化就不通知"；实际挂载 automations 需用户确认后执行。
+
+Non-goals: 真跨族评审（无第二 provider）、自动改正文/结论字段、分布式+GPU 配额调度、语义检索。
+
+## 当前状态与下一步
+
+- HEAD = `8000ac3`，工作树干净，**536 tests OK**；E40 修复在飞。
+- knowledge-layer：Task 1–5 已提交；待 E40 验证 → 知识层最终全分支评审。
+- 之后：按 automation-review 计划逐任务实施 → 模板库与派生流程（强制前置：评估 `bensz-paper` / `bensz-nsfc`）。
+
+## E40 验证与 knowledge-layer 终审
+
+- 修复者 `Confucius`，commit `d3940f9`，**538/538**。判别力实测：去掉 locator 前缀 → `AssertionError: False is not true`（id 与 `第 1 条` 两处）；`file` 改回 kind → `'dead-ends' != 'memory/dead-ends.md'`。
+- 定向验证（`Kepler`）：**ADDRESSED**，无新 Critical/Important。E40 两条落实；8 个 check code 无回归；`skipped_invalid == len(skipped)` 不变；e2e 的 0/1/2 退出码无回归；独立复现两条判别力（含 `relative_to(".")` 不崩）。
+- Kepler 新 Minor（2 条，**挂账不修**，理由：均为观感级、消息正文已带出坏值、改它属金饰）：
+  1. locator 判定用"任意非空字符串 id"而非"合法 id"格式 → 坏的 `I0` 得到 `条目 I0` 而非 `第 n 条`（消息正文仍带 `I0` 与 `id 必须匹配` 的 code）。
+  2. `skipped[].id` 对空串 id 返回 `""`，locator 走 `第 n 条`，同一坏条目两处表述不一致（无功能影响）。
+- 知识层最终全分支评审：新派 `Bohr` = `01a101dc-4c6f-7f03-be26-3caec0007ca6`，review-2ff989a..d3940f9.diff（9 commits），进行中。
+
+## automation-review Task 1 已派
+
+- 计划 `2026-10-03-automation-review.md`；Task 1 = `milestones` + `deadline` 字段（模板/validate/create 同步）。
+- 实施者 `Confucius`（base `d3940f9`）；与知识层终审（只读）并行，文件不相交。
+
+## automation-review Task 1 执行记录
+
+- 实施者 `Confucius`，commit `4714004`，**558/558**（+20：milestones 16、validator 2、create 2）。改动 7 文件（模板/validate/create/新工具/3 测试）。
+- 判别力实测：checkpoint 判定改 `≤` → `due` 意外非空（`Lists differ: [{'checkpoint': 'T-7', ...}] != []`）；sequential 注入日期 → `assertIsNone(report["due"][0]["date"])` 失败。
+- 实现者自述偏离（评审重点）：`due_report` 在四键外增 `problems`/`advisory`；checkpoint→stage 映射为 T-14→internal-review、T-7/T-3→submission-check；gate 缺口按当前 stage 到目标 stage 逐 gate 枚举。
+- 评审者 `Archimedes` = `01a101e0-59d7-7c03-b0b5-a60753e07cf5`，review-d3940f9..4714004.diff，进行中（重点：映射与 stages.py 一致性、越界/漏报、deadline 链路、只读与定位）。
+
+## automation-review Task 2 已派
+
+- `cross_review`（codex exec 编排、严格 verdict、输入哈希、真实冒烟）；实施者 `Confucius`，base `4714004`。
+- 与 Task 1 评审并行，文件不相交。
+
+## knowledge-layer 结项
+
+- 最终全分支评审（新派 `Bohr` = `01a101dc-4c6f-7f03-be26-3caec0007ca6`，review-2ff989a..d3940f9.diff，9 commits）：**Merge readiness = Ready**，无 Critical/Important。
+  - 核实：退出码 0/1/2 不混；stdout JSON / stderr 人读一致；两个 check 只读有字节级用例；`library` 覆盖仅限派生 `index.db`（help 写明）；`memory` 追加不覆盖；E34 全链路（真值/双 sha256/过期拒绝/2 字回退/查询不当语法/path 查询期且不参与检索）；E36/E38/E40 全链路；DoD 447→538（+91 ≥ +50）；诚实边界（PDF 全文边界、子串非语义检索、claim 回写未实现 E37）help/docstring 齐备。
+  - 独立抽查：同索引 2 字 `MATCH` 0 行 vs `search` LIKE 命中；改 refs 后 `ValueError` 含"过期"；`git diff --check` 干净；6 文件 BOM=False；两工具 help 边界文本齐备。
+  - 新 Minor（1 条，挂账不修）：idea 缺 `status` 被报成 `memory-invalid-status`（消息 `status 非法: None`）而非 `memory-missing-field`——标签错位但**不静默漏报**，低价值。
+  knowledge-layer: complete (commits 2ff989a..d3940f9, review clean)
+
+## 累计状态（knowledge-layer 结项时）
+
+- 十一个工具成形：前九个 + `library` + `memory`。测试从 125 增至 **538**；账本裁定 E1–E45。
+- 知识层挂账（诚实清单）：idea 缺 status 标签错位；locator 对非空非法 id 用 `条目 I0` 而非序号；`skipped[].id` 对空串返回 `""`；`index.db` 缺 meta 行退 2 而非 problem code；固定 `.tmp` 并发竞态；`save_text_atomically` 折叠无共享用例；`library` 整文件读入内存。语义检索/PDF 全文/跨论文记忆聚合/claim 回写（E37）均明确为 Non-goals。
+
+## 模板阶段强制前置：bensz-paper / bensz-nsfc 复用评估（完成）
+
+- 评估者 `Averroes` = `01a101dd-078f-77e3-a932-730b8e4e5768`；备忘：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/2026-10-03-bensz-reuse-evaluation.md`（只读评估，未改本仓库）。
+- **Verdict：低—中，reference-only（零代码 vendor）。**
+- 关键证据（控制器抽查复核）：
+  1. MIT（`license.txt:1-6`，© 2024 Weibin Huang）；vendor 需随附 MIT 全文+版权行；`packages/bensz-fonts/fonts/` 有 20 个字体文件（14 otf + 6 ttf，控制器复核一致），字体再分发许可未验证，**不随 MIT 授权，不复制**。
+  2. `bensz-paper` 是 `article` + `\usepackage{bensz-paper}` + `\BenszPaperSetup{...}` 的 SCI 样式层，`bml-bibliography.sty` **无条件加载 biblatex/biber**（默认 gb7714-2015）；直接叠加会与 NeurIPS/ICML/ACL/AAAI 官方类抢格式。可借鉴：profile 键值 + 二次覆盖、薄入口、`extraTex` 单一正文源、`.latex-cache/` 产物隔离。
+  3. `bensz-nsfc` 是 ctexart + `[type=general|local|young]` + BibTeX bst + 四遍 xelatex 链，与顶会/期刊目标无交集 → 不复用。
+  4. **本机 MiKTeX 实测两例均编译失败**（exit 1，无 PDF）：NSFC 缺 `wasysym.sty`/`tabu.sty`，paper 缺 `setspace.sty`，且缺 `biblatex-gb7714-2015.bbx`；MiKTeX on-the-fly installer 非交互报 `FATAL ... GUI framework cannot be initialized`。上游只推荐 TeX Live/MacTeX 且 CI 无 LaTeX 编译作业。属环境未满足，不等于模板不可编译。
+- **对模板阶段的约束（写进模板计划）**：顶会链路自建 profile 元数据层（官方类 + ccfa.yaml 记录模板标识与校验项）；零代码 vendor；若未来做中文期刊派生，先出参数转换表，复制 `bml-core` 子集时必须附 MIT 声明；在干净 TeX Live 环境跑上游 `validate_package.py` 留档（当前未做，标注"环境未满足"）。
+
+## automation-review Task 2 执行记录
+
+- 实施者 `Confucius`，commit `42e59bb`，**575/575**（+17 用例）。判别力实测：malformed 默认通过 → `'pass' != 'malformed'`；argv 去 `-s read-only` → `'-s' not found`。
+- **真实冒烟（本计划最重要证据）**：临时论文目录真跑 `codex exec -m deepseek-v4-pro -s read-only --ephemeral --skip-git-repo-check -C <tmp> --output-schema <tmp>/reviews/cross-review.schema.json -o <tmp>/reviews/cross-review-last-message.json -`；**exit 0、38.6s、verdict=blocking、blocking_count=4、schema 解析通过、family_judgement=same-family**。4 条 blocking：缺少跨模型评审报告 / 引用核验未通过 / 数字核验未通过 / 图表核验未通过（对最小临时稿是合理结论）。
+- 评审者 `Aquinas` = `01a101e5-45a7-7281-a442-5e1d624c9484`，review-4714004..42e59bb.diff，进行中（重点：argv 契约、E41 诚实性、schema 文件落点、stderr 无界写入、离线可测）。
+
+## automation-review Task 3 已派
+
+- `watch`（arXiv 增量、state 原子写、失败不推进 state）；实施者 `Confucius`，base `42e59bb`；与 Task 2 评审并行，文件不相交。
+
+## automation-review Task 3 执行记录
+
+- 实施者 `Confucius`，commit `1887695`，**591/591**（+16，全部离线注入 fetcher）。判别力实测：新 ID 判定改全部 → `['...0001','...0002'] != ['...0002']`；失败仍写 state → 字节比对断言失败。
+- 实现要点：state `{"version":1,"seen_ids":[...]}`；`limit` 只限制本轮 `new`，未报告的新 ID 不写 seen（防丢未读）；首次无 state 自动 baseline，损坏 state 不被覆盖；summary 截断 500 字符。
+- 评审者 `Ohm` = `01a101e8-da8f-7d50-96a7-3f06d8aedc54`，review-42e59bb..1887695.diff，进行中。
+
+## automation-review Task 4 已派
+
+- `queue`（顺序执行、超时/显式重试/墙钟预算、每次尝试进 run-log、失败不静默）；实施者 `Confucius`，base `1887695`；要求先读 `run_log.py` 现有接口并如实报告接线方式。
+
+## automation-review Task 1 评审：Request Changes（E46）
+
+- 评审者 `Archimedes`：**Request Changes**，2 Important + 3 Minor；判别力两条均已独立复现（`<=` 判定失败；sequential 注入日期失败）；deadline 链路（模板/null/ISO/非法→2/不留残渣）与只读性（SHA-256 前后一致）通过。
+
+### Ruling E46 — 检查点自身的 gate 在越过该阶段前必须算未过；T-7 归 internal-review
+
+背景 1: `_gate_problems` 用 `stages[current_index:target_index]` **排除 target**，`main` 只看 `problems` 定退出码。实测 deadline 2027-05-01、`stage.current=submission-check`、today 2027-04-28（T-3）→ `due=[T-3 package_ready]`、`missing_gates=[]`、退 **0**。"论文正停在检查点阶段"是最典型状态，却判干净——这是会漏掉截止动作的静默误判，与判定表"命中且未过 gate → 1"直接冲突。
+背景 2: `T-7` 映射到 `submission-check`（`package_ready`）与设计 §4.5 不符：T-7 = 引用/数字/图表三项核验 = `internal-review.review_cleared`（stages.py:71），`package_ready` 是 T-3 的语义。
+Ruling: (1) 区间改 `stages[current_index : target_index + 1]`（"还停在该阶段"=该阶段 gate 未过；越过才算过）；(2) `_CHECKPOINT_STAGES["T-7"]="internal-review"`；(3) 当天命中但 `current_index > target_index` 的检查点不得进 `due`（automation 读到 `due` 不应以为有动作）。
+理由: 退出码必须反映"检查点当天该 gate 未过"这一事实；把 target 排除导致工具在最常见场景下做不实声明（第 7 条）。T-7 映射错位会把"三项核验"提前标成"投稿包"。
+代价: 修复后 `stage.current == target_stage` 的当天会退 1（这正是意图）；此前依赖"退 0"的自动化行为需要按新语义理解。
+
+- 修复者 `Chandrasekhar` = `01a101e9-676a-7792-927c-2af1fe30b946`（新派，不打断在飞的 queue 实施），base `1887695`；commit message `fix: treat a checkpoint gate as pending until the stage is passed`；随后 `Archimedes` 定向复评。
+- Minor 处置：非法 mode → 2（"无法计算阶段顺序=工具错误"，挂账，与 validate 的分工不同）；定位只有路径无行号（挂账，字段级等价定位可接受）；已过检查点进 due（并入 E46 修复）。
+
+## automation-review Task 2 评审：APPROVE + 1 Important 修复
+
+- 评审者 `Aquinas`：**APPROVE**，无 Critical；E41 诚实性契约成立；两条判别力独立复现；离线 575 OK；逐 flag 对照 `codex exec --help` 核实 argv 契约。
+- **Important（要修，违反任务书"摘要"措辞）**：失败/malformed/成功三条记录路径把完整 stderr 原样写入，无上限（`capture_output=True` 全量），可把记录与内存顶到无界；异常消息用了 `stderr[:500]`，两者不一致。
+- Minor：`check` 忽略自定义 `--out-dir`（run 到 foo 后 check 报 review-missing）；schema 与 last-message 在 `reviews/` 持久残留（评审判定可接受：专用目录、幂等重写，可留作审计痕迹）。
+- 修复排给 `Chandrasekhar`（在 milestones 修复之后、独立 commit）：stderr 统一截断（≥ 标记）+ `check --out-dir`；commit `fix: bound review stderr in records and let check honor out-dir`；随后定向复评。
+
+## E46 修复落地（待定向复评）
+
+- 修复者 `Chandrasekhar`，commit `68c7580`（`fix: treat a checkpoint gate as pending until the stage is passed`），在 queue 之前落地；全量测试当时 591+（其报告将随 cross_review 修复一并复核）。**待 `Archimedes` 定向复评**（其已关闭，届时 resume）。
+
+## automation-review Task 4 执行记录（queue）
+
+- 实施者 `Confucius`，commit `071bf41`，**607/607**（+16）。判别力实测：默认不重试改失败即重试 → `3 != 1`（runner.calls）；关闭预算停止 → 期望 `['complete','skipped-budget']` 实得 `['complete','complete']`。
+- run-log 接线：**import 复用公开 `run_command`/`log_metrics`**，不复制私有实现；每次 attempt 由 `run_command` 原子写 `running`→终态；超时 → `exit_code=124` + `log_metrics({"timeout": true, ...})`；默认 runner `shell=False`、不捕获子进程 stdio（直通）。
+- 语义说明（评审确认点）：`max_attempts=1` 时不标 `stopped-retries`（未实际重试）；重试耗尽停整个队列（后续项不进 `runs`）；预算耗尽把当前及后续项记 `skipped-budget`。
+- 评审者 `Aquinas`（复用 Task 2 评审者），review-68c7580..071bf41.diff，进行中。
+- 注意：Task 4 提交时工作树有并发的 `cross_review` 修复改动（Chandrasekhar 在飞），其已核对未把无关文件纳入 commit。
+
+## automation-review Task 5 已派
+
+- 接线文档 + 四 prompt 模板 + e2e；实施者 `Confucius`，base 以提交时 HEAD 为准；e2e 用默认 out-dir，避免依赖在飞修复细节。
+
+## automation-review Task 3 评审：Approve + watch 修复轮
+
+- 评审者 `Ohm`：**Approve**，无 Critical/Important；两条判别力独立复现（新 ID 判定改全部；失败仍写 state）。
+- 深度核实通过：两轮 `limit=1` 实测 `['id1']→['id2']→[]`（未报告 ID 不写 seen，防丢未读）；中文摘要 600→500 截断无半个字符、无 `\ufffd`；`&amp;nbsp;` 仅 XML 层解码、不做 HTML 反转义；测试全部注入 fetcher 无联网。
+- Minor 处置：
+  - **要修**：`--force` 与 `--baseline` 等价（实际是合并），违反仓库"`--force` 才覆盖/重置"约定；`parse_feed` 对 Atom xhtml 嵌套 `title` 只取 `child.text` → 整条被当缺 title 跳过。
+  - 挂账：state 不记录来源 URL 集合（arXiv ID 全局唯一，无误报；换非全局唯一 feed 才可能假阴性；force 重置路径落地后已有恢复手段）。
+- 修复派 `Chandrasekhar`（resume）：commit `fix: let watch force reset the baseline and read nested titles`；要求 force=重置（含从损坏 state 恢复）、baseline=合并、itertext 取标题；随后定向复评（`Ohm`）。
+
+## 修复轮汇总（在飞）
+
+- `68c7580` milestones（E46）→ `Archimedes` 定向复评中。
+- `a0e1048` cross_review（stderr 截断 + check --out-dir）→ 待 `Aquinas` 完成 queue 评审后定向复评。
+- watch（force 重置 + xhtml 标题）→ `Chandrasekhar` 实施中。
+
+## watch 修复落地（待定向复评）
+
+- 修复者 `Chandrasekhar`，commit `4710ca2`，watch 模块 21 例、当时全量 **629 tests OK**（含并行 Task 5 未提交的 e2e，7 例）。
+- `--force` = 重置（不读/不校验旧 state，含损坏 state 恢复路径；stderr 如实"已重建基线 N 条"）；`--baseline` 保持合并；`title/summary` 用 `itertext()` 取后代文本。
+- 判别力实测：force 改回 merge → `seen_total 3 != 2`；itertext 改回 child.text → `len(entries) 0 != 1`。
+- 定向复评：`Ohm`（resume）进行中。
+
+## automation-review Task 5 执行记录
+
+- 实施者 `Confucius`，commit `b40b828`，**629/629**（+7 文档/e2e 用例）。
+- 交付：`automation/README.md` + 四个 prompt 模板（`weekly-watch.md` / `deadline-check.md` / `stage-advance.md` / `experiment-queue.md`）+ `tools/tests/test_automation_e2e.py`。
+  - 四模板静默语句均落到可判定字段：watch `new=[] 且 skipped=0`；milestones `due=[] 且 problems=[]`；stage-advance "阶段和 gate 无变化"；queue "全部 complete 且 stopped=null"。
+  - README：实际创建 automations 需用户确认；只做信息收集与提醒；不得改正文与 `ccfa.yaml` 结论字段。
+- 合理偏离（记录）：计划路径 `paper-template/automation/` 在当前仓库布局下会嵌套错误，实施者落在仓库根 `automation/`（仓库根本身即 paper-template 库）——评审核实中。
+- 评审者 `Plato` = `01a101f2-15ac-75f3-991f-9c050170ef1f`，review-4710ca2..b40b828.diff，进行中（重点：点名路径/字段真实存在、静默语句可判定、安全边界、e2e 真实性、路径偏离）。
+
+## automation-review Task 4 评审（APPROVE + E47）
+
+- 评审者 `Aquinas`：**APPROVE**，无 Critical；两条判别力独立复现；`max_attempts=1` 不标 stopped-retries 被判**可接受**（没有发生重试，标 retries 才是谎报）；真实子进程冒烟确认 stdio 直通（OUT/ERR 两路原样）；run-log 接线确认只 import 公开 `run_command`/`log_metrics`。
+- **Important（要修）**：`retryable = timed_out or exit_code in retry_exit_codes` —— 超时**无条件**可重试，与 E44"重试只针对清单显式声明的 `retry_exit_codes`（默认空=不重试）"口径冲突；现有用例还把该行为固化成契约。
+- Minor：超时在 run-log 顶层仍是 `failed(124)`，timeout 只在 metrics（可追溯，挂账）；清单 cwd 不存在 → 记录 failed 后整体退 2（未在判定表约定，需明确并补测）。
+
+### Ruling E47 — 超时重试也必须显式声明；坏 cwd 是清单错误
+
+Ruling: (1) 清单项新增 `retry_on_timeout: false`（默认 false，必须为布尔）；超时仅当该项显式 `retry_on_timeout: true` 且 `max_attempts` 未耗尽才重试；(2) 把"cwd 不存在 = 清单错误 → 记 failed 后整体退 2"写进 help/docstring 并补一条用例（当前行为保留）。
+理由: E44 的核心是"重试只发生在清单显式声明处"——超时没有退出码，因此需要一个显式的布尔键，而不是"超时天然可重试"的隐含规则。默认不再因 max_attempts>1 悄悄多跑一次。
+代价: 想重试超时的清单要显式写 `retry_on_timeout: true`（这正是意图）；既有用例需改为显式声明后再断言重试。
+
+- 修复排期：等 `Confucius`（queue 作者）槽位释放后派发；`Chandrasekhar` 已关闭。修复后由 `Aquinas` 定向复评。
+
+## watch 修复定向复评：ADDRESSED
+
+- `Ohm` 复评 `4710ca2`：**ADDRESSED**，无新 Critical/Important。force 重置（旧 ID 消失、损坏 state 恢复退 0、stderr"已重建基线 N 条"）、baseline 合并、xhtml 嵌套标题均核实；额外验证 force 遇 OSError/坏 XML 时旧 state 字节不变（不会重置到半截）。判别力两条独立复现。
+- 新 Minor（挂账→并入收尾修复 B）：`itertext()` 无块级分隔符，多块 xhtml 会拼成 `HelloWorld`（仅非 arXiv 多块文本受影响）。
+
+## 收尾修复批量派发（Confucius）
+
+- A：queue E47（`retry_on_timeout` 显式门控 + 默认不重试用例 + cwd 错误语义文档/用例）→ `fix: gate timeout retries behind an explicit manifest flag`。
+- B：watch 块级文本空白规范化（多块 title/summary 断言）→ `fix: separate block-level text in watched feed titles`。
+- 两个独立 commit；完成后 A 由 `Aquinas` 定向复评，B 由 `Ohm` 定向复评。
+
+## milestones 修复定向复评：ADDRESSED
+
+- `Archimedes` 复评 `68c7580`：**ADDRESSED**，无新 Critical/Important。三处关闭：区间含 target（T-3+submission-check→退 1 缺 `package_ready`；T-14+internal-review→退 1 缺 `review_cleared`）；T-7→internal-review/review_cleared；已越过的检查点不进 `due`。
+- 强证据：独立枚举 conference/journal × 所有 current stage × 三个 checkpoint 共 **84 个场景**，`missing_gates` 与 `stages[current:target+1]` 完全一致，无重复无遗漏；两次 mutation 独立复现失败。
+- 挂账确认：非法 mode→2 可接受（validate 另有 structured problem）；无行号定位可接受；T-14/T-7 映射同一 gate 是 stages.py 单 gate 粒度的已知限制。
+- **新边界（已立修复 C）**：`deadline: 2027-05-01T00:00:00Z` → PyYAML datetime 绕过 `isinstance(value, date)`，比较时抛未捕获 `TypeError`；validate 返回 `[]` 漏报。
+- 修复 C 已排入 `Confucius` 批次：只接受 `YYYY-MM-DD` 字符串或 null，datetime 一律非法（parse 抛具名 ValueError、validate 报 problem、CLI 退 2 非 traceback）；commit `fix: reject timestamp deadlines instead of crashing`；随后由 `Archimedes` 复评。
+
+## cross_review 修复定向复评：ADDRESSED
+
+- `Aquinas` 复评 `a0e1048`：**ADDRESSED**，无新 Critical/Important。stderr 三条记录路径统一 `_STDERR_LIMIT=4000` + `...[truncated]`；短 stderr 无标记；异常消息仍用 500 摘要；`check --out-dir` 贯通且默认路径不回归（`rg` 确认无其它硬编码 `reviews`）；E41 契约与 23 例全绿；两条判别力独立复现。
+- 新 Minor（同类残留，已排修复 D）：malformed 的 `raw_last_message[:10000]` 仍是静默切片无标记 → 统一为带标记截断（上限参数化：stderr 4000 / raw 10000），补用例；commit `fix: mark truncated raw review output instead of slicing silently`；随后并入 `Aquinas` 的收尾核实。
+
+## automation-review Task 5 评审：Request Changes（E48）
+
+- 评审者 `Plato`：**Request Changes**，2 Important + 2 Minor。路径偏离（`automation/`）判定正确；e2e 真实性通过（真实文件树 + 多模块协作，断言具体到字段/退出码）；629 OK 复核一致；脚本路径与 venv 均真实存在；两处字段无产出源的实测证据齐（`MILESTONES_KEYS=['advisory','deadline','due','missing_gates','mode','problems']`）。
+- **Important 1**：`stage-advance.md` 点名 `stage.current/gate/updated_at`，但模板只跑 `validate.py`（成功无 JSON）与 `milestones due`（无这三键）——字段没有产出源，九条规则第 9 条冲突。
+- **Important 2**：`milestones` 的 sequential 模式每次把"下一建议动作"塞进 `due`，导致 `due` 永不为空；`deadline-check.md` 的静默条件 `due=[] 且 problems=[]` 在无 deadline 时永不成立 → **每次运行都通知**，违反 E45。
+
+### Ruling E48 — 给阶段自动化真实数据源；sequential 不得占用 due
+
+Ruling: (1) `milestones` 新增只读 `stage` 子命令，输出 `{"current","gate","updated_at"}` JSON（缺失/非法 → 2），作为 stage-advance 模板的点名数据源；(2) sequential 模式下 `due` 必须为空，下一建议动作移入 `advisory`（due 的语义 = 检查点到期）；(3) `stage-advance.md` 改为手动触发模板（不挂定时），README 同步；`deadline-check.md` 静默条件不变（现在 sequential 也成立）；(4) 根 README 目录表补 `automation/`；(5) 文档测试改为字段对齐断言（模板字段 ⊆ 真实工具输出键），不再用"任一字段出现"的正则。
+理由: 第 9 条（点名的源必须存在）与 E45（静默必须可判定）都是本层的硬约束；"字段名写对一半"和"无 deadline 每次通知"都会让默认安静策略变成空话。
+代价: sequential 的下一建议不再出现在 `due`（自动化需读 `advisory` 才提示）；stage-advance 明确为手动模板。
+
+- 修复 E 已排入 `Confucius` 批次（在 A–D 之后），commit `fix: give stage automations a real data source and quiet sequential mode`；随后由 `Plato` 定向复评；milestones 的 sequential 语义变化由 `Archimedes` 做增量复评。
+
+## 收尾修复批次 A–E 全部落地（`ec262e5`→`d2f8b50`）
+
+- A `ec262e5` queue：`retry_on_timeout` 显式门控（默认 false；非布尔 → 2）+ 默认不重试用例 + bad-cwd 语义文档/用例。判别力：默认超时重试改回无条件 → `3 != 1`。
+- B `ff7ecf2` watch：块级文本分隔（实施者修正题面公式为 `" ".join(" ".join(itertext()).split())`——朴素 `"".join` 仍会粘连）；判别力：`'HelloWorld' != 'Hello World'`。
+- C `096f850` milestones：datetime deadline 一律非法（parse 具名 ValueError / validate problem / CLI 退 2 非 traceback）；判别力：恢复接受 → TypeError + ValueError not raised。
+- D `b356fab` cross_review：raw_last_message 截断上限参数化 + `...[truncated]` 标记；判别力：改回静默切片 → `endswith` 断言失败。
+- E `d2f8b50` milestones+docs：新增只读 `stage` 子命令（`current/gate/updated_at`）；sequential `due` 固定空、建议移 advisory；stage-advance 改手动模板；字段对齐测试；根 README 补 `automation/`。判别力：sequential 放回 due → 非空失败；stage 改名 → argparse invalid choice。
+- 测试链：A 632 → B 634 → C 637 → D 639 → **E 644 tests OK**；工作树干净。
+- 四路定向复评已派：`Aquinas`（A+D）、`Archimedes`（C + E 的 milestones 部分）、`Plato`（E 的文档与字段对齐部分）、`Ohm`（B）。全部通过后：automation-review 最终全分支评审（base `d3940f9`）。
+
+## A–E 四路复评结果（全部 ADDRESSED）
+
+- `Aquinas`（A+D）：ADDRESSED，无新问题。E47 分流清晰（`retry_on_timeout` 缺省=超时不重试，即便 max_attempts>1；非布尔 → ValueError → 2）；bad-cwd 记 failed 后整体退 2 有用例；raw 截断标记核实；独立复现两条判别力（`2 != 1`、`endswith` False）；全量 644 OK。
+- `Archimedes`（C + E-milestones 增量）：ADDRESSED，无新 Critical/Important。datetime 三路径（parse ValueError / validate problem / CLI 退 2 无 traceback）核实；sequential `due=[]` + advisory；`stage` 键与 ccfa.yaml 完全一致；84 场景不变量无回归；只读 SHA-256 不变。两条可选 Minor：`stage` 不校验 gate 与 stages.py 一致（走 read-only 信任边界，挂账）；`updated_at` 接受 ISO 变体（如 `20261003`）（挂账）。
+- `Plato`（E 文档）：ADDRESSED 4/4。字段对齐测试真实调用工具取键；判别力独立复现（sequential 放回 due 失败、`stage` 改名 argparse invalid choice、漂移键检测 False）。两条 Minor：字段对齐只做单向（→ 控制器当场修，见下）；`stage` gate 信任边界（挂账）。
+- `Ohm`（B）：ADDRESSED，无新 Critical/Important；新 Minor：空白归一化粒度过粗（`Hello<b>World</b>` → `Hello World`、`AI<b>2</b>` → `AI 2`、内部空白折叠）——watch 面向 arXiv 纯文本，挂账，未来接非 arXiv feed 再收紧。
+
+## 控制器直改（`ac6edfb`，终审覆盖）
+
+- `automation/deadline-check.md` 读取字段补 `advisory`（Archimedes 发现的文档不一致）。
+- `test_automation_e2e.py` 字段对齐改为**双向集合相等**：解析"读取字段"小节的 `^- \`字段\`` 得声明集，与实际工具输出键集合断言相等（模板塞假字段也会失败）；判别力实测（注入 `bogus` → 检出）。
+- 全套 **644 tests OK**。
+
+## automation-review 最终全分支评审已派
+
+- 终审者 `Popper` = `01a10205-27a9-74f1-bfa3-8b84256d316b`，review-d3940f9..ac6edfb.diff（14 commits）；重点：跨工具契约一致性、E41–E48 全链路、E45 静默可判定、DoD（538→644，+106 ≥ +60）、真实 codex exec 冒烟如实标注"终审未复跑"、离线可测、新 Critical/Important/Minor。
+
+## automation-review 终审：Needs fixes（E49）
+
+- 终审者 `Popper`：**Needs fixes**，无 Critical，1 Important + 3 Minor。跨任务契约、E41–E48、E45 静默、DoD（644，+106）均核实通过；真实 codex exec 冒烟**未被终审复跑**（如实标注，代码路径支持该调用形态）。
+- **Important（真集成缺陷）**：`queue run` 的默认 runner 让子进程继承 stdio，queue 自己的结果 JSON 又打到 stdout——被排队命令一旦打印 stdout，输出即 `子进程输出\n{json}`，`json.loads` 失败。实测复现 `stdout: 'CHILD_STDOUT_MARKER\n{"runs":...}'`。违反 §6.1.1"JSON 到 stdout"（直通例外只给了 `run-log run`），并直接破坏 `experiment-queue.md` 对 `runs/stopped` 的读取与 E45 静默判定。既有 `main` 测试全 mock `run_queue`，真实路径无覆盖——这是终审才暴露的测试盲区。
+- Minor：队列项 `cwd` 未进 run-log（仍记 `"."`）；`weekly-watch`/`experiment-queue` 字段对齐仍单向；`cross_review check` 信任 `input_hashes` 键为相对路径，手改 `../` 会对外部文件做只读哈希（低危本地探针）。
+
+### Ruling E49 — queue 的 stdout 必须可解析；子进程输出转 stderr
+
+Ruling: `queue run` 捕获子进程 stdout/stderr（含超时时的部分输出）并**转发到本工具 stderr**；stdout 只保留结果 JSON；help/docstring 写明这一具名取舍（与 `run-log run` 的直通例外不同，因为 queue 是自动化消费方，`runs/stopped` 必须可 json.loads）。(2) 每次 attempt 的 `cwd` 经 `log_metrics` 写入 metrics；(3) watch/queue 模板字段对齐改双向集合相等；(4) `cross_review check` 对记录内 `input_hashes` 键做 `paper_root` 包含性校验，越界 → 结构化 problem（退 1）。
+理由: 规则 6"包装器不得夺走被包裹命令的流"的意图是不要把子进程输出丢掉——转发到 stderr 仍可见；但自动化契约要求 stdout 可解析，二者在此处由 stderr 承载人读输出解决。真实子进程用例必须补，否则同类盲区还会复发。
+代价: 子进程 stdout 不再出现在父进程 stdout（脚本若依赖管道需要改读 stderr）；换来自动化可解析性。
+
+- 修复者 `Confucius`（resume），base `ac6edfb`；commit `fix: keep queue stdout parseable and harden review records`；随后由 `Popper` 定向复评并重下 merge verdict。
+
+## Fix F（`a99a219`）与复评：原 Important 关闭，但引入 E50 两条新 Important
+
+- F 落地：queue stdout 纯 JSON（子进程输出转 stderr，含超时部分输出）、`cross_review check` 路径包含性校验（`../`/绝对路径/符号链接逃逸 → `review-record-invalid` 退 1）、watch/queue 模板双向字段对齐；650 tests OK。
+- `Popper` 复评：原 Important **确认关闭**（真实子进程用例：父 stdout 可 json.loads、marker 只在 stderr；超时部分输出有独立用例）；三条 Minor 中路径校验与字段对齐关闭；**但 cwd 修法引入两个新 Important**：
+
+### Ruling E50 — cwd 必须进 run-log 规范字段；长任务输出必须流式
+
+背景 1: F 把 `{"cwd": ...}` 写进 `metrics` 而规范 `cwd` 字段仍是 `"."`——既没有修好字段，又用非空 metrics 把 `check_runs` 的 `metrics-pending` 告警压掉（实测只剩 `run-log-missing-commit`）。这直接违反 E2"完成但指标为空必须报"，属于**用一个假修复掩盖了另一个真告警**。
+背景 2: `capture_output=True` 把子进程全部输出缓冲到进程结束才转 stderr——长实验运行期零输出、内存无上限，违反 §9.2"长任务可观察"。
+Ruling: (1) `run_log.run_command` 增加显式 `cwd` 参数（默认保留 `"."` 行为）并写入记录 `cwd` 字段；queue 传解析后的真实 cwd；queue 不再用 metrics 携带 cwd（非超时 attempt 的 metrics 保持原状，超时仍写 timeout 元数据）。(2) queue 默认 runner 改 `subprocess.Popen` + 逐行 pump 到父 stderr（stdout 仍纯 JSON；无缓冲驻留；超时 kill 并转发已产生输出）。
+理由: "记录真实 cwd"必须落在规范字段上，否则就是装饰；指标告警是 E2 的核心，不得被任何写盘工具顺带压掉。长任务可观察是 §9.2 的硬要求，缓冲到结束等于把可观察性取消。
+代价: 多一个 `Popen` + pump 线程的复杂度；测试需要"子进程结束前就能看到首批输出"的流式断言。
+
+- 修复者 `Confucius`，base `a99a219`；commit `fix: record queue cwd in the run log and stream child output`；随后 `Popper` 定向复评并重下 merge verdict。
+
+## E50 复评与 automation-review 结项
+
+- 修复者 `Confucius`，commit `22f0921`，**653 tests OK**。判别力实测：旧行为下 `record["cwd"] == '.'`、`'run-log-metrics-pending' not found in ['run-log-missing-commit']`、`'FIRST' not found in ''`、`run_command() got an unexpected keyword argument 'cwd'`；超时部分输出用真实子进程（print 后 sleep 5s / timeout 1s）覆盖。
+- 定向复评（`Popper`）：**ADDRESSED，Merge readiness = Ready**。实测 `record_cwd_field=<resolved>`、`record_metrics=None`、`problem_codes=['run-log-metrics-pending','run-log-missing-commit']`（与旧行为正好翻转）；流式 `FIRST` 在子进程退出前到达 stderr；`run_log run` 默认 cwd 行为不变；父 stdout 纯 JSON。
+  - 残余 Minor（控制器当场处理）：流式测试原以 1.35s 墙钟对 1.5s sleep 竞争（0.15s 余量），改为 ready/go-ahead 文件同步的确定性写法（控制器 commit `f4e9608`，判别力实测：缓冲实现下 `FIRST not found in ''`；全套 653 OK）。该 commit 与「pump 线程在孙进程继承句柄时可能阻塞」的边角风险一并挂账，由模板阶段终审覆盖。
+  automation-review: complete (commits d3940f9..f4e9608, review clean)
+
+## 累计状态（automation-review 结项时）
+
+- 十五个工具成形：前十一（含 library/memory）+ `milestones` / `cross_review` / `watch` / `queue`。测试从 125 增至 **653**；账本裁定 E1–E50。
+- 四类自动化的确定性底座 + 接线文档（`automation/`）齐备；实际挂载 automations 需用户确认（E45），尚未挂载。
+- 自动化阶段挂账（诚实清单）：真实 `codex exec` 冒烟未被终审复跑（账本+代码路径核实）；`check` 的 pump 孙进程句柄边角；watch 空白归一化粒度过粗；`milestones stage` 不校验 gate 与 stages.py 一致；`stage.updated_at` 接受 ISO 变体；`today == deadline` 无提示；T-14/T-7 共用同一 gate；非法 mode 退 2；problem 无行号。
+
+## 模板阶段（templates-derivation）启动
+
+- 计划：`C:/Users/best/Documents/Codex/2026-10-03/wo/outputs/plans/2026-10-03-templates-derivation.md`（5 任务：递归复制 venue / 双 venue 真编译冒烟 / PS 包装器 / README+checklist 一致性 / 一站式集成回归）。
+- 前置评估已完成（bensz：reference-only、零 vendor）；侦察发现真实缺口：139 个 venue 中 ACM/CVPR/ICCV/VLDB 含子目录，而 `create.py` 只复制顶层文件。
+- Task 1（递归复制 + 失败清理 + 判别力）已派 `Confucius`，base `f4e9608`。
+
+## templates-derivation Task 1 执行记录
+
+- 实施者 `Confucius`，commit `b1f234b`，**659/659**（+6 用例）。改为 `shutil.copytree(..., dirs_exist_ok=True, copy_function=shutil.copy2)`；失败清理与既有契约不变；测试 patch `newpaper.venues.templates_root` 用注入的临时 venue。
+- 判别力实测：旧实现下嵌套 `styles/x.sty` → `FileNotFoundError`；嵌套主文件 → "找不到包含 \documentclass 的 .tex 文件"；失败后重试仍缺文件。真实 venue 冒烟：CVPR 派生复制出 `sec/0_abstract.tex` 等嵌套文件。
+- 评审者 `Popper`，review-f4e9608..b1f234b.diff，进行中。
+- Task 2（双 venue 真编译冒烟）已派 `Confucius`，base `b1f234b`；要求如实报告编译失败（不许伪造/静默 skip）。
+
+## templates Task 1 评审与 Task 2 执行记录
+
+- Task 1 评审（`Popper`）：**Approved**，无 Critical/Important。真实 venue 独立复跑（CVPR 嵌套 `sec/*.tex` 复制成功）；判别力独立复现；两条 Minor：`papers/` 根为新建时的失败清理分支无自动化用例（评审手工验证 `papers_root_removed: True`，挂账并入 Task 5）、真实 venue 派生待 Task 2（已承接）。
+- Task 2 实施者 `Confucius`，commit `19f085d`，**662 tests 含 1 failure**（诚实保留失败，未伪造/未 skip）。真实编译证据：
+  - 引擎 MiKTeX-pdfTeX 4.23 / BibTeX 0.99e（MiKTeX 25.12）。
+  - **NeurIPS 编译成功**：3×pdflatex 退 0（无 \bibdata 跳过 bibtex），PDF 177736 bytes。
+  - **ACL 编译失败（上游模板缺件）**：首轮 pdflatex 退 0 且产出 PDF 167899 bytes，但 `bibtex acl_latex` 退 1——模板库只有 `acl.sty` + `acl_latex.tex`，缺 `acl_natbib.bst` 与 `custom.bib`（`kpsewhich` 无结果）。日志：`I couldn't open style file acl_natbib.bst` / `I couldn't open database file custom.bib`。
+  - 派生工具链两项目均通过：validate 0、`milestones stage` current=idea、`due` sequential/due=[]/problems=[]、`memory check` 0、骨架齐全。
+  - 判别力：把 copytree 改回顶层复制 → CVPR 用例 `递归复制缺失: manuscript/sec/1_intro.tex` 失败。
+
+### Ruling E51 — latex_check 必须能检查 venue 真主文件；上游模板缺件如实钉住
+
+背景 1: `latex_check` 硬编码 `manuscript/main.tex`，而真实 venue 主文件名是 `neurips_2026.tex` / `acl_latex.tex`（`ccfa.yaml.artifacts.manuscript` 也记录真名）——派生项目无法被检查，属产品缺陷。
+背景 2: ACL 模板库缺 `acl_natbib.bst`/`custom.bib`，真实编译序列在 bibtex 中断。这是**上游模板库不完整**的事实，不是本工具的缺陷；必须如实钉住而不是伪造成功或静默 skip。
+Ruling: (1) `latex_check` 新增 `--main <相对路径>`（默认 `main.tex`），缺文件/越界 → 2；(2) Task 2 e2e 改为：NeurIPS 断言真编译成功 + `latex_check --main neurips_2026.tex` 如实报出上游占位缺图（退 1 正确）；ACL 断言失败且指名缺 `acl_natbib.bst`，测试名与注释写明"上游补齐后该测试应失败并升级为完整编译断言"。
+理由: 主文件名是派生项目的既有事实，检查器必须接受它；模板库缺件是环境事实，测试应把它钉成回归信号，而不是让它长期把套件留在红色或悄悄跳过。
+代价: ACL 的"编译成功"证据暂时拿不到，挂账到模板库补齐（可能的修复路线：从 acl-org/acl-style-files 取 `acl_natbib.bst` 与 `custom.bib`）。
+
+- 修复轮 G 已派 `Confucius`（base `19f085d`），commit `fix: let latex-check target the venue main file`；要求全量恢复 ≥665 OK。
+
+## G 修复落地（`b4cd4eb`）
+
+- 实施者 `Confucius`，commit `b4cd4eb`，**666 tests OK**（套件恢复绿色）。
+- `latex_check --main <相对路径>`（默认 `main.tex`；绝对路径/`../`/缺失 → 2）；判别力实测：丢弃 main 参数 → `工具错误: 找不到主文件 ...\manuscript\main.tex`（`2 != 0`）。
+- NeurIPS：真编译成功（177,736 bytes）**且** `latex_check --main neurips_2026.tex` 如实报 `missing-figure: myfile.pdf`（退 1 为正确行为，上游模板带占位缺件）。
+- ACL：测试改名 `test_acl_upstream_template_is_missing_bibliography_assets`，断言模板目录缺 `acl_natbib.bst`/`custom.bib` 且 bibtex 输出含对应错误；注释写明"上游补齐后本测试应失败并升级为完整编译断言"。判别力实测：旧"必须编译成功"断言会因 `bibtex returncode=1` 失败。
+- 评审者 `Popper`，review-b1f234b..b4cd4eb.diff（2 commits，含 Task 2+G），进行中。
+- Task 3（PS 包装器）由新实施者 `Kierkegaard` = `01a10222-f601-7240-80b6-ba6656e1a0f4` 并行实施中（`scripts/` + `test_scripts.py`，未提交）。
+
+## templates Task 2+G 评审已派；Task 3 执行记录
+
+- Task 2+G 评审：`Popper`，review-b1f234b..b4cd4eb.diff（2 commits），进行中。
+- Task 3 实施者 `Kierkegaard`，commit `e743fd8`，**704/704**（+38 用例）。17 个包装器：扫描发现 `validate.py` 也有 `main()`，额外加了 `validate.ps1`（否则清单一致性用例覆盖不全）。
+  - 口径：`validate.py` 是非 argparse CLI，`validate.ps1 --help` 原样透传其既有行为（退 2、stderr 含 `--help`）；实施者未为它特判或改 Python CLI——评审判定是否可接受。
+  - 判别力实测：删除 `research-version.ps1` 的 `exit $LASTEXITCODE` → 非零退出被吞（`0 == 0`，stderr 有 usage），用例失败。
+  - 评审者 `Sagan the 2nd` = `01a10228-2057-7430-adf7-f5985d740a49`，review-b4cd4eb..e743fd8.diff，进行中（重点：一一对应、透传契约、真实执行、validate --help 的现状断言是否可接受）。
+- Task 4（README 同步 + docs/checklist 一致性测试）已派 `Kierkegaard`，base `e743fd8`。
+
+## Task 2+G 评审：Approved
+
+- `Popper`：**Approved**，无 Critical/Important。独立复跑 NeurIPS 真派生+真编译（PDF 177736 bytes；`latex_check --compile --main` 退 1 是结构扫描报上游占位缺图，不是编译失败）；独立验证 `--main` 判别（默认 name 缺失 → 工具错误；显式 `venue-paper.tex` → 0 problems）；ACL 缺件钉住诚实（先断言缺文件，再断言 bibtex 输出含两资产名，docstring 写明上游补齐后应升级）。
+- 两条 Minor（折入 Task 5）：e2e docstring 过期（仍称 latex_check 硬编码 main.tex）；`--compile --main` 真实引擎组合未进自动化。Task 1 的 `papers/` 根清理分支用例一并折入 Task 5（结转 C）。
+- Task 5 已派 `Confucius`（一站式集成回归 + A/B/C 结转），base 以实际 HEAD 为准。
+
+## templates Task 3/4/5 评审与收尾修复
+
+- **Task 3（`e743fd8`，包装器）**：评审 `Sagan the 2nd`：**Approved**，1 Minor——`validate.ps1 --help` 被测试特判为退 2、弱断言。已修（`7600829`）：`validate.main` 增 `-h/--help`（stdout usage、退 0；其它行为不变），test_scripts 删除特判、统一断言 help 退 0 且含 usage；判别力实测去掉分支 → `2 != 0`；全量 **727 tests OK**。评审另独立验证：全部 wrapper 的 `--definitely-invalid` 都退 2（非零不吞）；`research-version.ps1 list --repo <tmp>` 与直接 CLI 输出一致。
+- **Task 4（`c4c1a35`，README+docs 一致性）**：评审 `Popper`：**Approved**，2 Minor（checklist 字节比对按 checkout 换行自适应、不再钉死 LF；stage→command 速查只做子串存在性）。均挂账。README 工具表 16 模块 + newpaper 与 wrapper 一一对应；反引号路径存在性校验有判别力（独立注入不存在路径 → 失败）；venue 数 139 实测准确；"实际挂载需用户确认"未虚报。
+- **Task 5（`da55cb6`，一站式 e2e + 结转 A/B/C）**：评审 `Sagan the 2nd`：**Approved**，2 Minor（checklist 尾部只有正向+不等；run_log 的 cwd 字段断言价值有限）。控制器收尾（`0adab5a`）：补两条反向排他断言（conference 不得含 `[major-revision]`、journal 不得含 `[camera-ready]`）；第二条挂账（stdout marker + exit_code 已证真实执行）。
+  - 强证据：两个派生项目（真实 NeurIPS 模板、同 venue 不同 mode）；四条工具链从**仓库外 neutral cwd** 以子进程跑；library 2 字中文 `mode=like` 命中 `attention`（判别力独立复现 `'fts' != 'like'`）；路径级快照证明 `ccfa.yaml`/`references.bib` 字节不变、neutral cwd 无新文件；B 用真实 MiKTeX 跑 `latex_check --compile --main`（退 1 + PDF + `missing-figure: myfile.pdf`，2.6s）。
+
+## 当前状态与下一步
+
+- HEAD = `0adab5a`，工作树干净，**727 tests OK**（Sagan2 正在定向验证 `7600829`）。
+- templates-derivation：Task 1–5 全部提交并 Approved；待 validate-help 验证 → 模板阶段最终全分支评审（base `f4e9608`）→ 全仓收口。
+- 已知挂账（模板阶段）：ACL 上游模板缺 `acl_natbib.bst`/`custom.bib`（测试诚实钉住，模板库补齐后升级为编译成功断言）；bensz 零 vendor 的决定与字体许可提示；checklist 换行规范未钉死、stage→command 速查语义未结构化断言、run_log cwd 断言价值有限；`papers/` 根清理用例已补（Task 5 结转 C 关闭）。
+
+## validate --help 定向验证
+
+- `Sagan the 2nd` 复评 `7600829`：**ADDRESSED**，无新 Critical/Important/Minor。`validate.ps1 --help` 与 `python -m ccfa.validate --help` 均退 0 含 `usage`；退出码对照（valid=0 / bad-path=2 / no-arg=2 / problems=1）改动前后一致；`HELP_EXIT_CODES` 特判已不存在；独立复现判别力（删 help 分支 → `2 != 0`）。
+- 残留说明（非本次问题）：`main` 的"发现问题→1"仍无直接单测（`validate_yaml` 语义已覆盖）。
+
+## templates-derivation 最终全分支评审已派
+
+- 终审者 `Schrodinger the 2nd` = `01a10239-7316-77a0-a3d8-0afea2695c00`，review-f4e9608..0adab5a.diff（8 commits）。
+- 范围：§12 验收逐条映射、NeurIPS 真编译独立复跑、3 个 PS 包装器独立跑、ACL 诚实钉住判定、README 诚实性（automation 未挂载/bensz 零 vendor/139 venue）、DoD 653→727（+74）、挂账汇总、Merge readiness。
+
+## templates-derivation 终审：Needs fixes（E52）
+
+- 终审者 `Schrodinger the 2nd`：**Needs fixes**，无 Critical；工具代码、两条硬证据（NeurIPS 真编译 177736 bytes 独立复跑；4 个包装器抽验 + 6 个 `--definitely-invalid` 退 2）、诚实性（139 venue、零 vendor、automation 未挂载、ACL 诚实钉住）与 §12 22 条验收映射均通过；全量 727 OK 复核一致。
+- **Important（README 可用性）**：README「常用命令」三条是无效命令，用户照抄退 2：
+  1. `library.ps1 search --query ...` —— search 是位置参数，无 `--query`；
+  2. `memory.ps1 check --paper-root ...` —— `--paper-root` 是顶层参数，必须在子命令前；
+  3. `run-log.ps1 run --paper-root ... --log-dir ...` —— 两个都是顶层必需参数，须先于 `run`。
+- Minor：`test_docs_consistency.py` 只做子串断言，完全抓不到命令无效（本次 Important 漏网）；`latex_check --main` 不带 `--compile` 时被静默忽略。
+
+### Ruling E52 — 文档里的命令必须可执行；标志不得静默失效
+
+Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置参数不带 `--query`），并**实际跑通**留证；(2) `test_docs_consistency.py` 从 README「常用命令」块提取 `scripts/*.ps1` 行，替换占位后真实执行，断言 stderr 不得出现 `unrecognized arguments` / `the following arguments are required`（argparse 形状错误必须被测试抓住）；(3) `latex_check --main`（非默认）不配 `--compile` → 工具错误退 2，消息说明其仅在编译路径生效。
+理由: README 是"一站式"入口，示例命令失效等于把用户直接挡在门外；文档测试只做子串存在性无法发现命令行形状错误。显式标志被静默忽略属"声明了却没发生"，与第 7 条同源。
+代价: 文档里每条命令从此受测试约束（改 CLI 参数名会同时要求改 README，是意图）。
+
+- 修复者 `Kierkegaard`（resume），base `0adab5a`；commit `fix: make the documented commands real`；随后 `Schrodinger the 2nd` 定向复评并重下 merge verdict。
+
+## E52 修复与最终裁定（整个建设完成）
+
+- `a3cc919` `fix: make the documented commands real`：README 三条命令改真实 argv 并实际跑通（library index/search、memory check、run-log run 均退 0）；`test_docs_consistency.py` 增「常用命令」fenced block 可执行性测试（解析 7 行、真实子进程执行、断言无 `unrecognized arguments`/`the following arguments are required`）；`latex_check` 非默认 `--main` 无 `--compile` → 退 2 而非静默忽略。判别力实测：`--query` → `unrecognized arguments: --query`；去掉 H3 检查 → `0 != 2`。
+- `7a94af4` `test: scan the derived manuscript without a compile-only flag`：结构扫描调用移除 `--main`（结构扫描是全目录行为），保留退 1 + `missing-figure: myfile.pdf`；`--compile --main` 真实编译证据保留。全量 **729 tests OK**。
+- 终审者 `Schrodinger the 2nd` 定向复评：**Merge readiness = Ready**，1 Important + 2 Minor 全部关闭，无新 Critical/Important/Minor。独立验证三种旧错误形状都会被 H2 拦截；H3 不误伤默认 `main.tex`；全量 729 OK；工作树干净。
+  templates-derivation: complete (commits f4e9608..7a94af4, review clean)
+
+## 项目总收口（2026-10-03）
+
+- **三个新阶段全部完成**：knowledge-layer（`library` + `memory`，E33–E40）→ automation-review（`milestones`/`cross_review`/`watch`/`queue` + `automation/` 文档，E41–E50）→ templates-derivation（venue 递归派生 + 真编译冒烟 + 17 个 PS 包装器 + README/docs 一致性 + 一站式集成回归，E51–E52）。
+- **交付物**：17 个确定性工具/入口（citation_guard / trace_claims / latex_check / final_check / provenance / run_log / repro_package / friction_log / research_version / library / memory / milestones / cross_review / watch / queue / validate / newpaper-create）+ 17 个 `scripts/*.ps1` 包装器 + `automation/` 四模板 + 根 README 一站式入口 + `checklists/` + `library/`。
+- **测试**：从本日段起点的 125 → **729 tests OK**；全库 `tools/ccfa/` + `tools/newpaper/` + 测试。
+- **真实外部证据（非 mock）**：MiKTeX 真编译（NeurIPS PDF 177,736 bytes；派生项目结构扫描如实报占位缺图）；真实 `codex exec` 冒烟（v4-pro，38.6s，verdict=blocking，schema 解析通过）；真实 venv 复现包重跑；真实 git 标签/diff 冒烟；真实 SQLite FTS5 三字/两字命中；17 个 PS 包装器真实 `--help`/`--definitely-invalid` 执行。
+- **诚实挂账（未完成即写明）**：
+  1. 四类自动化**底座与接线文档已交付，实际挂载 automations 需用户确认**（E45），尚未挂载；
+  2. ACL 上游模板缺 `acl_natbib.bst`/`custom.bib`（测试诚实钉住，上游补齐后升级为编译成功断言）；
+  3. bensz-paper/bensz-nsfc 评估结论为 reference-only、零代码 vendor；字体再分发许可未验证故未引入；
+  4. 知识层：语义检索/PDF 全文/跨论文记忆聚合/claim 回写（E37）为明确 Non-goals；
+  5. 小项：checklist 换行未钉死 LF、stage→command 速查未结构化断言、`run_log` cwd 断言价值有限、`milestones stage` 不校验 gate 与 stages.py 一致、`stage.updated_at` 接受 ISO 变体、`today == deadline` 无提示、T-14/T-7 共用 gate、problem 无行号、pump 孙进程句柄边角、watch 空白归一化粒度；
+  6. 期刊 venue 未做真编译冒烟（状态/清单已验，LaTeX 真编译只覆盖 NeurIPS；ACL 因上游缺件无法完成）。
+- **恢复入口**：本账本（E1–E52 全部裁定与代价）+ 设计文档 v6 + `outputs/plans/` 下 17 份计划 + `outputs/2026-10-03-bensz-reuse-evaluation.md`。
+
+## 自动化挂载（用户确认后执行，2026-10-03）
+
+用户以"继续"确认挂载后，按 `automation/README.md` 的流程执行：
+
+- **新增源配置 `automation/watch-sources.json`**（commit `cfce45f`）：`{"version":1,"feeds":[],"state":"library/watch-state.json"}`；`feeds` 为空时周监控保持安静（不通知、不抓取）。`library/watch-state.json` 为派生游标，已加入 `.gitignore`。`automation/README.md` 与 `weekly-watch.md` 同步（模板改为读配置，不再写死 `<arxiv-feed-url>`）。改动后定向 61 例（automation_e2e + docs_consistency + scripts）OK。
+- **已挂载（Codex automations，本地项目「科研」= `08e21f53-f6d8-4c54-98bb-a636f63e8a19`）**：
+  1. `automation`「科研·投稿里程碑检查」：每日 09:00（cron），flash/low，cwd=仓库根；prompt 自定位 `papers/*/ccfa.yaml`，无项目即静默（NO_CHANGE），`due`/`problems` 非空才通知；只读。
+  2. `automation-2`「科研·每周文献增量」：每周一 09:10（cron），flash/low，cwd=仓库根；prompt 读 `automation/watch-sources.json`，`feeds` 空即静默；新增才列 id/title/published，baseline 只报条数；如实报告网络/工具错误。
+  - 两条均 `status = ACTIVE`、`target = project(科研)`；已通过 `$CODEX_HOME/automations/*/automation.toml` 逐字段核实（名称/rrule/model/effort/cwd/prompt）。
+- **未挂载（按设计保持手动）**：`stage-advance`（手动触发模板，README 明示不挂定时任务）；`experiment-queue`（长任务运行期按需执行，无队列文件可挂）。
+- **激活周监控的唯一动作**：把要跟踪的 arXiv Atom feed URL 填进 `automation/watch-sources.json` 的 `feeds`；在此之前该任务每周静默空跑。

@@ -2,7 +2,9 @@
 
 论文工作流模板库。每篇论文从 venue 模板派生一份独立目录，状态、检查与归档都以仓库内的确定性脚本为准。
 
-设计文档在仓库外，路径为 `../../Codex/2026-10-03/wo/outputs/2026-10-03-research-workflow-design.md`。
+设计文档、实施计划、裁定账本与研究评估都已入库，入口是 `docs/`：
+`docs/design/`（设计 v6）、`docs/plans/`（17 份实施计划）、
+`docs/sdd/`（E1–E52 裁定与评审记录的正式留档）、`docs/research/`、`docs/evaluations/`。
 
 ## 目录约定
 
@@ -10,6 +12,7 @@
 | --- | --- |
 | `ccfa.yaml.template` | 新项目状态文件模板 |
 | `checklists/` | gate 清单，由 `tools/newpaper/checklists.py` 从 `tools/ccfa/stages.py` 生成 |
+| `docs/` | 设计文档、实施计划、裁定账本与研究评估的正式留档 |
 | `library/` | 共享 BibTeX 与 PDF 原件 |
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
 | `papers/<slug>/` | 派生论文项目的默认目标目录，已在 `.gitignore` 中忽略 |
