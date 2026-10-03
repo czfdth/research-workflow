@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ccfa.latex_structure import check_braces, check_environments, scan_structure
+from ccfa.latex_structure import check_braces, check_citations, check_environments, check_figures, scan_structure
 
 
 def _write(root: Path, body: str) -> Path:
@@ -78,6 +78,55 @@ class TestScanStructure(unittest.TestCase):
             sorted(p.code for p in problems),
             ["unbalanced-brace", "unmatched-environment"],
         )
+
+
+class TestCitations(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.bib = self.root / "references.bib"
+        self.bib.write_text("@misc{known, title={T}}\n", encoding="utf-8")
+
+    def test_known_key_is_clean(self):
+        tex = _write(self.root, r"\cite{known}")
+        self.assertEqual(check_citations([tex], self.bib), [])
+
+    def test_unknown_key_is_reported_with_location(self):
+        tex = _write(self.root, "text\n" + r"\citep{ghost}")
+        problems = check_citations([tex], self.bib)
+        self.assertEqual([p.code for p in problems], ["missing-cite-key"])
+        self.assertEqual(problems[0].line, 2)
+        self.assertIn("ghost", problems[0].message)
+
+    def test_commented_citation_is_ignored(self):
+        tex = _write(self.root, "% " + r"\cite{ghost}")
+        self.assertEqual(check_citations([tex], self.bib), [])
+
+
+class TestFigures(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.figures = self.root / "figures"
+        self.figures.mkdir()
+
+    def test_existing_figure_is_clean(self):
+        (self.figures / "plot.pdf").write_bytes(b"%PDF-1.4\n")
+        tex = _write(self.root, r"\includegraphics{plot.pdf}")
+        self.assertEqual(check_figures([tex], self.figures), [])
+
+    def test_extensionless_reference_resolves(self):
+        (self.figures / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        tex = _write(self.root, r"\includegraphics[width=0.5\textwidth]{plot}")
+        self.assertEqual(check_figures([tex], self.figures), [])
+
+    def test_missing_figure_is_reported_with_line(self):
+        tex = _write(self.root, "text\n" + r"\includegraphics{gone.png}")
+        problems = check_figures([tex], self.figures)
+        self.assertEqual([p.code for p in problems], ["missing-figure"])
+        self.assertEqual(problems[0].line, 2)
+
+    def test_commented_include_is_ignored(self):
+        tex = _write(self.root, "% " + r"\includegraphics{gone.png}")
+        self.assertEqual(check_figures([tex], self.figures), [])
 
 
 if __name__ == "__main__":

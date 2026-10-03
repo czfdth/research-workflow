@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Iterable
 
+from ccfa.bib import load_entries
 from ccfa.cli import Problem
 from ccfa.texcomment import is_escaped, strip_comment
+from ccfa.texscan import find_cited_keys
 
 _ENV = re.compile(r"\\(begin|end)\{([^}]+)\}")
 
@@ -99,3 +102,54 @@ def check_environments(path: Path) -> list[Problem]:
 def scan_structure(path: Path) -> list[Problem]:
     path = Path(path)
     return check_braces(path) + check_environments(path)
+
+
+_INCLUDE = re.compile(r"\\includegraphics(?:\[[^\]]*\]\s*)?\{([^}]+)\}")
+_FIGURE_SUFFIXES = (".pdf", ".png", ".jpg", ".jpeg", ".eps")
+
+
+def check_citations(paths: Iterable[Path], bib_path: Path) -> list[Problem]:
+    cited = find_cited_keys(paths)
+    entries = load_entries(Path(bib_path))
+    problems: list[Problem] = []
+    for key, locations in sorted(cited.items()):
+        if key in entries:
+            continue
+        for location in locations:
+            problems.append(
+                Problem(
+                    "missing-cite-key",
+                    location.path,
+                    location.line,
+                    f"引用键不在文献表中: {key}",
+                )
+            )
+    return problems
+
+
+def check_figures(paths: Iterable[Path], figures_root: Path) -> list[Problem]:
+    root = Path(figures_root)
+    problems: list[Problem] = []
+    for path in paths:
+        path = Path(path)
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for number, raw_line in enumerate(text.splitlines(), start=1):
+            line = strip_comment(raw_line)
+            for match in _INCLUDE.finditer(line):
+                name = match.group(1).strip()
+                candidates = [root / name]
+                if not Path(name).suffix:
+                    candidates += [root / (name + suffix) for suffix in _FIGURE_SUFFIXES]
+                if not any(candidate.exists() for candidate in candidates):
+                    problems.append(
+                        Problem(
+                            "missing-figure",
+                            str(path),
+                            number,
+                            f"图片文件不存在: {name}",
+                        )
+                    )
+    return problems
