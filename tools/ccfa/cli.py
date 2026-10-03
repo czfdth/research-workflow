@@ -45,3 +45,7 @@ def emit(problems: list[Problem], advisories: list[Problem] | None = None) -> in
 def tool_error(message: str) -> int:
     print(f"工具错误: {message}", file=sys.stderr)
     return 2
+
+
+class ToolEnvironmentError(Exception):
+    """A missing or broken dependency in the tool's own environment."""

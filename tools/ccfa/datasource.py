@@ -13,6 +13,8 @@ import csv
 import json
 from pathlib import Path
 
+from ccfa.cli import ToolEnvironmentError
+
 try:
     import yaml
 except ImportError:  # pragma: no cover - only reachable without PyYAML
@@ -21,10 +23,6 @@ except ImportError:  # pragma: no cover - only reachable without PyYAML
 
 class SourceError(Exception):
     """A tag's source could not be read, parsed, or navigated."""
-
-
-class ToolEnvironmentError(Exception):
-    """The tool environment is missing a required dependency."""
 
 
 def resolve_within_base_dir(source_path: str, base_dir: Path | None) -> Path:
