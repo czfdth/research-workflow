@@ -1,3 +1,4 @@
+import csv
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,6 +40,12 @@ class TestLoadSource(unittest.TestCase):
         self.assertEqual(kind, "json")
         self.assertEqual(data, {"x": 1})
 
+    def test_malformed_json_raises_source_error(self):
+        path = self.root / "bad.json"
+        path.write_text('{"x": [1, 2', encoding="utf-8")
+        with self.assertRaises(SourceError):
+            load_source(path)
+
     def test_loads_yaml(self):
         path = self.root / "a.yaml"
         path.write_text("x: 1\n", encoding="utf-8")
@@ -52,6 +59,21 @@ class TestLoadSource(unittest.TestCase):
         kind, data = load_source(path)
         self.assertEqual(kind, "csv")
         self.assertEqual(data[1]["name"], "second")
+
+    def test_csv_parse_error_raises_source_error(self):
+        path = self.root / "wide.csv"
+        path.write_text("name,value\n" + "x" * 64 + ",1\n", encoding="utf-8")
+        original_limit = csv.field_size_limit()
+        csv.field_size_limit(1)
+        try:
+            # A tiny field limit makes the csv module raise its own error type.
+            with self.assertRaises(csv.Error):
+                with path.open(encoding="utf-8", newline="") as handle:
+                    list(csv.DictReader(handle))
+            with self.assertRaises(SourceError):
+                load_source(path)
+        finally:
+            csv.field_size_limit(original_limit)
 
     def test_unsupported_suffix_raises(self):
         path = self.root / "a.txt"

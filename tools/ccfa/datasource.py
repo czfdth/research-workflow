@@ -41,7 +41,10 @@ def load_source(path: Path) -> tuple[str, object]:
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".json":
-        return "json", json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return "json", json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise SourceError(f"JSON 解析失败: {exc}") from exc
     if suffix in (".yaml", ".yml"):
         if yaml is None:
             raise SourceError("PyYAML 未安装，无法读取 YAML 源")
@@ -50,8 +53,11 @@ def load_source(path: Path) -> tuple[str, object]:
         except yaml.YAMLError as exc:
             raise SourceError(f"YAML 解析失败: {exc}") from exc
     if suffix == ".csv":
-        with path.open(encoding="utf-8", newline="") as handle:
-            return "csv", list(csv.DictReader(handle))
+        try:
+            with path.open(encoding="utf-8", newline="") as handle:
+                return "csv", list(csv.DictReader(handle))
+        except csv.Error as exc:
+            raise SourceError(f"CSV 解析失败: {exc}") from exc
     raise SourceError(f"不支持的源文件类型: {path.suffix}")
 
 
