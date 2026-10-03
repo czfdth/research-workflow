@@ -42,6 +42,8 @@ REVIEW_SCHEMA = {
 DEFAULT_MODEL = "deepseek-v4-pro"
 _SAME_FAMILY_MODELS = {"deepseek-v4-pro", "deepseek-v4-flash"}
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_STDERR_LIMIT = 4000
+_STDERR_TRUNCATION_MARKER = "...[truncated]"
 
 
 def _now_iso() -> str:
@@ -54,6 +56,13 @@ def _family_judgement(model: str) -> str:
     if model.startswith(("gpt-", "claude-", "glm-")):
         return "cross-family"
     return "unknown"
+
+
+def _bounded_stderr(stderr: object) -> str:
+    text = str(stderr)
+    if len(text) <= _STDERR_LIMIT:
+        return text
+    return text[:_STDERR_LIMIT] + _STDERR_TRUNCATION_MARKER
 
 
 def _load_mode(paper_root: Path) -> str:
@@ -174,6 +183,13 @@ def _record_paths(out_dir: Path) -> tuple[Path, Path, Path, Path]:
     )
 
 
+def _resolve_out_dir(paper_root: Path, out_dir: Path | None) -> Path:
+    output_dir = Path(out_dir) if out_dir else paper_root / "reviews"
+    if not output_dir.is_absolute():
+        output_dir = paper_root / output_dir
+    return output_dir
+
+
 def _render_markdown(record: dict) -> str:
     lines = [
         "# 跨模型评审记录",
@@ -255,9 +271,7 @@ def run_review(
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root)
-    output_dir = Path(out_dir) if out_dir else paper_root / "reviews"
-    if not output_dir.is_absolute():
-        output_dir = paper_root / output_dir
+    output_dir = _resolve_out_dir(paper_root, out_dir)
     json_path, markdown_path, schema_path, last_message_path = _record_paths(
         output_dir
     )
@@ -314,11 +328,11 @@ def run_review(
             "duration_s": duration_s,
             "stage": stage,
             "exit_code": int(exit_code),
-            "stderr": stderr,
+            "stderr": _bounded_stderr(stderr),
         }
         _write_records(failure, json_path, markdown_path)
         raise ValueError(
-            f"codex exec 失败 (exit {exit_code}): {stderr[:500]}"
+            f"codex exec 失败 (exit {exit_code}): {str(stderr)[:500]}"
         )
 
     raw_last_message = ""
@@ -345,7 +359,7 @@ def run_review(
             "duration_s": duration_s,
             "stage": stage,
             "exit_code": 0,
-            "stderr": stderr,
+            "stderr": _bounded_stderr(stderr),
             "raw_last_message": raw_last_message[:10000],
         }
         _write_records(malformed, json_path, markdown_path)
@@ -363,20 +377,23 @@ def run_review(
         "duration_s": duration_s,
         "stage": stage,
         "exit_code": 0,
-        "stderr": stderr,
+        "stderr": _bounded_stderr(stderr),
     }
     _write_records(record, json_path, markdown_path)
     return record
 
 
-def _review_record_path(paper_root: Path) -> Path:
-    return Path(paper_root) / "reviews" / "cross-review.json"
+def _review_record_path(paper_root: Path, out_dir: Path | None = None) -> Path:
+    return _resolve_out_dir(Path(paper_root), out_dir) / "cross-review.json"
 
 
-def check_review(paper_root: Path) -> list[Problem]:
+def check_review(
+    paper_root: Path,
+    out_dir: Path | None = None,
+) -> list[Problem]:
     """Audit the stored review record against current inputs."""
     paper_root = Path(paper_root)
-    path = _review_record_path(paper_root)
+    path = _review_record_path(paper_root, out_dir)
     if not path.is_file():
         return [
             Problem(
@@ -487,6 +504,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = subparsers.add_parser("check", help="审计已有评审记录")
     check.add_argument("--paper-root", default=".")
+    check.add_argument("--out-dir", default="reviews")
     return parser
 
 
@@ -494,7 +512,12 @@ def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
     try:
         if args.command == "check":
-            return emit(check_review(Path(args.paper_root)))
+            return emit(
+                check_review(
+                    Path(args.paper_root),
+                    out_dir=Path(args.out_dir),
+                )
+            )
         record = run_review(
             Path(args.paper_root),
             model=args.model,

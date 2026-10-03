@@ -82,6 +82,13 @@ class CrossReviewTests(unittest.TestCase):
     def _record_path(self):
         return self.paper_root / "reviews" / "cross-review.json"
 
+    def _run_main(self, argv):
+        stdout = StringIO()
+        stderr = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(argv)
+        return code, stdout.getvalue(), stderr.getvalue()
+
 
 class TestPromptAndArgv(CrossReviewTests):
     def test_build_prompt_contains_gate_criterion_file_list_and_no_write_rule(self):
@@ -210,6 +217,67 @@ class TestRunReview(CrossReviewTests):
         )
         self.assertTrue(result["input_hashes"]["manuscript/main.tex"].startswith("sha256:"))
 
+    def test_long_stderr_is_bounded_in_complete_record(self):
+        runner = self._runner(
+            payload=self._payload(),
+            stderr="x" * 100_000,
+        )
+
+        self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertLessEqual(
+            len(record["stderr"]),
+            4000 + len("...[truncated]"),
+        )
+        self.assertTrue(record["stderr"].endswith("...[truncated]"))
+
+    def test_long_stderr_is_bounded_in_malformed_record(self):
+        runner = self._runner(
+            write_last=False,
+            stderr="x" * 100_000,
+        )
+
+        self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "malformed")
+        self.assertLessEqual(
+            len(record["stderr"]),
+            4000 + len("...[truncated]"),
+        )
+        self.assertTrue(record["stderr"].endswith("...[truncated]"))
+
+    def test_long_stderr_is_bounded_in_failure_record(self):
+        runner = self._runner(
+            code=7,
+            write_last=False,
+            stderr="x" * 100_000,
+        )
+
+        with self.assertRaisesRegex(ValueError, "codex exec"):
+            self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "failed")
+        self.assertLessEqual(
+            len(record["stderr"]),
+            4000 + len("...[truncated]"),
+        )
+        self.assertTrue(record["stderr"].endswith("...[truncated]"))
+
+    def test_short_stderr_is_not_marked_truncated(self):
+        runner = self._runner(
+            payload=self._payload(),
+            stderr="short stderr",
+        )
+
+        self._run(runner)
+
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(record["stderr"], "short stderr")
+        self.assertNotIn("...[truncated]", record["stderr"])
+
 
 class TestCheckReview(CrossReviewTests):
     def test_missing_record_is_review_missing(self):
@@ -242,6 +310,40 @@ class TestCheckReview(CrossReviewTests):
         problems = check_review(self.paper_root)
 
         self.assertEqual([problem.code for problem in problems], ["review-malformed"])
+
+    def test_check_out_dir_reads_non_default_record(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner, out_dir=Path("custom-reviews"))
+
+        code, stdout, stderr = self._run_main(
+            [
+                "cross-review",
+                "check",
+                "--paper-root",
+                str(self.paper_root),
+                "--out-dir",
+                "custom-reviews",
+            ]
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout)["problem_count"], 0)
+        self.assertEqual(stderr, "")
+
+    def test_check_default_out_dir_behavior_is_unchanged(self):
+        code, stdout, stderr = self._run_main(
+            [
+                "cross-review",
+                "check",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+
+        report = json.loads(stdout)
+        self.assertEqual(code, 1)
+        self.assertEqual(report["problems"][0]["code"], "review-missing")
+        self.assertIn("review-missing", stderr)
 
 
 class TestMainAndHelp(CrossReviewTests):
