@@ -252,6 +252,8 @@ class WorkflowEndToEnd(unittest.TestCase):
         self.assertIn("[camera-ready]", conference)
         self.assertIn("[major-revision]", journal)
         self.assertIn("[response-letter]", journal)
+        self.assertNotIn("[major-revision]", conference)
+        self.assertNotIn("[camera-ready]", journal)
         self.assertNotEqual(conference, journal)
 
     def test_memory_add_idea_and_then_check(self):
