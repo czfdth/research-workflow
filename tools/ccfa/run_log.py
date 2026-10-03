@@ -179,6 +179,8 @@ def log_metrics(log_dir: Path, run_id: str, metrics: dict) -> dict:
     if not path.is_file():
         raise ValueError(f"没有这条运行记录: {run_id}")
     record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError(f"运行记录不是对象: {run_id}")
     record["metrics"] = metrics
     save_text_atomically(
         path,
@@ -211,7 +213,7 @@ def check_runs(
     for path in sorted(log_dir.glob("*.json")):
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             problems.append(
                 Problem("run-log-malformed", str(path), None, f"运行记录不可读: {exc}")
             )

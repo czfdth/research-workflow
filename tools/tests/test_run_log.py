@@ -182,6 +182,13 @@ class TestLogMetrics(BaseCase):
         with self.assertRaises(ValueError):
             log_metrics(self.log_dir, run_id, [1, 2, 3])
 
+    def test_log_metrics_on_non_object_record_is_tool_error(self):
+        path = self.log_dir / "20260101T000000-01.json"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text("[]", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            log_metrics(self.log_dir, "20260101T000000-01", {"accuracy": 1.0})
+
 
 class TestCheckRuns(BaseCase):
     def _codes(self, problems):
@@ -260,6 +267,13 @@ class TestCheckRuns(BaseCase):
     def test_unreadable_json_does_not_crash_the_whole_check(self):
         self.log_dir.mkdir(parents=True, exist_ok=True)
         (self.log_dir / "broken.json").write_text("{not json", encoding="utf-8")
+        self._write_record("a", self._base())
+        problems, _ = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+
+    def test_non_utf8_record_does_not_crash_the_whole_check(self):
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        (self.log_dir / "broken.json").write_bytes(b"\xff\xfe\x00garbage")
         self._write_record("a", self._base())
         problems, _ = check_runs(self.log_dir)
         self.assertEqual(self._codes(problems), ["run-log-malformed"])
