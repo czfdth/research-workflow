@@ -1,14 +1,17 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from ccfa.cli import ToolEnvironmentError
 from ccfa.repro_package import (
     MANIFEST_NAME,
     build_manifest,
     create_bundle,
     load_manifest,
     sha256_of,
+    verify_bundle,
 )
 
 
@@ -124,6 +127,82 @@ class TestCreateBundle(BaseCase):
         del bad["version"]
         with self.assertRaises(ValueError):
             create_bundle(self.root, self.out, bad)
+
+
+class TestVerifyBundle(BaseCase):
+    def _bundle(self):
+        create_bundle(self.root, self.out, self.manifest())
+        return self.out
+
+    def _venv(self, path):
+        path.mkdir(parents=True, exist_ok=True)
+        return path / "python"
+
+    def _codes(self, items):
+        return sorted(i.code for i in items)
+
+    def test_a_consistent_bundle_passes_and_reports_scope(self):
+        bundle = self._bundle()
+        problems, advisories = verify_bundle(
+            bundle,
+            venv_factory=self._venv,
+            runner=lambda argv, cwd, timeout: (0, "ok\n"),
+        )
+        self.assertEqual(problems, [])
+        self.assertEqual(self._codes(advisories), ["repro-scope"])
+
+    def test_tampered_file_is_reported_as_incomplete(self):
+        bundle = self._bundle()
+        (bundle / "files" / "src" / "train.py").write_text("tampered\n", encoding="utf-8")
+        problems, _ = verify_bundle(
+            bundle, venv_factory=self._venv, runner=lambda a, c, t: (0, "")
+        )
+        self.assertEqual(self._codes(problems), ["repro-bundle-incomplete"])
+
+    def test_nonzero_rerun_is_reported(self):
+        bundle = self._bundle()
+        problems, _ = verify_bundle(
+            bundle, venv_factory=self._venv, runner=lambda a, c, t: (3, "boom\n")
+        )
+        self.assertEqual(self._codes(problems), ["repro-rerun-failed"])
+
+    def test_timeout_is_reported_as_rerun_failed(self):
+        bundle = self._bundle()
+
+        def runner(argv, cwd, timeout):
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
+
+        problems, _ = verify_bundle(bundle, venv_factory=self._venv, runner=runner)
+        self.assertEqual(self._codes(problems), ["repro-rerun-failed"])
+        self.assertIn("超时", problems[0].message)
+
+    def test_venv_creation_failure_is_a_tool_error(self):
+        bundle = self._bundle()
+
+        def broken_venv(path):
+            raise ToolEnvironmentError("找不到解释器")
+
+        with self.assertRaises(ToolEnvironmentError):
+            verify_bundle(bundle, venv_factory=broken_venv, runner=lambda a, c, t: (0, ""))
+
+    def test_command_is_passed_as_argv_without_a_shell(self):
+        bundle = self._bundle()
+        seen = {}
+
+        def runner(argv, cwd, timeout):
+            seen["argv"] = list(argv)
+            return 0, ""
+
+        verify_bundle(bundle, venv_factory=self._venv, runner=runner)
+        self.assertIsInstance(seen["argv"], list)
+        self.assertTrue(seen["argv"][0].endswith("python"))
+        self.assertNotIn("{python}", seen["argv"])
+
+    def test_verify_does_not_modify_the_bundle(self):
+        bundle = self._bundle()
+        before = (bundle / "MANIFEST.json").read_bytes()
+        verify_bundle(bundle, venv_factory=self._venv, runner=lambda a, c, t: (0, ""))
+        self.assertEqual((bundle / "MANIFEST.json").read_bytes(), before)
 
 
 if __name__ == "__main__":

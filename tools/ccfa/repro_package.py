@@ -16,11 +16,15 @@ import json
 import platform
 import shlex
 import shutil
+import subprocess
 import sys
+import tempfile
+import venv
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ccfa.cli import (
+    Problem,
     ToolEnvironmentError,
     emit,
     save_text_atomically,
@@ -29,6 +33,14 @@ from ccfa.cli import (
 
 MANIFEST_NAME = "MANIFEST.json"
 FILES_DIR_NAME = "files"
+
+SCOPE_ADVISORY_CODE = "repro-scope"
+SCOPE_ADVISORY_MESSAGE = (
+    "本次验证只在包含 bundle 声明依赖的新建 venv 中重跑命令，"
+    "不提供容器级隔离：系统库、网络以及 PATH 上已有的非 Python 工具都没有被隔离。"
+)
+
+_OUTPUT_TAIL_LIMIT = 800
 
 
 def _now_iso() -> str:
@@ -170,9 +182,241 @@ def load_manifest(bundle_dir: Path) -> dict:
     return data
 
 
+def _bundle_member(bundle_dir: Path, relpath: str) -> Path:
+    """Resolve *relpath* under ``bundle_dir/files`` and reject any escape."""
+    if Path(relpath).is_absolute():
+        raise ValueError(f"清单路径必须是相对路径: {relpath}")
+    files_dir = (Path(bundle_dir) / FILES_DIR_NAME).resolve()
+    target = (files_dir / relpath).resolve()
+    try:
+        target.relative_to(files_dir)
+    except ValueError as exc:
+        raise ValueError(f"清单路径不得逃逸 bundle: {relpath}") from exc
+    return target
+
+
+def _validate_manifest(manifest: dict) -> None:
+    items = manifest.get("files")
+    if not isinstance(items, list):
+        raise ValueError("清单 files 必须是数组")
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("清单 files 的每个条目必须是对象")
+        if not isinstance(item.get("path"), str) or not item["path"]:
+            raise ValueError("清单 files 的每个条目都必须包含字符串 path")
+        if not isinstance(item.get("sha256"), str) or not item["sha256"]:
+            raise ValueError("清单 files 的每个条目都必须包含字符串 sha256")
+
+    command = manifest.get("command")
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(argument, str) for argument in command)
+    ):
+        raise ValueError("清单 command 必须是非空字符串数组")
+
+    requirement = manifest.get("requirements")
+    if requirement is not None:
+        if not isinstance(requirement, dict):
+            raise ValueError("清单 requirements 必须是对象或 null")
+        if not isinstance(requirement.get("path"), str) or not requirement["path"]:
+            raise ValueError("清单 requirements 必须包含字符串 path")
+        if not isinstance(requirement.get("sha256"), str) or not requirement["sha256"]:
+            raise ValueError("清单 requirements 必须包含字符串 sha256")
+
+
+def _hash_problem(relpath: str, message: str) -> Problem:
+    return Problem(
+        "repro-bundle-incomplete",
+        f"{FILES_DIR_NAME}/{relpath}",
+        None,
+        message,
+    )
+
+
+def _check_bundle_bytes(bundle_dir: Path, manifest: dict) -> list[Problem]:
+    """Check every recorded hash, reporting all problems instead of the first."""
+    problems: list[Problem] = []
+    entries: list[tuple[str, str]] = [
+        (item["path"], item["sha256"]) for item in manifest["files"]
+    ]
+    requirement = manifest.get("requirements")
+    if requirement is not None:
+        entries.append((requirement["path"], requirement["sha256"]))
+
+    for relpath, recorded in entries:
+        target = _bundle_member(bundle_dir, relpath)
+        if not target.is_file():
+            problems.append(_hash_problem(relpath, f"bundle 缺少文件: {relpath}"))
+            continue
+        try:
+            actual = sha256_of(target)
+        except OSError as exc:
+            problems.append(
+                _hash_problem(relpath, f"bundle 文件不可读: {relpath}: {exc}")
+            )
+            continue
+        if actual != recorded:
+            problems.append(
+                _hash_problem(
+                    relpath,
+                    f"bundle 文件哈希不匹配: {relpath}（清单 {recorded}，实际 {actual}）",
+                )
+            )
+    return problems
+
+
+def _tail(text: str, limit: int = _OUTPUT_TAIL_LIMIT) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _default_venv_factory(path: Path) -> Path:
+    path = Path(path)
+    try:
+        venv.EnvBuilder(with_pip=True).create(str(path))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ToolEnvironmentError(f"无法创建虚拟环境 {path}: {exc}") from exc
+    if sys.platform == "win32":
+        return path / "Scripts" / "python.exe"
+    return path / "bin" / "python"
+
+
+def _default_runner(argv: list[str], cwd: Path, timeout: float) -> tuple[int, str]:
+    completed = subprocess.run(
+        list(argv),
+        cwd=str(cwd),
+        check=False,
+        shell=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+    output = f"{completed.stdout or ''}{completed.stderr or ''}"
+    return int(completed.returncode), output
+
+
+def verify_bundle(
+    bundle_dir: Path,
+    *,
+    timeout: float = 600.0,
+    keep: bool = False,
+    venv_factory=None,
+    runner=None,
+) -> tuple[list[Problem], list[Problem]]:
+    """Re-run a bundle in a fresh venv built from its declared requirements."""
+    bundle_dir = Path(bundle_dir)
+    advisories = [
+        Problem(SCOPE_ADVISORY_CODE, str(bundle_dir), None, SCOPE_ADVISORY_MESSAGE)
+    ]
+
+    manifest = load_manifest(bundle_dir)
+    _validate_manifest(manifest)
+
+    problems = _check_bundle_bytes(bundle_dir, manifest)
+    if problems:
+        return problems, advisories
+
+    venv_factory = venv_factory or _default_venv_factory
+    runner = runner or _default_runner
+    files_dir = bundle_dir / FILES_DIR_NAME
+
+    temp_dir: Path | None = None
+    try:
+        try:
+            temp_dir = Path(tempfile.mkdtemp(prefix="ccfa-verify-"))
+        except OSError as exc:
+            raise ValueError(f"无法创建临时目录: {exc}") from exc
+        if keep:
+            print(f"已保留临时环境: {temp_dir}", file=sys.stderr)
+
+        try:
+            venv_python = Path(venv_factory(temp_dir / "venv"))
+        except ToolEnvironmentError:
+            raise
+        except OSError as exc:
+            raise ToolEnvironmentError(f"无法创建虚拟环境: {exc}") from exc
+
+        install_problem: Problem | None = None
+        requirement = manifest.get("requirements")
+        if requirement is not None:
+            requirement_path = _bundle_member(bundle_dir, requirement["path"])
+            install_argv = [
+                str(venv_python),
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(requirement_path),
+            ]
+            problem_path = f"{FILES_DIR_NAME}/{requirement['path']}"
+            try:
+                code, output = runner(install_argv, files_dir, timeout)
+            except subprocess.TimeoutExpired as exc:
+                install_problem = Problem(
+                    "repro-install-failed",
+                    problem_path,
+                    None,
+                    f"安装依赖超时: {exc}",
+                )
+            except OSError as exc:
+                raise ValueError(f"无法安装依赖: {exc}") from exc
+            else:
+                if int(code) != 0:
+                    install_problem = Problem(
+                        "repro-install-failed",
+                        problem_path,
+                        None,
+                        f"安装依赖失败（退出码 {int(code)}）: {_tail(output)}",
+                    )
+
+        argv = list(manifest["command"])
+        if argv and argv[0] == "{python}":
+            argv[0] = str(venv_python)
+
+        rerun_problem: Problem | None = None
+        try:
+            code, output = runner(argv, files_dir, timeout)
+        except subprocess.TimeoutExpired as exc:
+            rerun_problem = Problem(
+                "repro-rerun-failed",
+                str(bundle_dir),
+                None,
+                f"重跑超时: {exc}",
+            )
+        except OSError as exc:
+            raise ValueError(f"无法重跑命令: {exc}") from exc
+        else:
+            if int(code) != 0:
+                rerun_problem = Problem(
+                    "repro-rerun-failed",
+                    str(bundle_dir),
+                    None,
+                    f"重跑失败（退出码 {int(code)}）: {_tail(output)}",
+                )
+
+        if rerun_problem is not None:
+            if install_problem is not None:
+                rerun_problem = rerun_problem._replace(
+                    message=f"{rerun_problem.message}；依赖安装也未成功"
+                )
+            problems.append(rerun_problem)
+        elif install_problem is not None:
+            problems.append(install_problem)
+    finally:
+        if temp_dir is not None and not keep:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return problems, advisories
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="打包可复现的结果文件与命令")
-    parser.add_argument("--paper-root", required=True)
+    parser.add_argument("--paper-root")
     sub = parser.add_subparsers(dest="subcommand", required=True)
 
     bundle = sub.add_parser("bundle", help="构建 bundle 目录与 MANIFEST.json")
@@ -183,7 +427,27 @@ def main(argv: list[str]) -> int:
     bundle.add_argument("--out", required=True)
     bundle.add_argument("--force", action="store_true")
 
+    verify = sub.add_parser("verify", help="在全新虚拟环境中重跑 bundle")
+    verify.add_argument("--bundle", required=True)
+    verify.add_argument("--timeout", type=float, default=600.0)
+    verify.add_argument("--keep", action="store_true")
+
     args = parser.parse_args(argv[1:])
+
+    if args.subcommand == "verify":
+        try:
+            problems, advisories = verify_bundle(
+                Path(args.bundle),
+                timeout=args.timeout,
+                keep=args.keep,
+            )
+        except (ValueError, ToolEnvironmentError) as exc:
+            return tool_error(str(exc))
+        return emit(problems, advisories)
+
+    if args.paper_root is None:
+        return tool_error("bundle 需要 --paper-root")
+
     try:
         try:
             command = shlex.split(args.command, posix=True)
