@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,10 @@ class TestBuildManifest(BaseCase):
         manifest = self.manifest()
         self.assertEqual(manifest["command"][0], "{python}")
         self.assertEqual(manifest["command"][2], "--config")
+
+    def test_command_without_python_placeholder_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.manifest(command=["python", "src/train.py"])
 
     def test_records_requirements_hash(self):
         manifest = self.manifest()
@@ -149,7 +154,33 @@ class TestVerifyBundle(BaseCase):
             runner=lambda argv, cwd, timeout: (0, "ok\n"),
         )
         self.assertEqual(problems, [])
-        self.assertEqual(self._codes(advisories), ["repro-scope"])
+        self.assertEqual(self._codes(advisories), ["repro-output-tail", "repro-scope"])
+
+    def test_successful_rerun_advisory_contains_output_tail(self):
+        bundle = self._bundle()
+        problems, advisories = verify_bundle(
+            bundle,
+            venv_factory=self._venv,
+            runner=lambda argv, cwd, timeout: (0, "marker-output\n"),
+        )
+        self.assertEqual(problems, [])
+        tail = next(item for item in advisories if item.code == "repro-output-tail")
+        self.assertIn("marker-output", tail.message)
+
+    def test_manifest_command_without_python_placeholder_is_rejected(self):
+        bundle = self._bundle()
+        manifest_path = bundle / MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["command"] = ["python", "src/train.py"]
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        with self.assertRaises(ValueError):
+            verify_bundle(
+                bundle,
+                venv_factory=self._venv,
+                runner=lambda argv, cwd, timeout: (0, ""),
+            )
 
     def test_tampered_file_is_reported_as_incomplete(self):
         bundle = self._bundle()
@@ -229,10 +260,34 @@ class TestVerifyBundle(BaseCase):
         self.assertNotIn("{python}", seen["argv"])
 
     def test_verify_does_not_modify_the_bundle(self):
-        bundle = self._bundle()
-        before = (bundle / "MANIFEST.json").read_bytes()
-        verify_bundle(bundle, venv_factory=self._venv, runner=lambda a, c, t: (0, ""))
-        self.assertEqual((bundle / "MANIFEST.json").read_bytes(), before)
+        writer = self.root / "writer.py"
+        writer.write_text(
+            "from pathlib import Path\n"
+            "Path('output.txt').write_text('written\\n', encoding='utf-8')\n"
+            "print('writer-output')\n",
+            encoding="utf-8",
+        )
+        manifest = build_manifest(
+            self.root,
+            ["writer.py"],
+            ["{python}", "writer.py"],
+            None,
+            "writes relative output",
+        )
+        create_bundle(self.root, self.out, manifest)
+        bundle = self.out
+        before = self._snapshot(bundle)
+        verify_bundle(bundle, venv_factory=lambda path: Path(sys.executable))
+        after = self._snapshot(bundle)
+        self.assertEqual(after, before)
+        self.assertFalse(any(bundle.rglob("output.txt")))
+
+    def _snapshot(self, root):
+        return {
+            path.relative_to(root).as_posix(): sha256_of(path)
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        }
 
 
 if __name__ == "__main__":

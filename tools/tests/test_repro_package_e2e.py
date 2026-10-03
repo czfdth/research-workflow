@@ -53,7 +53,30 @@ class TestReproPackageEndToEnd(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["problem_count"], 0)
         self.assertIn("repro-scope", self._codes(payload["advisories"]))
+        tails = [
+            item for item in payload["advisories"] if item["code"] == "repro-output-tail"
+        ]
+        self.assertEqual(len(tails), 1)
+        self.assertIn("ok", tails[0]["message"])
         self.assertIn("repro-scope", result.stderr)
+        self.assertIn("ok", result.stderr)
+
+    def test_bundle_command_without_python_placeholder_exits_two(self):
+        result = self._run(
+            "--paper-root",
+            str(self.root),
+            "bundle",
+            "--files",
+            "report.py",
+            "--command",
+            "python report.py",
+            "--out",
+            str(self.out),
+        )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("{python}", result.stderr)
 
     def test_tampered_member_is_reported_as_incomplete(self):
         bundle = self._bundle()
@@ -89,6 +112,21 @@ class TestReproPackageEndToEnd(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_manifest_command_without_python_placeholder_exits_two(self):
+        bundle = self._bundle()
+        manifest_path = bundle / "MANIFEST.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["command"] = ["python", "report.py"]
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        result = self._run("verify", "--bundle", str(bundle))
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("{python}", result.stderr)
 
 
 if __name__ == "__main__":

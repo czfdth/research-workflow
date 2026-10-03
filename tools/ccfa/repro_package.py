@@ -35,6 +35,7 @@ MANIFEST_NAME = "MANIFEST.json"
 FILES_DIR_NAME = "files"
 
 SCOPE_ADVISORY_CODE = "repro-scope"
+OUTPUT_TAIL_ADVISORY_CODE = "repro-output-tail"
 SCOPE_ADVISORY_MESSAGE = (
     "本次验证只在包含 bundle 声明依赖的新建 venv 中重跑命令，"
     "不提供容器级隔离：系统库、网络以及 PATH 上已有的非 Python 工具都没有被隔离。"
@@ -84,6 +85,12 @@ def build_manifest(
     requirements: str | None,
     notes: str | None,
 ) -> dict:
+    command = list(command)
+    if not command or command[0] != "{python}":
+        raise ValueError(
+            "bundle 命令必须以 {python} 开头；否则无法在新建 venv 中重跑并作诚实验证"
+        )
+
     entries = [_file_entry(paper_root, relpath) for relpath in files]
     entries.sort(key=lambda item: item["path"])
 
@@ -99,7 +106,7 @@ def build_manifest(
     return {
         "version": 1,
         "created_at": _now_iso(),
-        "command": list(command),
+        "command": command,
         "files": entries,
         "requirements": requirement_entry,
         "notes": notes,
@@ -214,6 +221,10 @@ def _validate_manifest(manifest: dict) -> None:
         or not all(isinstance(argument, str) for argument in command)
     ):
         raise ValueError("清单 command 必须是非空字符串数组")
+    if command[0] != "{python}":
+        raise ValueError(
+            "清单 command 必须以 {python} 开头；否则无法在新建 venv 中作诚实验证"
+        )
 
     requirement = manifest.get("requirements")
     if requirement is not None:
@@ -337,6 +348,12 @@ def verify_bundle(
             print(f"已保留临时环境: {temp_dir}", file=sys.stderr)
 
         try:
+            run_files_dir = temp_dir / FILES_DIR_NAME
+            shutil.copytree(files_dir, run_files_dir)
+        except OSError as exc:
+            raise ValueError(f"无法复制 bundle 文件到临时目录: {exc}") from exc
+
+        try:
             venv_python = Path(venv_factory(temp_dir / "venv"))
         except ToolEnvironmentError:
             raise
@@ -346,7 +363,7 @@ def verify_bundle(
         install_problem: Problem | None = None
         requirement = manifest.get("requirements")
         if requirement is not None:
-            requirement_path = _bundle_member(bundle_dir, requirement["path"])
+            requirement_path = run_files_dir / requirement["path"]
             install_argv = [
                 str(venv_python),
                 "-m",
@@ -357,7 +374,7 @@ def verify_bundle(
             ]
             problem_path = f"{FILES_DIR_NAME}/{requirement['path']}"
             try:
-                code, output = install_runner(install_argv, files_dir, timeout)
+                code, output = install_runner(install_argv, run_files_dir, timeout)
             except subprocess.TimeoutExpired as exc:
                 install_problem = Problem(
                     "repro-install-failed",
@@ -381,11 +398,10 @@ def verify_bundle(
             return problems, advisories
 
         argv = list(manifest["command"])
-        if argv and argv[0] == "{python}":
-            argv[0] = str(venv_python)
+        argv[0] = str(venv_python)
 
         try:
-            code, output = runner(argv, files_dir, timeout)
+            code, output = runner(argv, run_files_dir, timeout)
         except subprocess.TimeoutExpired as exc:
             problem = Problem(
                 "repro-rerun-failed",
@@ -405,6 +421,14 @@ def verify_bundle(
                 )
             else:
                 problem = None
+                advisories.append(
+                    Problem(
+                        OUTPUT_TAIL_ADVISORY_CODE,
+                        str(bundle_dir),
+                        None,
+                        _tail(output),
+                    )
+                )
 
         if problem is not None:
             problems.append(problem)
