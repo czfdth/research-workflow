@@ -6,6 +6,7 @@ stop notifications come back to the GUI thread through Qt signals.
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -29,6 +31,7 @@ from ccfa_core.engines.codex_exec import CodexExecEngine
 from ccfa_core.engines.openai_compat import OpenAICompatibleEngine
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from ccfa_core.settings import load_settings
+from ccfa_core.tools_bridge import ToolBridge, openai_tools
 
 ENGINE_OPENAI = "openai"
 ENGINE_CODEX = "codex"
@@ -38,12 +41,14 @@ ROLE_PREFIXES = {
     "assistant": "助手",
     "error": "错误",
     "stopped": "已停止",
+    "tool": "工具",
 }
 ROLE_COLORS = {
     "user": QColor("#1a4d8f"),
     "assistant": QColor("#1b5e20"),
     "error": QColor("#b00020"),
     "stopped": QColor("#8a6d00"),
+    "tool": QColor("#5b2c86"),
 }
 
 
@@ -74,6 +79,7 @@ class ChatPanel(QWidget):
     run_failed = Signal(str)
     run_stopped = Signal(str)
     run_finished = Signal()
+    tool_called = Signal(object)
 
     def __init__(
         self,
@@ -94,11 +100,14 @@ class ChatPanel(QWidget):
         self._cancel_event = None
         self._running = False
         self._in_flight_text = ""
+        self._tool_bridge = None
+        self.write_confirmer = self._ask_write_confirmation
         self._build_ui()
         self.reply_ready.connect(self._on_reply)
         self.run_failed.connect(self._on_failed)
         self.run_stopped.connect(self._on_stopped)
         self.run_finished.connect(self._on_run_finished)
+        self.tool_called.connect(self._on_tool_call)
         self._on_engine_changed()
 
     def _build_ui(self) -> None:
@@ -214,19 +223,51 @@ class ChatPanel(QWidget):
         if prepared is None:
             return
         engine, timeout_s = prepared
+        tools = None
+        if self._kind() == ENGINE_OPENAI and self._tool_bridge is not None:
+            if hasattr(engine, "configure_tools"):
+                engine.configure_tools(self._tool_bridge.execute)
+            tools = openai_tools()
         self._append_message("user", text)
         self._history.append(ChatMessage("user", text))
         self._in_flight_text = text
         self.input_edit.clear()
         self._set_hint("")
         self._set_running(True, getattr(engine, "name", "engine"))
-        self._start_worker(engine, list(self._history), timeout_s)
+        self._start_worker(engine, list(self._history), timeout_s, tools)
 
     def stop(self) -> None:
         """Ask the running engine to stop; the worker finishes the UI state."""
         if self._cancel_event is not None:
             self._cancel_event.set()
             self._set_hint("正在停止...")
+
+    def set_project(self, project_root) -> None:
+        """Attach the deterministic tools for one project (None clears them)."""
+        if project_root is None:
+            self._tool_bridge = None
+            return
+        self._tool_bridge = ToolBridge(
+            project_root,
+            confirm_write=lambda name, arguments: self.write_confirmer(
+                name,
+                arguments,
+            ),
+            on_call=self.tool_called.emit,
+        )
+
+    def _ask_write_confirmation(self, name: str, arguments: dict) -> bool:
+        summary = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+        if len(summary) > 500:
+            summary = summary[:500] + "...[truncated]"
+        answer = QMessageBox.question(
+            self,
+            "确认写操作",
+            f"模型请求执行写操作：{name}\n参数：{summary}\n是否允许？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def _prepare_engine(self):
         kind = self._kind()
@@ -275,21 +316,29 @@ class ChatPanel(QWidget):
             return None
         return engine, float(provider.timeout_s)
 
-    def _start_worker(self, engine, messages, timeout_s) -> None:
+    def _start_worker(self, engine, messages, timeout_s, tools=None) -> None:
         self._cancel_event = threading.Event()
         thread = threading.Thread(
             target=self._run_engine,
-            args=(engine, messages, timeout_s, self._cancel_event),
+            args=(engine, messages, timeout_s, self._cancel_event, tools),
             name="chat-engine",
             daemon=True,
         )
         self._thread = thread
         thread.start()
 
-    def _run_engine(self, engine, messages, timeout_s, cancel_event) -> None:
+    def _run_engine(
+        self,
+        engine,
+        messages,
+        timeout_s,
+        cancel_event,
+        tools=None,
+    ) -> None:
         try:
             reply = engine.send(
                 messages,
+                tools=tools,
                 timeout_s=timeout_s,
                 cancel=cancel_event,
             )
@@ -323,6 +372,12 @@ class ChatPanel(QWidget):
     def _on_stopped(self, message: str) -> None:
         self._append_message("stopped", message)
         self._set_hint(message)
+
+    def _on_tool_call(self, record: dict) -> None:
+        tool = record.get("tool", "tool")
+        risk = record.get("risk", "?")
+        outcome = record.get("outcome", "?")
+        self._append_message("tool", f"{tool} [{risk}] -> {outcome}")
 
     def _on_run_finished(self) -> None:
         self._running = False

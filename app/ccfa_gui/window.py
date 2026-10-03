@@ -162,26 +162,31 @@ class MainWindow(QMainWindow):
         else:
             self._clear_stage_panel()
             self._set_results([])
+            self.chat_panel.set_project(None)
 
     def _on_project_selected(self, _current, _previous) -> None:
         ref = self._selected_ref()
         self._set_results([])
         if ref is None:
             self._clear_stage_panel()
+            self.chat_panel.set_project(None)
             return
         if ref.error:
             self._clear_stage_panel(f"项目错误: {ref.error}")
+            self.chat_panel.set_project(None)
             return
         try:
             state = load_project(ref.dir)
         except ProjectError as exc:
             self._clear_stage_panel(f"项目错误: {exc}")
+            self.chat_panel.set_project(None)
             return
         self.stage_label.setText(f"阶段: {state.current_stage}")
         self.gate_label.setText(f"Gate: {state.gate}")
         self.deadline_label.setText(
             f"截止日期: {state.deadline if state.deadline else '无'}"
         )
+        self.chat_panel.set_project(ref.dir)
 
     def _selected_project_error(self):
         ref = self._selected_ref()

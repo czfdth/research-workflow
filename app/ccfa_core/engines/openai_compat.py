@@ -50,6 +50,8 @@ class OpenAICompatibleEngine:
         timeout_s: float = 120,
         transport: httpx.BaseTransport | None = None,
         client_factory: Callable[[], Any] | None = None,
+        tool_handler: Callable[[str, dict], dict] | None = None,
+        max_tool_rounds: int = 6,
     ):
         if not isinstance(base_url, str) or not base_url.strip():
             raise ValueError("base_url 必须是非空字符串")
@@ -66,6 +68,22 @@ class OpenAICompatibleEngine:
         self._timeout_s = validate_timeout(timeout_s, "timeout_s")
         self._transport = transport
         self._client_factory = client_factory
+        self._tool_handler = None
+        self._max_tool_rounds = 6
+        self.configure_tools(tool_handler, max_tool_rounds)
+
+    def configure_tools(
+        self,
+        handler: Callable[[str, dict], dict] | None,
+        max_rounds: int = 6,
+    ) -> None:
+        """Attach (or clear) the tool handler used by the tool-call loop."""
+        if handler is not None and not callable(handler):
+            raise ValueError("tool_handler 必须可调用或 None")
+        if type(max_rounds) is not int or max_rounds < 1:
+            raise ValueError("max_tool_rounds 必须是正整数")
+        self._tool_handler = handler
+        self._max_tool_rounds = max_rounds
 
     def send(
         self,
@@ -78,15 +96,6 @@ class OpenAICompatibleEngine:
         if is_cancelled(cancel):
             raise EngineError("请求已取消")
         key = self._api_key()
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": [
-                {"role": message.role, "content": message.content}
-                for message in messages
-            ],
-        }
-        if tools is not None:
-            payload["tools"] = tools
         effective_timeout = (
             self._timeout_s
             if timeout_s is None
@@ -97,6 +106,55 @@ class OpenAICompatibleEngine:
             "Content-Type": "application/json",
         }
         url = f"{self._base_url}/chat/completions"
+        conversation: list[dict[str, Any]] = [
+            {"role": message.role, "content": message.content}
+            for message in messages
+        ]
+        rounds = 0
+        while True:
+            payload: dict[str, Any] = {
+                "model": self._model,
+                "messages": conversation,
+            }
+            if tools is not None:
+                payload["tools"] = tools
+            body = self._request(
+                url,
+                payload,
+                headers,
+                effective_timeout,
+                key,
+                cancel,
+            )
+            reply = self._parse_reply(body)
+            if not reply.tool_calls or self._tool_handler is None:
+                return reply
+            if rounds >= self._max_tool_rounds:
+                raise EngineError(
+                    f"工具调用轮数超过上限 {self._max_tool_rounds}，已停止"
+                )
+            conversation.append(
+                {
+                    "role": "assistant",
+                    "content": reply.text or None,
+                    "tool_calls": reply.tool_calls,
+                }
+            )
+            for index, call in enumerate(reply.tool_calls):
+                conversation.append(
+                    self._tool_message(call, index, rounds)
+                )
+            rounds += 1
+
+    def _request(
+        self,
+        url: str,
+        payload: dict,
+        headers: dict,
+        timeout: float,
+        key: str,
+        cancel: Any,
+    ) -> Any:
         LOGGER.debug("POST %s model=%s", url, self._model)
         try:
             with self._make_client() as client:
@@ -104,11 +162,11 @@ class OpenAICompatibleEngine:
                     url,
                     json=payload,
                     headers=headers,
-                    timeout=effective_timeout,
+                    timeout=timeout,
                 )
         except httpx.TimeoutException as exc:
             raise EngineError(
-                f"请求超时（{effective_timeout:g}s）: {_snippet(exc, key)}"
+                f"请求超时（{timeout:g}s）: {_snippet(exc, key)}"
             ) from exc
         except httpx.HTTPError as exc:
             raise EngineError(f"请求失败: {_snippet(exc, key)}") from exc
@@ -126,7 +184,73 @@ class OpenAICompatibleEngine:
                 "响应不是合法 JSON: "
                 f"{_snippet(self._response_text(response), key)}"
             ) from exc
-        return self._parse_reply(body)
+        return body
+
+    def _tool_message(
+        self,
+        call: Any,
+        index: int,
+        round_index: int,
+    ) -> dict:
+        fallback_id = f"call_{round_index}_{index}"
+        call_id = fallback_id
+        name = None
+        arguments: Any = {}
+        problem = None
+        if not isinstance(call, dict):
+            problem = "tool_call 必须是对象"
+        else:
+            raw_id = call.get("id")
+            if isinstance(raw_id, str) and raw_id.strip():
+                call_id = raw_id
+            function = call.get("function")
+            if not isinstance(function, dict):
+                problem = "tool_call.function 必须是对象"
+            else:
+                raw_name = function.get("name")
+                if not isinstance(raw_name, str) or not raw_name.strip():
+                    problem = "tool_call.function.name 必须是非空字符串"
+                else:
+                    name = raw_name
+                    raw_arguments = function.get("arguments", "{}")
+                    if isinstance(raw_arguments, dict):
+                        arguments = raw_arguments
+                    elif isinstance(raw_arguments, str):
+                        try:
+                            arguments = (
+                                json.loads(raw_arguments)
+                                if raw_arguments.strip()
+                                else {}
+                            )
+                        except ValueError:
+                            problem = (
+                                "tool_call.function.arguments 不是合法 JSON"
+                            )
+                    else:
+                        problem = (
+                            "tool_call.function.arguments 必须是 JSON 字符串"
+                        )
+        if problem is not None:
+            result = {
+                "ok": False,
+                "error": {"code": "invalid-tool-call", "message": problem},
+            }
+        else:
+            try:
+                result = self._tool_handler(name, arguments)
+            except Exception as exc:  # tool failures must not stop the chat
+                result = {
+                    "ok": False,
+                    "error": {
+                        "code": "tool-handler-error",
+                        "message": f"{type(exc).__name__}: {exc}",
+                    },
+                }
+        return {
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": json.dumps(result, ensure_ascii=False),
+        }
 
     def _api_key(self) -> str:
         try:
