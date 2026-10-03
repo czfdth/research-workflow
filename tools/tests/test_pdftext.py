@@ -27,6 +27,14 @@ class TestFindUnresolvedMarkers(unittest.TestCase):
     def test_no_text_is_clean(self):
         self.assertEqual(find_unresolved_markers("", "p"), [])
 
+    def test_run_of_markers_is_reported_once(self):
+        problems = find_unresolved_markers("Figure ?? here", "paper.pdf")
+        self.assertEqual(len(problems), 1)
+
+    def test_marker_run_at_start_is_reported(self):
+        problems = find_unresolved_markers("??", "paper.pdf")
+        self.assertEqual(len(problems), 1)
+
 
 class TestExtractText(unittest.TestCase):
     def setUp(self):

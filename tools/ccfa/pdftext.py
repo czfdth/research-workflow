@@ -16,9 +16,11 @@ from ccfa.cli import Problem
 
 Reader = Callable[[Path], str]
 
-# A '?' counts as a marker only when both sides are boundary characters, so an
-# ordinary question in prose ("Why?") is not convicted.
-_MARKER = re.compile(r"(?<=[\s(\[])\?(?=[\s,.;)\]]|$)")
+# A run of '?' bounded by non-word characters is a marker. Requiring boundary
+# characters on both sides of each '?' missed the canonical unresolved-ref
+# marker "??", because neither question mark in the run had boundaries outside
+# both sides.
+_MARKER = re.compile(r"(?<![\w])\?+(?![\w])")
 
 
 def extract_text(pdf: Path, reader: Reader | None = None) -> str | None:
