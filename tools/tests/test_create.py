@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,36 @@ import yaml
 from ccfa.validate import validate_yaml
 from newpaper.create import create_project
 from newpaper.venues import VenueNotFound
+
+
+def _run_git(repo: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(repo),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"git {' '.join(args)} failed: {completed.stdout}{completed.stderr}"
+        )
+    return completed.stdout
+
+
+def _git_exit_code(repo: Path, *args: str) -> int:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(repo),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return completed.returncode
 
 
 class TestCreateProject(unittest.TestCase):
@@ -501,3 +532,156 @@ class TestCreateProject(unittest.TestCase):
             root = self._create(slug="retry-demo")
         self.assertTrue((root / "ccfa.yaml").is_file())
         self.assertEqual(validate_yaml(root / "ccfa.yaml"), [])
+
+    def test_new_project_is_its_own_git_repository_with_first_commit(self):
+        root = self._create()
+
+        toplevel = Path(_run_git(root, "rev-parse", "--show-toplevel").strip())
+        self.assertEqual(toplevel.resolve(), root.resolve())
+        self.assertTrue((root / ".git").is_dir())
+        self.assertTrue((root / ".gitignore").is_file())
+        log = _run_git(root, "log", "--oneline").strip()
+        self.assertTrue(log, "首次提交缺失")
+        tracked = _run_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+        self.assertIn(".gitignore", tracked)
+        self.assertIn("ccfa.yaml", tracked)
+        self.assertIn("manuscript/main.tex", tracked)
+        self.assertIn("memory/ideas.md", tracked)
+        self.assertEqual(_run_git(root, "status", "--porcelain").strip(), "")
+
+    def test_paper_gitignore_ignores_builds_but_keeps_delivery_assets(self):
+        root = self._create()
+        (root / "manuscript" / "main.pdf").write_bytes(b"%PDF-1.4 build\n")
+        (root / "manuscript" / "figs").mkdir(exist_ok=True)
+        (root / "manuscript" / "figs" / "plot.pdf").write_bytes(
+            b"%PDF-1.4 asset\n"
+        )
+        (root / "submission" / "final.pdf").write_bytes(
+            b"%PDF-1.4 delivery\n"
+        )
+
+        self.assertEqual(
+            _git_exit_code(root, "check-ignore", "manuscript/main.pdf"),
+            0,
+        )
+        self.assertNotEqual(
+            _git_exit_code(root, "check-ignore", "manuscript/figs/plot.pdf"),
+            0,
+        )
+        self.assertNotEqual(
+            _git_exit_code(root, "check-ignore", "submission/final.pdf"),
+            0,
+        )
+
+    def test_existing_repository_target_is_refused_without_touching_it(self):
+        root = self._create()
+        marker = root / "manuscript" / "keep-me.txt"
+        marker.write_text("user content", encoding="utf-8")
+
+        with self.assertRaises(FileExistsError):
+            self._create()
+
+        self.assertTrue(marker.exists())
+        self.assertTrue((root / ".git").is_dir())
+
+    def test_git_unavailable_cleans_target_and_papers_root(self):
+        fresh_root = self.tmp / "gitless-papers"
+
+        def missing_git(args, cwd):
+            raise FileNotFoundError("git")
+
+        with self.assertRaises(OSError):
+            create_project(
+                papers_root=fresh_root,
+                slug="gitless",
+                venue="NeurIPS",
+                year="2027",
+                mode="conference",
+                title="Gitless",
+                git_runner=missing_git,
+            )
+
+        self.assertFalse((fresh_root / "gitless").exists())
+        self.assertFalse(fresh_root.exists())
+
+    def test_git_nonzero_exit_cleans_target(self):
+        def failing_git(args, cwd):
+            return 128, "fatal: init failed"
+
+        with self.assertRaises(ValueError) as caught:
+            create_project(
+                papers_root=self.papers,
+                slug="init-failure",
+                venue="NeurIPS",
+                year="2027",
+                mode="conference",
+                title="Init Failure",
+                git_runner=failing_git,
+            )
+
+        self.assertIn("git init", str(caught.exception))
+        self.assertFalse((self.papers / "init-failure").exists())
+
+    def test_missing_identity_uses_command_scoped_defaults(self):
+        calls = []
+
+        def runner(args, cwd):
+            calls.append(list(args))
+            if args[:1] == ["config"]:
+                return 1, ""
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return 0, "deadbeef\n"
+            return 0, ""
+
+        root = create_project(
+            papers_root=self.papers,
+            slug="identity-fallback",
+            venue="NeurIPS",
+            year="2027",
+            mode="conference",
+            title="Identity Fallback",
+            git_runner=runner,
+        )
+
+        self.assertTrue(root.is_dir())
+        commits = [args for args in calls if "commit" in args]
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(
+            commits[0][:5],
+            [
+                "-c",
+                "user.name=Paper Workbench",
+                "-c",
+                "user.email=paper@localhost",
+                "commit",
+            ],
+        )
+        self.assertFalse(any("--global" in args for args in calls))
+
+    def test_existing_identity_is_used_without_overrides(self):
+        calls = []
+
+        def runner(args, cwd):
+            calls.append(list(args))
+            if args[:2] == ["config", "user.name"]:
+                return 0, "Alice\n"
+            if args[:2] == ["config", "user.email"]:
+                return 0, "alice@example.test\n"
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return 0, "cafe01\n"
+            return 0, ""
+
+        create_project(
+            papers_root=self.papers,
+            slug="identity-existing",
+            venue="NeurIPS",
+            year="2027",
+            mode="conference",
+            title="Identity Existing",
+            git_runner=runner,
+        )
+
+        commits = [args for args in calls if "commit" in args]
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(commits[0][:1], ["commit"])
+        self.assertNotIn("-c", commits[0])

@@ -3,6 +3,10 @@
 This tool stores nothing of its own: git tags are the only version truth.
 Tags are annotated so the message can record whether the working tree was
 clean when the snapshot was taken, plus an optional human label.
+
+Every operation first resolves ``git rev-parse --show-toplevel`` and refuses
+to run when it is not the paper directory itself: a paper nested inside a
+template repository must never tag the parent repository (E61).
 """
 
 from __future__ import annotations
@@ -51,6 +55,42 @@ def git_output(args: list[str], repo: Path, runner: GitRunner | None = None) -> 
     return output
 
 
+def assert_own_repository(
+    repo: Path,
+    runner: GitRunner | None = None,
+) -> Path:
+    """Return *repo* only when git resolves its toplevel to that same path."""
+    repo = Path(repo)
+    output = git_output(["rev-parse", "--show-toplevel"], repo, runner=runner)
+    toplevel = output.strip()
+    if not toplevel:
+        raise ValueError("git rev-parse --show-toplevel 未返回仓库路径")
+    try:
+        same_repository = Path(toplevel).resolve() == repo.resolve()
+    except OSError as exc:
+        raise ValueError(f"无法解析论文目录与 git toplevel: {exc}") from exc
+    if not same_repository:
+        raise ValueError(
+            "论文目录不是独立 git 仓库，拒绝在父仓库上打 tag: "
+            f"{repo}（git toplevel: {toplevel}）"
+        )
+    return repo
+    output = git_output(["rev-parse", "--show-toplevel"], repo, runner=runner)
+    toplevel = output.strip()
+    if not toplevel:
+        raise ValueError("git rev-parse --show-toplevel 未返回仓库路径")
+    try:
+        same_repository = Path(toplevel).resolve() == repo.resolve()
+    except OSError as exc:
+        raise ValueError(f"无法解析论文目录与 git toplevel: {exc}") from exc
+    if not same_repository:
+        raise ValueError(
+            "论文目录不是独立 git 仓库，拒绝在父仓库上打 tag: "
+            f"{repo}（git toplevel: {toplevel}）"
+        )
+    return repo
+
+
 def _version_number(tag: str) -> int:
     suffix = tag[len(TAG_PREFIX) :]
     try:
@@ -63,6 +103,7 @@ def _version_number(tag: str) -> int:
 
 def list_versions(repo: Path, runner: GitRunner | None = None) -> list[str]:
     """Return existing ``paper-v<N>`` tags in numeric order."""
+    repo = assert_own_repository(repo, runner=runner)
     output = git_output(["tag", "-l", TAG_GLOB], repo, runner=runner)
     tags = [line.strip() for line in output.splitlines() if line.strip()]
     return sorted(tags, key=_version_number)
@@ -101,7 +142,7 @@ def snapshot(
     runner: GitRunner | None = None,
 ) -> tuple[str, str]:
     """Tag the current commit as ``paper-v<N>`` and return ``(tag, commit)``."""
-    repo = Path(repo)
+    repo = assert_own_repository(repo, runner=runner)
     dirty = working_tree_dirty(repo, runner=runner)
     if dirty and not allow_dirty:
         raise ValueError(
@@ -126,6 +167,7 @@ def diff_versions(
     runner: GitRunner | None = None,
 ) -> str:
     """Run ``git diff`` between two versions; differences are the product."""
+    repo = assert_own_repository(repo, runner=runner)
     args = ["diff", a, b]
     if paths:
         args.append("--")

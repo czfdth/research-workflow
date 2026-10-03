@@ -26,15 +26,27 @@ from ccfa.research_version import (
 class FakeGit:
     """Dispatch git argv to canned output, recording every call."""
 
-    def __init__(self, tags=(), dirty=False, commit="abc123", diff="fake diff"):
+    def __init__(
+        self,
+        tags=(),
+        dirty=False,
+        commit="abc123",
+        diff="fake diff",
+        toplevel=None,
+    ):
         self.tags = list(tags)
         self.dirty = dirty
         self.commit = commit
         self.diff = diff
+        self.toplevel = toplevel
         self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str], repo: Path) -> tuple[int, str]:
         self.calls.append(list(args))
+        if args == ["rev-parse", "--show-toplevel"]:
+            if self.toplevel is None:
+                return 0, str(repo)
+            return 0, self.toplevel
         if args[:2] == ["tag", "-l"]:
             return 0, "\n".join(self.tags)
         if args == ["status", "--porcelain"]:
@@ -183,6 +195,90 @@ class TestGitOutput(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             git_output(["status", "--porcelain"], Path("repo"), runner=missing_git)
+
+
+class TestOwnRepositoryGuard(unittest.TestCase):
+    """Every version operation must resolve to the paper's own repository."""
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.paper = Path(self._temporary.name) / "papers" / "demo"
+        self.paper.mkdir(parents=True)
+        self.parent = self.paper.parent
+
+    def test_list_refuses_a_parent_repository(self):
+        runner = FakeGit(toplevel=str(self.parent))
+
+        with self.assertRaises(ValueError) as caught:
+            list_versions(self.paper, runner=runner)
+
+        message = str(caught.exception)
+        self.assertIn("论文目录不是独立 git 仓库", message)
+        self.assertIn("拒绝在父仓库上打 tag", message)
+
+    def test_snapshot_refuses_a_parent_repository_without_tagging(self):
+        runner = FakeGit(toplevel=str(self.parent))
+
+        with self.assertRaises(ValueError):
+            snapshot(self.paper, runner=runner)
+
+        self.assertEqual(runner.tag_calls(), [])
+
+    def test_diff_refuses_a_parent_repository(self):
+        runner = FakeGit(toplevel=str(self.parent))
+
+        with self.assertRaises(ValueError):
+            diff_versions(self.paper, "paper-v1", "paper-v2", runner=runner)
+
+    def test_main_parent_repository_exits_two_with_tool_message(self):
+        runner = FakeGit(toplevel=str(self.parent))
+        err = io.StringIO()
+
+        with redirect_stderr(err):
+            code = main(
+                [
+                    "research_version.py",
+                    "--repo",
+                    str(self.paper),
+                    "list",
+                ],
+                runner=runner,
+            )
+
+        self.assertEqual(code, 2)
+        self.assertIn("论文目录不是独立 git 仓库", err.getvalue())
+
+    def test_help_exits_zero_without_touching_git(self):
+        runner = FakeGit()
+        out = io.StringIO()
+
+        with redirect_stdout(out):
+            with self.assertRaises(SystemExit) as caught:
+                main(["research_version.py", "--help"], runner=runner)
+
+        self.assertEqual(caught.exception.code, 0)
+        self.assertEqual(runner.calls, [])
+
+    def test_real_nested_directory_inside_parent_repo_is_refused(self):
+        parent = Path(self._temporary.name) / "template-repo"
+        nested = parent / "papers" / "demo"
+        nested.mkdir(parents=True)
+        _run_git(parent, "init", "-q")
+        err = io.StringIO()
+
+        with redirect_stderr(err):
+            code = main(
+                [
+                    "research_version.py",
+                    "--repo",
+                    str(nested),
+                    "list",
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertIn("论文目录不是独立 git 仓库", err.getvalue())
 
 
 def _run_git(repo: Path, *args: str) -> None:

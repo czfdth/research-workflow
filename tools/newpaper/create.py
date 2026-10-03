@@ -6,8 +6,10 @@ import argparse
 import datetime as dt
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -73,9 +75,106 @@ SEED_FILES = {
     "data/provenance.json": '{\n  "version": 1,\n  "files": {}\n}\n',
 }
 
+GitRunner = Callable[[list[str], Path], "tuple[int, str]"]
+
+INITIAL_COMMIT_MESSAGE = "chore: initialize paper repository"
+DEFAULT_GIT_NAME = "Paper Workbench"
+DEFAULT_GIT_EMAIL = "paper@localhost"
+
+# Paper-level ignore rules. Build PDFs next to the manuscript stay out of the
+# repository; delivery PDFs under submission/ and figure assets under
+# manuscript/figs/ are source material and must be tracked.
+PAPER_GITIGNORE = """\
+# TeX build products (regenerable)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.xdv
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Generated PDFs are build output; keep delivery and figure PDFs tracked.
+*.pdf
+!submission/**/*.pdf
+!manuscript/figs/**/*.pdf
+"""
+
 
 class InvalidSlugError(ValueError):
     """Raised when a slug is not safe to use as a directory name."""
+
+
+def _default_git_runner(args: list[str], cwd: Path) -> tuple[int, str]:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return completed.returncode, (completed.stdout or "") + (completed.stderr or "")
+
+
+def _git_or_error(
+    args: list[str],
+    cwd: Path,
+    runner: GitRunner,
+) -> str:
+    code, output = runner(list(args), Path(cwd))
+    if code != 0:
+        detail = output.strip() or f"git 退出码 {code}"
+        raise ValueError(f"git {' '.join(args)} 失败: {detail}")
+    return output
+
+
+def _identity_overrides(runner: GitRunner, target: Path) -> list[str]:
+    """Return command-scoped ``-c`` identity flags when git has none.
+
+    Global configuration is never written; the fallback lives only in the
+    single ``git commit`` invocation.
+    """
+    overrides: list[str] = []
+    name_code, name = runner(["config", "user.name"], target)
+    if name_code != 0 or not name.strip():
+        overrides.extend(["-c", f"user.name={DEFAULT_GIT_NAME}"])
+    email_code, email = runner(["config", "user.email"], target)
+    if email_code != 0 or not email.strip():
+        overrides.extend(["-c", f"user.email={DEFAULT_GIT_EMAIL}"])
+    return overrides
+
+
+def init_paper_repository(
+    target: Path,
+    *,
+    runner: GitRunner | None = None,
+) -> str:
+    """Make *target* its own git repository with one initial commit.
+
+    Returns the first commit hash. Any failure propagates so ``create_project``
+    can remove the half-scaffolded directory.
+    """
+    run = runner or _default_git_runner
+    target = Path(target)
+    _git_or_error(["init", "-q"], target, run)
+    (target / ".gitignore").write_text(PAPER_GITIGNORE, encoding="utf-8")
+    _git_or_error(["add", "-A"], target, run)
+    overrides = _identity_overrides(run, target)
+    _git_or_error(
+        [*overrides, "commit", "-q", "-m", INITIAL_COMMIT_MESSAGE],
+        target,
+        run,
+    )
+    return _git_or_error(["rev-parse", "HEAD"], target, run).strip()
 
 
 def validate_slug(slug: str) -> str:
@@ -127,6 +226,7 @@ def create_project(
     mode: str,
     title: str,
     deadline: str | None = None,
+    git_runner: GitRunner | None = None,
 ) -> Path:
     slug = validate_slug(slug)
     deadline_date = parse_deadline(deadline)
@@ -193,6 +293,8 @@ def create_project(
 
         for rel, content in SEED_FILES.items():
             (target / rel).write_text(content, encoding="utf-8")
+
+        init_paper_repository(target, runner=git_runner)
     except BaseException:
         # A failed scaffold must not block a retry with leftover files.
         if created_target:
