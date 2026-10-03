@@ -1,6 +1,6 @@
 # Deadline Check Prompt
 
-按投稿目标日检查 T-14/T-7/T-3 到期与 gate 缺口。
+按投稿目标日检查 T-90/T-60/T-30/T-21/T-14/T-7/T-3/T-1 到期与 gate 缺口。
 
 ## 命令
 
@@ -21,6 +21,7 @@ $env:PYTHONPATH = "$ROOT/tools"
 - `missing_gates`：目标前的 gate 缺口。
 - `problems`：`deadline-invalid`, `stage-unknown`, `deadline-passed` 等。
 - `advisory`：`sequential` 模式下的下一建议动作。
+- `advisories`：跳过项列表，例如 `t30-scan-skipped`；有内容时应报告，不能当成通过。
 
 ## 通知规则
 

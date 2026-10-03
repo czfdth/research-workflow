@@ -11,7 +11,7 @@
 | 模板 | 用途 | 主要输出字段 |
 | --- | --- | --- |
 | `weekly-watch.md` | 每周文献增量监控 | `baseline`, `new`, `seen_total`, `skipped` |
-| `deadline-check.md` | T-14/T-7/T-3 倒排检查 | `mode`, `deadline`, `due`, `missing_gates`, `problems` |
+| `deadline-check.md` | 完整 8 节点倒排检查 | `mode`, `deadline`, `due`, `missing_gates`, `problems`, `advisory`, `advisories` |
 | `stage-advance.md` | 手动读取状态并给出下一阶段建议 | `current`, `gate`, `updated_at` |
 | `experiment-queue.md` | 顺序运行实验队列 | `runs[].name`, `runs[].attempts`, `runs[].status`, `stopped` |
 

@@ -157,6 +157,43 @@ class AutomationDocumentationTests(unittest.TestCase):
                         "target_venue": {
                             "name": "Smoke",
                             "mode": "conference",
+                            "deadline": "2027-05-01",
+                        },
+                        "stage": {"current": "idea"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = milestones_main(
+                    [
+                        "milestones",
+                        "due",
+                        "--paper-root",
+                        str(root),
+                        "--today",
+                        "2027-04-05",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        countdown_report = json.loads(stdout.getvalue())
+        for field in ("due", "problems", "advisories"):
+            self.assertIn(field, countdown_report)
+            self.assertIn(f"`{field}`", text)
+        self.assertEqual(_declared_fields(text), set(countdown_report))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "ccfa.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "target_venue": {
+                            "name": "Smoke",
+                            "mode": "conference",
                             "deadline": None,
                         },
                         "stage": {"current": "idea"},
@@ -175,16 +212,16 @@ class AutomationDocumentationTests(unittest.TestCase):
                         "--paper-root",
                         str(root),
                         "--today",
-                        "2026-10-03",
+                        "2027-04-10",
                     ]
                 )
         self.assertEqual(code, 0)
         self.assertEqual(stderr.getvalue(), "")
-        report = json.loads(stdout.getvalue())
-        for field in ("due", "problems"):
-            self.assertIn(field, report)
-            self.assertIn(f"`{field}`", text)
-        self.assertEqual(_declared_fields(text), set(report))
+        sequential_report = json.loads(stdout.getvalue())
+        self.assertEqual(
+            _declared_fields(text) - {"advisories"},
+            set(sequential_report),
+        )
 
     def test_weekly_watch_fields_match_real_scan_output(self):
         text = (AUTOMATION_DIR / "weekly-watch.md").read_text(encoding="utf-8")
