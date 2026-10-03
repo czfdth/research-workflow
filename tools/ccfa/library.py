@@ -388,8 +388,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "检索 key/title/authors/year/venue/abstract/notes；"
             "索引不含 PDF 全文。新鲜度只对 refs.bib 与 notes 负责；"
-            "path 是结果字段、不参与检索，按 papers/<key>.pdf "
-            "当前是否存在在查询期解析。"
+            "path 是结果字段、不参与检索，其取值在查询期按 "
+            "papers/<key>.pdf 当前是否存在解析。"
         ),
     )
     search.add_argument("query")

@@ -540,6 +540,8 @@ class TestMain(LibraryTests):
         self.assertIn("不含 PDF 全文", normalized)
         self.assertIn("新鲜度只对 refs.bib 与 notes 负责", normalized)
         self.assertIn("path 是结果字段、不参与检索", normalized)
+        self.assertIn("key/title/authors/year/venue/abstract/notes；", normalized)
+        self.assertNotIn("notes/path", normalized)
 
 
     def test_check_command_reports_problems_with_exit_one(self):
