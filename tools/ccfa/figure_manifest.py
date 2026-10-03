@@ -79,7 +79,12 @@ def check_manifest(
         else:
             declared_raw = str(item.get("bytes_format", "")).lower().lstrip(".")
             actual = sniff(figure)
-            if declared_raw and actual is not None and actual != "." + declared_raw:
+            if (
+                declared_raw
+                and actual is not None
+                and actual != "." + declared_raw
+                and not (actual == ".jpg" and declared_raw in ("jpg", "jpeg"))
+            ):
                 problems.append(
                     Problem(
                         "figure-manifest-format",

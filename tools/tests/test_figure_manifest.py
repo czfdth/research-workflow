@@ -79,6 +79,16 @@ class TestCheckManifest(unittest.TestCase):
         problems, _ = check_manifest([item], self.root)
         self.assertIn("figure-manifest-format", [p.code for p in problems])
 
+    def test_jpeg_alias_is_not_a_format_mismatch(self):
+        (self.figures / "plot.jpeg").write_bytes(JPEG)
+        item = self._item(
+            file="figures/plot.jpeg",
+            bytes_format="jpeg",
+            generator_hash=self._write_generator(),
+        )
+        problems, _ = check_manifest([item], self.root)
+        self.assertEqual(problems, [])
+
     def test_generator_hash_mismatch_is_reported(self):
         (self.figures / "plot.png").write_bytes(PNG)
         self._write_generator()
