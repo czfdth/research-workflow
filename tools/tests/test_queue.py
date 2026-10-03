@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -326,6 +327,35 @@ class TestDefaultRunner(QueueTests):
         self.assertFalse(run.call_args.kwargs["shell"])
         self.assertEqual(run.call_args.kwargs["cwd"], str(self.root))
 
+    def test_default_runner_forwards_partial_output_on_timeout(self):
+        from ccfa.queue import _default_runner
+
+        timeout = subprocess.TimeoutExpired(
+            ["cmd"],
+            1,
+            output="PARTIAL_STDOUT",
+            stderr="PARTIAL_STDERR",
+        )
+        stderr = StringIO()
+        with mock.patch("ccfa.queue.subprocess.run", side_effect=timeout):
+            with redirect_stderr(stderr), self.assertRaises(subprocess.TimeoutExpired):
+                _default_runner(["cmd"], self.root, 1)
+
+        self.assertIn("PARTIAL_STDOUT", stderr.getvalue())
+        self.assertIn("PARTIAL_STDERR", stderr.getvalue())
+
+
+class TestRunLogIntegration(QueueTests):
+    def test_each_attempt_records_resolved_cwd_metric(self):
+        sub = self.root / "sub"
+        sub.mkdir()
+        self._write_queue([self._item(cwd="sub")])
+
+        self._run(RecordingRunner([0]))
+
+        record = self._records()[0]
+        self.assertEqual(record["metrics"]["cwd"], str(sub.resolve()))
+
 
 class TestMain(QueueTests):
     def test_missing_cwd_still_records_failed_then_exits_two(self):
@@ -352,11 +382,47 @@ class TestMain(QueueTests):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["status"], "failed")
 
+    def test_real_child_stdout_is_forwarded_to_stderr_not_stdout(self):
+        self._write_queue(
+            [
+                self._item(
+                    command=[
+                        sys.executable,
+                        "-c",
+                        "print('CHILD_STDOUT_MARKER')",
+                    ]
+                )
+            ]
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(
+                [
+                    "queue",
+                    "run",
+                    "--queue",
+                    str(self.queue_path),
+                    "--log-dir",
+                    str(self.log_dir),
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        parsed = json.loads(stdout.getvalue())
+        self.assertEqual(parsed["runs"][0]["status"], "complete")
+        self.assertIn("CHILD_STDOUT_MARKER", stderr.getvalue())
+        self.assertNotIn("CHILD_STDOUT_MARKER", stdout.getvalue())
+
     def test_help_and_docstring_state_missing_cwd_behavior(self):
         import ccfa.queue as queue_module
 
         self.assertIn("cwd 不存在", queue_module.__doc__)
         self.assertIn("cwd 不存在", build_parser().format_help())
+        self.assertIn("stdout 只输出 JSON", queue_module.__doc__)
+        self.assertIn("子进程 stdout/stderr", queue_module.__doc__)
+        self.assertIn("转发到 stderr", queue_module.__doc__)
 
     def test_main_success_zero_failure_one_and_invalid_two(self):
         self._write_queue([self._item()])

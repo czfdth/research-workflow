@@ -458,7 +458,30 @@ def check_review(
         )
     else:
         for relative, expected in hashes.items():
-            input_path = paper_root / relative
+            if not isinstance(relative, str) or not relative:
+                problems.append(
+                    Problem(
+                        "review-record-invalid",
+                        str(path),
+                        None,
+                        f"评审输入路径非法: {relative!r}",
+                    )
+                )
+                continue
+            root = paper_root.resolve()
+            input_path = (paper_root / relative).resolve()
+            try:
+                input_path.relative_to(root)
+            except ValueError:
+                problems.append(
+                    Problem(
+                        "review-record-invalid",
+                        str(path),
+                        None,
+                        f"评审输入路径逃出 paper_root: {relative!r}",
+                    )
+                )
+                continue
             try:
                 actual = _sha256(input_path)
             except OSError:

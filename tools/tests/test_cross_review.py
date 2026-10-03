@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -332,6 +333,25 @@ class TestCheckReview(CrossReviewTests):
         problems = check_review(self.paper_root)
 
         self.assertEqual([problem.code for problem in problems], ["review-malformed"])
+
+    def test_input_hash_path_escape_is_record_invalid(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        outside = self.paper_root.parent / "outside.txt"
+        outside.write_text("outside", encoding="utf-8")
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["input_hashes"] = {
+            "../outside.txt": "sha256:"
+            + hashlib.sha256(outside.read_bytes()).hexdigest()
+        }
+        self._record_path().write_text(
+            json.dumps(record),
+            encoding="utf-8",
+        )
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual([problem.code for problem in problems], ["review-record-invalid"])
 
     def test_check_out_dir_reads_non_default_record(self):
         runner = self._runner(payload=self._payload())

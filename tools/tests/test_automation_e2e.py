@@ -186,6 +186,39 @@ class AutomationDocumentationTests(unittest.TestCase):
             self.assertIn(f"`{field}`", text)
         self.assertEqual(_declared_fields(text), set(report))
 
+    def test_weekly_watch_fields_match_real_scan_output(self):
+        text = (AUTOMATION_DIR / "weekly-watch.md").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            result = scan(
+                ["https://feed"],
+                Path(temporary) / "watch-state.json",
+                fetcher=lambda _url: ATOM_ONE,
+            )
+
+        self.assertEqual(_declared_fields(text), set(result))
+
+    def test_experiment_queue_fields_match_real_output(self):
+        text = (AUTOMATION_DIR / "experiment-queue.md").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            queue_path = root / "queue.json"
+            queue_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "queue": [{"name": "ok", "command": ["python", "ok.py"]}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = run_queue(
+                queue_path,
+                log_dir=root / "logs",
+                runner=lambda argv, cwd, timeout_s: 0,
+            )
+
+        self.assertEqual(_declared_fields(text), set(result))
+
 
 class AutomationEndToEndTests(unittest.TestCase):
     def setUp(self):

@@ -2,11 +2,16 @@
 
 The injected runner contract is ``runner(argv, cwd, timeout_s) -> int``.
 It may raise ``subprocess.TimeoutExpired`` or ``TimeoutError``. The default
-runner uses ``subprocess.run(..., shell=False)`` and inherits stdio.
+runner uses ``subprocess.run(..., shell=False)``, captures 子进程 stdout/stderr,
+and forwards both 转发到 stderr so queue stdout 只输出 JSON.
 
 Timeouts retry only when the manifest explicitly sets
 ``retry_on_timeout: true``. A cwd 不存在 is a runtime error: that attempt still
 gets a failed run-log record, then the queue raises ValueError and exits 2.
+
+For automation consumption, ``queue run`` stdout 只输出 JSON. Child output
+remains visible without corrupting the machine-readable result. This differs
+deliberately from ``run-log run``, which passes stdio through.
 """
 
 from __future__ import annotations
@@ -111,13 +116,33 @@ def load_queue(path: Path) -> list[dict]:
 
 
 def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
-    completed = subprocess.run(
-        list(argv),
-        cwd=str(cwd),
-        check=False,
-        shell=False,
-        timeout=timeout_s,
-    )
+    def forward(value: object) -> None:
+        if not value:
+            return
+        if isinstance(value, bytes):
+            text = value.decode("utf-8", errors="replace")
+        else:
+            text = str(value)
+        sys.stderr.write(text)
+
+    try:
+        completed = subprocess.run(
+            list(argv),
+            cwd=str(cwd),
+            check=False,
+            shell=False,
+            timeout=timeout_s,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired as exc:
+        forward(exc.stdout)
+        forward(exc.stderr)
+        raise
+    forward(completed.stdout)
+    forward(completed.stderr)
     return int(completed.returncode)
 
 
@@ -126,7 +151,8 @@ def _item_cwd(queue_root: Path, item: dict) -> Path:
     if not cwd:
         return queue_root
     path = Path(cwd)
-    return path if path.is_absolute() else queue_root / path
+    resolved = path if path.is_absolute() else queue_root / path
+    return resolved.resolve()
 
 
 def run_queue(
@@ -190,12 +216,12 @@ def run_queue(
                 runner=attempt_runner,
             )
             exit_code = record["exit_code"]
+            metrics = {"cwd": str(cwd)}
             if timed_out:
-                log_metrics(
-                    log_dir,
-                    run_id,
-                    {"timeout": True, "timeout_s": item["timeout_s"]},
+                metrics.update(
+                    {"timeout": True, "timeout_s": item["timeout_s"]}
                 )
+            log_metrics(log_dir, run_id, metrics)
             if exit_code == 0:
                 status = "complete"
                 break
@@ -231,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "顺序运行实验队列。超时仅在 retry_on_timeout=true 时重试；"
             "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
+            "stdout 只输出结果 JSON；子进程 stdout/stderr 转发到 stderr。"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
