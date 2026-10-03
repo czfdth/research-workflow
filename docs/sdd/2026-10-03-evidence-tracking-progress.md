@@ -1717,3 +1717,18 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 2. 模板库：ACL 上游缺 `acl_natbib.bst`/`custom.bib`（测试诚实钉住）；期刊 venue 无真编译证据（NeurIPS 会议模板已真编译）。
 3. 契约小项：`history[].at` 与 `stage.updated_at` 不校验日期；`milestones stage` 不校验 gate 与 stages.py 一致；T-14/T-7 共用同一 gate；`today == deadline` 无提示；problem 无行号（milestones）；checklist 换行未钉死文件规范；`run_log` cwd 断言价值有限；真实 `codex exec` 冒烟未被终审复跑。
 4. 工程化：无远端仓库、无 CI、无 LICENSE（需用户决定私有/开源与托管位置）；venv 依赖清单已补齐并验证，但 `tools/.venv` 本身仍不入库（符合预期）。
+
+## 论文工作台（workbench P0）启动（2026-10-04）
+
+- 用户确认方向后，按建议开工"论文工作台"：**不做通用智能体平台**，做这套确定性工作流的桌面门面；智能体引擎（P1）与自定义 API 工具注册表（P2）后续接入。
+- 计划：`docs/plans/2026-10-04-workbench-p0.md`（提交 `a5bedf0`）。技术选型实测依据：Node 24/npm 11 在（可选 Electron），Rust/cargo 与 .NET 不在（排除 Tauri/WPF 首版），Codex CLI 0.160 可用；选 **PySide6 + 独立 app venv**（单语言、直接 import 工具核心）。
+
+### 裁定 E57–E59
+
+- **E57 密钥只进凭据管理器**：`settings.json` 只存 `key_name` 引用；`KeyringSecretStore` 是唯一实现；`NoKeyringError` 上抛 `SecretStoreUnavailable`，**不降级明文**。理由：桌面软件一旦把 key 写进项目文件，就会随备份/同步外泄；这与本仓库"显式点名来源、不得静默"的底线同源。代价：无凭据后端的环境必须显式配置 keyring 后端。
+- **E58 核心零 Qt、壳可替换**：`ccfa_core` 不 import PySide6；GUI 只做编排与展示；核心测试不依赖 Qt。理由：未来若换 Electron/Tauri 壳或做无头 CLI，核心不动；也让核心可以用现有 unittest 纪律测。代价：GUI 需要通过 core 的接口拿数据，短期多一层接口。
+- **E59 GUI 验收用真实渲染**：offscreen 实例化 + `grab()` 出 PNG + 非空像素阈值 + 关键控件可见性/尺寸断言；截图字节写进报告。理由："能 import、能构造"证明不了界面存在；与前端/Three.js 场景同一原则。
+
+## workbench P0 Task 1 已派
+
+- 实施者 `Confucius`：`app/ccfa_core`（projects/settings/secrets/checks，零 Qt）+ `app/tests`（约 20 条）+ `app/requirements.txt`（PySide6/keyring 实测钉死）+ `app/README.md` + `.gitignore`；密钥红线（settings 不含 key、keyring 不可用不降级）与两条判别力实测；tools 侧 819 必须不动。commit `feat: add the workbench core for projects, settings and checks`。
