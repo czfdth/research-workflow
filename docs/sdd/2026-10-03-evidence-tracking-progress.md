@@ -1684,3 +1684,20 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - Important：`set-stage` 只拒绝"等于当前"，**允许向后移动且写成 `kind: advance`**（实测 `writing → results-ready` 退 0），绕开 `rollback` 的 `void_artifacts` 审计并谎报方向——属"审计轨迹不实"（规则 7 同类）。
 - Minor：history 校验不查方向/阶段合法性/日期（`writing → results-ready, kind=advance` 返回 `[]`）。
 - 修复已派回 `Kierkegaard`：`set-stage` 严格要求 `target_index > current_index`；`history_problems` 加方向与合法性校验；commit `fix: keep stage advances strictly forward`。
+
+## 商品化修复轮与验证结论（全部关闭）
+
+| 任务 | 评审发现（Request Changes / Needs fixes） | 修复 commit | 复验 |
+| --- | --- | --- | --- |
+| P0 依赖清单 | `tools/.venv` 是 gitignored 生成路径，README 反引号引用导致 fresh clone 的 docs 测试失败 | `c3f2a52`（显式豁免前缀 + 3 条对抗用例） | `Kierkegaard`：ADDRESSED（fresh archive 14 例 OK；豁免未放宽——注入不存在路径仍失败） |
+| Task 4 manifest | 4 条类型/路径绕过（非字符串 hash、非布尔 manual_edit、越界 source_data/run id） | `e73f00d` | `Confucius`：ADDRESSED；但复评另发现 3 条同类残留 → `f4a61f5`（generator/file 包含性、无 secondary code） |
+| Task 4 硬化 | `generator`/`file` 可越出 paper_root（traceability 漏洞）+ 误导性 secondary problem | `f4a61f5` | `Cicero the 2nd`：ADDRESSED（越界且 hash/格式匹配也不放行；判别力两处 `0 != 1`） |
+| Task 2 state | `set-stage` 允许向后移动并写成 `kind: advance`（绕开 rollback 审计） | `b864e2d` | `Cicero the 2nd`：ADDRESSED（向后 set-stage 退 2 且字节不变；伪造方向 history 报 `state-history-direction`） |
+| Task 5 revision-ledger | 转义竖线 `\|` 被误拆列（合法输入 false positive）；ID 大小写口径未定 | `ea93cca`（未转义拆分 + `casefold` 判重 + `ledger-empty-id` + 缺分隔行） | `Cicero the 2nd`：ADDRESSED（四种探针全过；判别力 `ledger-row-shape ... 实际 8 列`） |
+| Task 3 milestones | countdown `advisories` 未入模板、文档仍写 3 节点 | `b9b790d`（Task 6 内） | `Kierkegaard`（Task 6 评审）：Approved；独立删字段判别力、fresh checkout 12+10 例 OK |
+| Task 6 收口 | —（e2e + 模板同步） | `0d07466` + `b9b790d` | `Kierkegaard`：**Approved，无 issue**（e2e 无 mock、断言具体到退码/字段/行号） |
+
+## 商品化最终全分支评审（进行中）
+
+- 终审者 `Bernoulli the 2nd`；范围 base `dc5b4b0` → head `f4a61f5`（14 commits，153,626 bytes）。
+- 重点：fresh checkout 可复现（无 venv 跑 docs 测试）、state 授权与审计方向、8 节点 + T-30、manifest 类型/路径、revision-ledger 七列、DoD（729→818，+89）、新 CLI 包装器与集合断言、诚实挂账。
