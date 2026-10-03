@@ -1,17 +1,15 @@
-"""Derive real venue projects and compile their actual main files.
+"""Derive real venue projects and exercise their actual main files.
 
 The venue root is intentionally not patched here: this file is the
 end-to-end evidence that the real
 ``$CODEX_HOME/skills/ccf-latex-templates`` library produces projects whose
 actual venue main files compile with the host MiKTeX engine.
 
-``latex_check --compile`` is not invoked directly because it hardcodes
-``manuscript/main.tex``, while the real templates use names such as
-``neurips_2026.tex`` and ``acl_latex.tex``. The same real compile sequence
-(``ccfa.latex_compile.compile_document``) is used on the resolved main file
-instead. Its structural scan also reports the upstream templates' placeholder
-figures and guideline markup, which would make the CLI exit 1 even when the
-real document compiles.
+The real NeurIPS guideline document references ``myfile.pdf`` without
+shipping that placeholder image, so ``latex_check`` reports
+``missing-figure`` and exits 1 even though the document itself compiles.
+Compile-success evidence therefore uses ``compile_document`` on the resolved
+main file, while ``latex_check --main`` pins that known placeholder problem.
 """
 
 from __future__ import annotations
@@ -212,6 +210,38 @@ class DerivationEndToEnd(unittest.TestCase):
         )
         self.assertEqual(code, 1, stderr)
         problems = json.loads(stdout)["problems"]
+        self.assertTrue(
+            any(
+                problem["code"] == "missing-figure"
+                and "myfile.pdf" in problem["message"]
+                for problem in problems
+            ),
+            f"NeurIPS 上游占位图问题未被报出: {problems!r}",
+        )
+
+    def test_neurips_latex_check_compile_with_main_produces_pdf(self):
+        root = self._derive("neurips-check-smoke", "NeurIPS")
+        manuscript = root / "manuscript"
+        main_tex = find_main_tex(manuscript)
+        self.assertEqual(main_tex.name, "neurips_2026.tex")
+
+        code, stdout, stderr = self._run(
+            latex_check_main,
+            [
+                "latex_check.py",
+                "--manuscript",
+                str(manuscript),
+                "--main",
+                main_tex.name,
+                "--compile",
+            ],
+        )
+
+        problems = json.loads(stdout)["problems"]
+        pdf = manuscript / f"{main_tex.stem}.pdf"
+        self.assertEqual(code, 1, stderr)
+        self.assertTrue(pdf.is_file(), f"缺少 PDF: {pdf}\n{stderr}")
+        self.assertGreater(pdf.stat().st_size, 0)
         self.assertTrue(
             any(
                 problem["code"] == "missing-figure"

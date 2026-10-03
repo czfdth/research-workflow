@@ -254,6 +254,46 @@ class TestCreateProject(unittest.TestCase):
 
         self.assertTrue((root / "manuscript" / "styles" / "x.sty").is_file())
 
+    def test_copy_failure_cleans_absent_papers_root_and_retry_succeeds(self):
+        papers_root = self.tmp / "absent-papers-root"
+        template = self.templates_root / "RootBrokenVenue"
+        (template / "styles").mkdir(parents=True)
+        (template / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}x\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "styles" / "x.sty").write_text("% style\n", encoding="utf-8")
+
+        with mock.patch(
+            "newpaper.create.shutil.copy2",
+            side_effect=OSError("copy failed"),
+        ):
+            with self.assertRaises(OSError):
+                create_project(
+                    papers_root=papers_root,
+                    slug="retry-root",
+                    venue="RootBrokenVenue",
+                    year="2027",
+                    mode="conference",
+                    title="Retry Root",
+                )
+
+        self.assertFalse(
+            papers_root.exists(),
+            "复制失败后 papers/ 根目录残留，重试会被 FileExistsError 挡住",
+        )
+
+        root = create_project(
+            papers_root=papers_root,
+            slug="retry-root",
+            venue="RootBrokenVenue",
+            year="2027",
+            mode="conference",
+            title="Retry Root",
+        )
+        self.assertTrue((root / "ccfa.yaml").is_file())
+        self.assertTrue((root / "manuscript" / "styles" / "x.sty").is_file())
+
     def test_unknown_venue_propagates(self):
         with self.assertRaises(VenueNotFound):
             self._create(venue="NotAVenue2099")
