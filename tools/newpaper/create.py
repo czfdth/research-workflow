@@ -69,7 +69,7 @@ SEED_FILES = {
     "memory/dead-ends.md": "# 反重复记忆\n",
     "reviews/revision-ledger.md": "# 审稿意见矩阵\n",
     "submission/checks.md": "# 投稿检查\n",
-    "data/provenance.md": "# 数据来源\n",
+    "data/provenance.json": '{\n  "version": 1,\n  "files": {}\n}\n',
 }
 
 

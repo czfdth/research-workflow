@@ -68,6 +68,27 @@ class TestStoreRoundTrip(BaseCase):
         with self.assertRaisesRegex(ValueError, "store version 不支持: 2"):
             load_store(self.store)
 
+    def test_non_object_entry_is_tool_error(self):
+        self.store.write_text(
+            json.dumps({"version": 1, "files": {"data/a.csv": "oops"}}),
+            encoding="utf-8",
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+        args = [
+            "provenance",
+            "--store",
+            str(self.store),
+            "--paper-root",
+            str(self.root),
+            "check",
+        ]
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = main(args)
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("store 条目必须是对象", stderr.getvalue())
+
     def test_save_leaves_no_temporary_file_behind(self):
         save_store(self.store, {"version": 1, "files": {}})
         leftovers = [p.name for p in self.data.iterdir() if p.name != "provenance.json"]
@@ -192,6 +213,38 @@ class TestCheckStore(BaseCase):
         before = self.store.read_bytes()
         check_store(self.store, self.root)
         self.assertEqual(self.store.read_bytes(), before)
+
+    def test_scan_reports_unrecorded_file(self):
+        self.add()
+        extra = self.data / "extra.csv"
+        extra.write_text("x,y\n3,4\n", encoding="utf-8")
+
+        stdout = StringIO()
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            exit_code = main(
+                [
+                    "provenance",
+                    "--store",
+                    str(self.store),
+                    "--paper-root",
+                    str(self.root),
+                    "check",
+                    "--scan",
+                    "data",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["problem_count"], 1)
+        self.assertEqual(payload["problems"][0]["code"], "provenance-unrecorded")
+        self.assertEqual(payload["problems"][0]["path"], str(extra))
+
+    def test_unrecorded_file_is_invisible_without_scan(self):
+        self.add()
+        (self.data / "extra.csv").write_text("x,y\n3,4\n", encoding="utf-8")
+
+        self.assertEqual(check_store(self.store, self.root), [])
 
 
 class TestExport(BaseCase):

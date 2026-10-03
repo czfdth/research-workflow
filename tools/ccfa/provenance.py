@@ -51,6 +51,11 @@ def load_store(path: Path) -> dict:
     files = data.get("files")
     if not isinstance(files, dict):
         raise ValueError("store 的 files 必须是对象")
+    for key, entry in files.items():
+        if not isinstance(key, str):
+            raise ValueError(f"store 条目的键必须是字符串: {key!r}")
+        if not isinstance(entry, dict):
+            raise ValueError(f"store 条目必须是对象: {key}")
     return data
 
 
@@ -148,7 +153,12 @@ def add_entry(
     return entry
 
 
-def check_store(store_path: Path, paper_root: Path) -> list[Problem]:
+def check_store(
+    store_path: Path,
+    paper_root: Path,
+    *,
+    scan_dir: Path | None = None,
+) -> list[Problem]:
     store = load_store(store_path)
     problems: list[Problem] = []
     for relpath, entry in sorted(store["files"].items()):
@@ -185,6 +195,41 @@ def check_store(store_path: Path, paper_root: Path) -> list[Problem]:
                     f"文件内容与记录不符: {relpath}（记录 {entry.get('sha256')}，实际 {actual}）",
                 )
             )
+    if scan_dir is not None:
+        scan_root = Path(scan_dir)
+        if not scan_root.is_absolute():
+            scan_root = Path(paper_root) / scan_root
+        try:
+            if not scan_root.is_dir():
+                raise ValueError(f"扫描目录不存在或不是目录: {scan_root}")
+            scanned = sorted(path for path in scan_root.rglob("*") if path.is_file())
+        except OSError as exc:
+            raise ValueError(f"无法扫描目录 {scan_root}: {exc}") from exc
+
+        resolved_root = Path(paper_root).resolve()
+        resolved_store = Path(store_path).resolve()
+        ignored = {
+            resolved_store,
+            resolved_store.with_suffix(".md"),
+        }
+        recorded = set(store["files"])
+        for path in scanned:
+            try:
+                resolved_path = path.resolve()
+                relpath = resolved_path.relative_to(resolved_root).as_posix()
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"扫描文件不在 paper-root 内: {path}") from exc
+            if resolved_path in ignored:
+                continue
+            if relpath not in recorded:
+                problems.append(
+                    Problem(
+                        "provenance-unrecorded",
+                        str(path),
+                        None,
+                        f"数据文件未登记: {relpath}",
+                    )
+                )
     return problems
 
 
@@ -203,7 +248,8 @@ def main(argv: list[str]) -> int:
     add.add_argument("--notes")
     add.add_argument("--force", action="store_true")
 
-    sub.add_parser("check", help="核对已登记文件的内容")
+    check = sub.add_parser("check", help="核对已登记文件的内容")
+    check.add_argument("--scan", help="递归扫描目录，报告未登记的数据文件")
 
     export = sub.add_parser("export", help="导出人读的来源文档")
     export.add_argument("--out")
@@ -225,7 +271,14 @@ def main(argv: list[str]) -> int:
             )
             return emit([], [])
         if args.command == "check":
-            return emit(check_store(Path(args.store), Path(args.paper_root)), [])
+            return emit(
+                check_store(
+                    Path(args.store),
+                    Path(args.paper_root),
+                    scan_dir=Path(args.scan) if args.scan else None,
+                ),
+                [],
+            )
         if args.command == "export":
             store = load_store(Path(args.store))
             if args.out:

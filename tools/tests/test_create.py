@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,7 +51,7 @@ class TestCreateProject(unittest.TestCase):
             "ccfa.yaml",
             "manuscript/sections",
             "manuscript/references.bib",
-            "data/provenance.md",
+            "data/provenance.json",
             "experiments/log",
             "experiments/results",
             "figures",
@@ -63,6 +64,11 @@ class TestCreateProject(unittest.TestCase):
         ]:
             with self.subTest(rel=rel):
                 self.assertTrue((root / rel).exists(), f"缺少 {rel}")
+        self.assertFalse((root / "data" / "provenance.md").exists())
+        self.assertEqual(
+            json.loads((root / "data" / "provenance.json").read_text(encoding="utf-8")),
+            {"version": 1, "files": {}},
+        )
 
     def test_ccfa_yaml_is_valid_and_carries_mode(self):
         root = self._create(mode="journal")
