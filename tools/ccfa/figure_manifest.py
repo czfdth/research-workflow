@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from ccfa.cli import Problem
-from ccfa.figurebytes import sniff
+from ccfa.figurebytes import JPEG_SUFFIXES, sniff
 
 
 def load_manifest(path: Path) -> list[dict]:
@@ -83,7 +83,7 @@ def check_manifest(
                 declared_raw
                 and actual is not None
                 and actual != "." + declared_raw
-                and not (actual == ".jpg" and declared_raw in ("jpg", "jpeg"))
+                and not (actual == ".jpg" and "." + declared_raw in JPEG_SUFFIXES)
             ):
                 problems.append(
                     Problem(

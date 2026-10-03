@@ -19,7 +19,8 @@ _MAGIC = (
     (b"GIF89a", ".gif"),
     (b"%PDF", ".pdf"),
 )
-_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
+JPEG_SUFFIXES = (".jpg", ".jpeg")
+_IMAGE_SUFFIXES = (".png",) + JPEG_SUFFIXES + (".gif",)
 
 
 def sniff(path: Path) -> str | None:
@@ -44,7 +45,7 @@ def check_figure_formats(paths: Iterable[Path]) -> list[Problem]:
         actual = sniff(path)
         if actual is None:
             continue
-        if actual == suffix or (actual == ".jpg" and suffix == ".jpeg"):
+        if actual == suffix or (actual == ".jpg" and suffix in JPEG_SUFFIXES):
             continue
         problems.append(
             Problem(
