@@ -1,0 +1,5 @@
+# Pinned to the versions installed in app/.venv (Python 3.12.14).
+# PyYAML is required by the existing ccfa.validate / ccfa.milestones modules.
+PySide6==6.11.2
+keyring==25.7.0
+PyYAML==6.0.3
