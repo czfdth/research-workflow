@@ -83,6 +83,15 @@ class TestCheck(BaseCase):
         problems, _ = self.run_check(manifest=manifest)
         self.assertIn("figure-hash", self.codes(problems))
 
+    def test_canonical_manifest_is_discovered_without_flag(self):
+        (self.figures / "plot.png").write_bytes(JPEG)
+        self.write_generator()
+        (self.figures / "manifest.yaml").write_text(
+            MANIFEST.format(hash="sha256:deadbeef"), encoding="utf-8"
+        )
+        problems, _ = self.run_check()
+        self.assertIn("figure-hash", self.codes(problems))
+
     def test_malformed_manifest_raises_value_error(self):
         manifest = self.write_manifest("name: not-a-list\n")
         with self.assertRaises(ValueError):
@@ -160,6 +169,32 @@ class TestCheck(BaseCase):
                         str(self.manuscript),
                     ]
                 )
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+
+    def test_traversal_error_exits_two_with_empty_stdout(self):
+        real_rglob = Path.rglob
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        def failing_rglob(path, pattern, *args, **kwargs):
+            if Path(path) == self.figures and pattern == "*":
+                raise PermissionError("simulated traversal failure")
+            return real_rglob(path, pattern, *args, **kwargs)
+
+        patcher = patch.object(Path, "rglob", failing_rglob)
+        try:
+            patcher.start()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                    ]
+                )
+        finally:
+            patcher.stop()
         self.assertEqual(code, 2)
         self.assertEqual(stdout.getvalue(), "")
 

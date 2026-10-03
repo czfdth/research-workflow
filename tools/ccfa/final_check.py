@@ -22,12 +22,15 @@ _DECLARATION_KEYWORDS = ("limitation", "data availability", "局限性", "数据
 
 def _find_pdf(manuscript: Path) -> Path | None:
     candidates: list[tuple[int, Path]] = []
-    for path in Path(manuscript).rglob("*.pdf"):
-        try:
-            size = path.stat().st_size
-        except OSError:
-            continue
-        candidates.append((size, path))
+    try:
+        for path in Path(manuscript).rglob("*.pdf"):
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            candidates.append((size, path))
+    except OSError as exc:
+        raise ToolEnvironmentError(f"无法遍历手稿目录中的 PDF: {manuscript}: {exc}") from exc
     if not candidates:
         return None
     return max(candidates, key=lambda item: item[0])[1]
@@ -81,7 +84,13 @@ def check(
 
     figures_dir = root / "figures"
     if figures_dir.is_dir():
-        problems.extend(check_figure_formats(sorted(figures_dir.rglob("*"))))
+        try:
+            figure_paths = sorted(figures_dir.rglob("*"))
+        except OSError as exc:
+            raise ToolEnvironmentError(
+                f"无法遍历 figures 目录: {figures_dir}: {exc}"
+            ) from exc
+        problems.extend(check_figure_formats(figure_paths))
     else:
         advisories.append(
             Problem(
@@ -92,13 +101,22 @@ def check(
             )
         )
 
+    if manifest is None:
+        canonical_manifest = root / "figures" / "manifest.yaml"
+        if canonical_manifest.exists():
+            manifest = canonical_manifest
+
     if manifest is not None:
         items = load_manifest(Path(manifest))
         manifest_problems, manifest_advisories = check_manifest(items, root)
         problems.extend(manifest_problems)
         advisories.extend(manifest_advisories)
 
-    for tex in iter_tex_files(manuscript):
+    try:
+        tex_files = iter_tex_files(manuscript)
+    except OSError as exc:
+        raise ToolEnvironmentError(f"无法遍历手稿目录: {manuscript}: {exc}") from exc
+    for tex in tex_files:
         for item in find_untagged(tex):
             advisories.append(
                 Problem(
@@ -116,7 +134,10 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="终稿确定性检查")
     parser.add_argument("--manuscript", required=True)
     parser.add_argument("--pdf")
-    parser.add_argument("--manifest")
+    parser.add_argument(
+        "--manifest",
+        help="manifest 路径（默认自动读取 <paper-root>/figures/manifest.yaml）",
+    )
     parser.add_argument("--paper-root")
     args = parser.parse_args(argv[1:])
     try:
