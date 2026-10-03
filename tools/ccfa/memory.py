@@ -4,7 +4,8 @@ Ideas live in ``memory/ideas.md`` and dead ends in ``memory/dead-ends.md``.
 Both files are YAML lists with fixed field order. A dead end must include
 ``reopen_if`` so it can be reconsidered when conditions change.
 
-Claim status writeback is not implemented in this layer.
+Search is deterministic substring matching, not semantic retrieval. Claim
+status writeback is not implemented in this layer.
 """
 
 from __future__ import annotations
@@ -13,12 +14,13 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
 import yaml
 
-from ccfa.cli import save_text_atomically, tool_error
+from ccfa.cli import Problem, emit, save_text_atomically, tool_error
 
 VALID_IDEA_STATUSES = ("active", "abandoned", "merged")
 IDEAS_FILE = "memory/ideas.md"
@@ -30,6 +32,9 @@ DEAD_END_FIELDS = ("id", "date", "idea", "reason", "evidence", "reopen_if")
 _IDEAS_HEADER = "# 研究记忆（脚本读写，勿改字段名）\n"
 _DEAD_ENDS_HEADER = "# 反重复记忆（脚本读写，勿改字段名）\n"
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+_ID_PATTERN = re.compile(r"^(?:I|DE)[1-9][0-9]*$")
+_IDEA_SEARCH_FIELDS = ("idea", "notes")
+_DEAD_END_SEARCH_FIELDS = ("idea", "reason", "evidence", "reopen_if")
 
 
 def load_memory(path: Path) -> list[dict]:
@@ -123,6 +128,203 @@ def _next_id(entries: list[dict], prefix: str) -> str:
         if match is not None:
             numbers.append(int(match.group(1)))
     return f"{prefix}{max(numbers, default=0) + 1}"
+
+
+def _date_is_valid(value: object) -> bool:
+    if not isinstance(value, str) or _DATE_PATTERN.fullmatch(value) is None:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _missing_text(entry: dict, field: str) -> bool:
+    if field not in entry:
+        return True
+    value = entry[field]
+    return not isinstance(value, str) or not value.strip()
+
+
+def _entry_problems(
+    path: Path,
+    entry: object,
+    kind: str,
+    duplicate_ids: set[str],
+) -> list[Problem]:
+    if not isinstance(entry, dict):
+        return [
+            Problem(
+                "memory-entry-not-mapping",
+                str(path),
+                None,
+                "记忆条目必须是映射",
+            )
+        ]
+
+    problems: list[Problem] = []
+    for field in ("id", "date", "idea"):
+        if _missing_text(entry, field):
+            problems.append(
+                Problem(
+                    "memory-missing-field",
+                    str(path),
+                    None,
+                    f"记忆条目缺少非空字段: {field}",
+                )
+            )
+
+    date_value = entry.get("date")
+    if "date" in entry and not _date_is_valid(date_value):
+        problems.append(
+            Problem(
+                "memory-invalid-date",
+                str(path),
+                None,
+                f"date 必须匹配 YYYY-MM-DD: {date_value!r}",
+            )
+        )
+
+    entry_id = entry.get("id")
+    if "id" in entry and (
+        not isinstance(entry_id, str) or _ID_PATTERN.fullmatch(entry_id) is None
+    ):
+        problems.append(
+            Problem(
+                "memory-invalid-id",
+                str(path),
+                None,
+                f"id 必须匹配 (I|DE)[1-9][0-9]*: {entry_id!r}",
+            )
+        )
+    if isinstance(entry_id, str) and entry_id in duplicate_ids:
+        problems.append(
+            Problem(
+                "memory-duplicate-id",
+                str(path),
+                None,
+                f"同一记忆文件内 id 重复: {entry_id}",
+            )
+        )
+
+    if kind == "ideas" and entry.get("status") not in VALID_IDEA_STATUSES:
+        problems.append(
+            Problem(
+                "memory-invalid-status",
+                str(path),
+                None,
+                f"idea status 非法: {entry.get('status')!r}",
+            )
+        )
+
+    if kind == "dead-ends":
+        reopen_if = entry.get("reopen_if")
+        if not isinstance(reopen_if, str) or not reopen_if.strip():
+            problems.append(
+                Problem(
+                    "deadend-missing-reopen-if",
+                    str(path),
+                    None,
+                    "dead-end 缺少非空 reopen_if",
+                )
+            )
+    return problems
+
+
+def _duplicate_ids(entries: list[object]) -> set[str]:
+    counts = Counter(
+        entry["id"]
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("id"), str)
+        and _ID_PATTERN.fullmatch(entry["id"]) is not None
+    )
+    return {entry_id for entry_id, count in counts.items() if count > 1}
+
+
+def check_memory(paper_root: Path) -> list[Problem]:
+    """Read-only audit of ideas and dead-end entries."""
+    paper_root = Path(paper_root)
+    ideas_path = paper_root / IDEAS_FILE
+    dead_ends_path = paper_root / DEAD_ENDS_FILE
+    ideas = load_memory(ideas_path)
+    dead_ends = load_memory(dead_ends_path)
+
+    problems: list[Problem] = []
+    idea_duplicates = _duplicate_ids(ideas)
+    problems.extend(
+        problem
+        for entry in ideas
+        for problem in _entry_problems(
+            ideas_path,
+            entry,
+            "ideas",
+            idea_duplicates,
+        )
+    )
+    dead_end_duplicates = _duplicate_ids(dead_ends)
+    problems.extend(
+        problem
+        for entry in dead_ends
+        for problem in _entry_problems(
+            dead_ends_path,
+            entry,
+            "dead-ends",
+            dead_end_duplicates,
+        )
+    )
+    return problems
+
+
+def _searchable(entry: dict, fields: tuple[str, ...], query: str) -> bool:
+    for field in fields:
+        value = entry.get(field)
+        if isinstance(value, str) and query in value.casefold():
+            return True
+    return False
+
+
+def search_memory(paper_root: Path, query: str) -> dict:
+    """Search ideas and dead ends with case-insensitive substring matching."""
+    if not isinstance(query, str):
+        raise ValueError("query 必须是字符串")
+    query = query.strip()
+    if not query:
+        raise ValueError("query 不能为空")
+
+    paper_root = Path(paper_root)
+    ideas_path = paper_root / IDEAS_FILE
+    dead_ends_path = paper_root / DEAD_ENDS_FILE
+    ideas = load_memory(ideas_path)
+    dead_ends = load_memory(dead_ends_path)
+    folded = query.casefold()
+
+    matches: dict[str, list[dict]] = {"ideas": [], "dead_ends": []}
+    skipped_invalid = 0
+    for kind, key, path, entries, fields in (
+        ("ideas", "ideas", ideas_path, ideas, _IDEA_SEARCH_FIELDS),
+        (
+            "dead-ends",
+            "dead_ends",
+            dead_ends_path,
+            dead_ends,
+            _DEAD_END_SEARCH_FIELDS,
+        ),
+    ):
+        duplicate_ids = _duplicate_ids(entries)
+        for entry in entries:
+            if _entry_problems(path, entry, kind, duplicate_ids):
+                skipped_invalid += 1
+                continue
+            if _searchable(entry, fields, folded):
+                matches[key].append(dict(entry))
+    return {
+        "query": query,
+        "ideas": matches["ideas"],
+        "dead_ends": matches["dead_ends"],
+        "skipped_invalid": skipped_invalid,
+    }
 
 
 def add_idea(
@@ -257,6 +459,21 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
     )
     listing.add_argument("--status", choices=VALID_IDEA_STATUSES)
+
+    subparsers.add_parser(
+        "check",
+        help="只读审计 ideas/dead-ends 的固定字段和枚举",
+        description="读取时逐条重校验；本命令不写盘。",
+    )
+    search = subparsers.add_parser(
+        "search",
+        help="用确定性子串匹配检索研究记忆",
+        description=(
+            "对 ideas 和 dead-ends 做大小写不敏感的确定性子串匹配，"
+            "不是语义检索；dead-end 命中会原样携带 reopen_if。"
+        ),
+    )
+    search.add_argument("query")
     return parser
 
 
@@ -281,6 +498,10 @@ def main(argv: list[str]) -> int:
                 reopen_if=args.reopen_if,
                 date=args.date,
             )
+        elif args.command == "check":
+            return emit(check_memory(paper_root))
+        elif args.command == "search":
+            result = search_memory(paper_root, args.query)
         else:
             result = list_memory(
                 paper_root,

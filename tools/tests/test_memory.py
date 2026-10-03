@@ -13,10 +13,12 @@ from ccfa.memory import (
     VALID_IDEA_STATUSES,
     add_dead_end,
     add_idea,
+    check_memory,
     list_memory,
     load_memory,
     main,
     save_memory,
+    search_memory,
 )
 
 
@@ -126,6 +128,12 @@ class TestAddIdea(MemoryTests):
                 with self.assertRaises(ValueError):
                     self._add_idea(idea=value)
 
+    def test_calendar_invalid_dates_are_rejected(self):
+        for value in ("2026-13-01", "2026-02-30"):
+            with self.subTest(date=value):
+                with self.assertRaises(ValueError):
+                    self._add_idea(date=value)
+
     def test_valid_status_enum_is_exposed(self):
         self.assertEqual(
             VALID_IDEA_STATUSES,
@@ -220,6 +228,7 @@ class TestMemoryStore(MemoryTests):
         replace.assert_called_once()
         self.assertEqual(Path(replace.call_args.args[1]), path)
         text = path.read_text(encoding="utf-8")
+        self.assertFalse(path.read_bytes().startswith(b"\xef\xbb\xbf"))
         self.assertIn("中文内容", text)
         self.assertTrue(text.endswith("\n"))
         self.assertEqual(list(load_memory(path)[0]), ["id", "date", "idea", "status", "notes"])
@@ -242,6 +251,245 @@ class TestListMemory(MemoryTests):
         self.assertEqual([entry["idea"] for entry in dead_ends["dead_ends"]], ["dead end"])
         self.assertEqual(len(everything["ideas"]), 2)
         self.assertEqual(len(everything["dead_ends"]), 1)
+
+    def test_list_memory_rejects_invalid_kind_and_status(self):
+        with self.assertRaises(ValueError):
+            list_memory(self.paper_root, kind="unknown")
+        with self.assertRaises(ValueError):
+            list_memory(self.paper_root, status="unknown")
+
+
+class TestMemoryCheck(MemoryTests):
+    def _codes(self, problems):
+        return [problem.code for problem in problems]
+
+    def test_clean_memory_has_no_problems(self):
+        self._add_idea()
+        self._add_dead_end()
+
+        self.assertEqual(check_memory(self.paper_root), [])
+
+    def test_missing_required_fields_are_reported(self):
+        self._write(
+            IDEAS_FILE,
+            "- date: \"2026-10-03\"\n"
+            "  idea: missing id\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- id: I2\n"
+            "  idea: missing date\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- id: I3\n"
+            "  date: \"2026-10-03\"\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        codes = self._codes(check_memory(self.paper_root))
+
+        self.assertEqual(codes.count("memory-missing-field"), 3)
+
+    def test_invalid_date_and_id_are_reported(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I0\n"
+            "  date: \"2026-13-01\"\n"
+            "  idea: invalid\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        codes = self._codes(check_memory(self.paper_root))
+
+        self.assertIn("memory-invalid-date", codes)
+        self.assertIn("memory-invalid-id", codes)
+
+    def test_duplicate_ids_are_reported_for_both_entries(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: first\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: second\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        duplicate = [
+            problem
+            for problem in check_memory(self.paper_root)
+            if problem.code == "memory-duplicate-id"
+        ]
+
+        self.assertEqual(len(duplicate), 2)
+
+    def test_invalid_status_is_revalidated_on_read(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: manually edited\n"
+            "  status: whatever\n"
+            "  notes: null\n",
+        )
+
+        self.assertIn(
+            "memory-invalid-status",
+            self._codes(check_memory(self.paper_root)),
+        )
+
+    def test_dead_end_missing_reopen_if_is_reported(self):
+        self._write(
+            DEAD_ENDS_FILE,
+            "- id: DE1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: dead end\n"
+            "  reason: failed\n"
+            "  evidence: evidence.csv\n",
+        )
+
+        self.assertIn(
+            "deadend-missing-reopen-if",
+            self._codes(check_memory(self.paper_root)),
+        )
+
+    def test_non_mapping_does_not_stop_auditing_later_entries(self):
+        self._write(
+            IDEAS_FILE,
+            "- not a mapping\n"
+            "- id: I1\n"
+            "  date: \"not-a-date\"\n"
+            "  idea: later problem\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        codes = self._codes(check_memory(self.paper_root))
+
+        self.assertIn("memory-entry-not-mapping", codes)
+        self.assertIn("memory-invalid-date", codes)
+
+    def test_two_problems_in_one_pass_are_both_reported(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: first\n"
+            "  status: active\n"
+            "  notes: null\n"
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: second\n"
+            "  status: whatever\n"
+            "  notes: null\n",
+        )
+
+        codes = self._codes(check_memory(self.paper_root))
+
+        self.assertIn("memory-duplicate-id", codes)
+        self.assertIn("memory-invalid-status", codes)
+
+    def test_check_is_read_only(self):
+        self._write(
+            IDEAS_FILE,
+            "- id: I0\n"
+            "  date: \"bad\"\n"
+            "  idea: invalid\n"
+            "  status: whatever\n"
+            "  notes: null\n",
+        )
+        self._add_dead_end()
+        ideas = self.paper_root / IDEAS_FILE
+        dead_ends = self.paper_root / DEAD_ENDS_FILE
+        before = (ideas.read_bytes(), dead_ends.read_bytes())
+
+        check_memory(self.paper_root)
+
+        after = (ideas.read_bytes(), dead_ends.read_bytes())
+        self.assertEqual(after, before)
+
+
+class TestMemorySearch(MemoryTests):
+    def test_search_finds_idea_text(self):
+        self._add_idea(idea="Contrastive Learning for retrieval")
+
+        result = search_memory(self.paper_root, "contrastive learning")
+
+        self.assertEqual([entry["id"] for entry in result["ideas"]], ["I1"])
+        self.assertEqual(result["dead_ends"], [])
+        self.assertEqual(result["skipped_invalid"], 0)
+
+    def test_search_finds_dead_end_reason_and_keeps_reopen_if(self):
+        self._add_dead_end(
+            reason="gain came from batch size",
+            reopen_if="new negative sampling strategy",
+        )
+
+        result = search_memory(self.paper_root, "batch size")
+
+        self.assertEqual(len(result["dead_ends"]), 1)
+        self.assertEqual(
+            result["dead_ends"][0]["reopen_if"],
+            "new negative sampling strategy",
+        )
+
+    def test_search_is_case_insensitive(self):
+        self._add_idea(idea="Retrieval Augmented Generation")
+
+        result = search_memory(self.paper_root, "RETRIEVAL")
+
+        self.assertEqual(len(result["ideas"]), 1)
+
+    def test_search_counts_invalid_entries_and_returns_valid_hits(self):
+        self._write(
+            IDEAS_FILE,
+            "- not a mapping\n"
+            "- id: I1\n"
+            "  date: \"2026-10-03\"\n"
+            "  idea: valid searchable idea\n"
+            "  status: active\n"
+            "  notes: null\n",
+        )
+
+        result = search_memory(self.paper_root, "searchable")
+
+        self.assertEqual(result["skipped_invalid"], 1)
+        self.assertEqual([entry["id"] for entry in result["ideas"]], ["I1"])
+
+    def test_search_no_match_is_an_empty_answer(self):
+        self._add_idea(idea="one idea")
+
+        result = search_memory(self.paper_root, "not present")
+
+        self.assertEqual(result["ideas"], [])
+        self.assertEqual(result["dead_ends"], [])
+        self.assertEqual(result["skipped_invalid"], 0)
+
+    def test_search_missing_files_is_an_empty_answer(self):
+        result = search_memory(self.paper_root, "anything")
+
+        self.assertEqual(result["ideas"], [])
+        self.assertEqual(result["dead_ends"], [])
+        self.assertEqual(result["skipped_invalid"], 0)
+
+
+class TestMemoryReadFailures(MemoryTests):
+    def test_load_memory_folds_directory_and_undecodable_bytes(self):
+        ideas_dir = self.paper_root / IDEAS_FILE
+        ideas_dir.mkdir(parents=True)
+        with self.assertRaises(ValueError):
+            load_memory(ideas_dir)
+
+        ideas_dir.rmdir()
+        ideas_dir.parent.mkdir(parents=True, exist_ok=True)
+        ideas_dir.write_bytes(b"\xff\xfe")
+        with self.assertRaises(ValueError):
+            load_memory(ideas_dir)
 
 
 class TestMain(MemoryTests):
@@ -273,6 +521,66 @@ class TestMain(MemoryTests):
         self.assertEqual(
             json.loads(list_stdout.getvalue())["ideas"][0]["idea"],
             "cli idea",
+        )
+
+    def test_add_dead_end_cli_happy_path(self):
+        stdout = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            code = main(
+                [
+                    "memory",
+                    "--paper-root",
+                    str(self.paper_root),
+                    "add-dead-end",
+                    "--idea",
+                    "cli dead end",
+                    "--reason",
+                    "reason",
+                    "--evidence",
+                    "evidence.csv",
+                    "--reopen-if",
+                    "reopen condition",
+                    "--date",
+                    "2026-10-03",
+                ]
+            )
+
+        entry = json.loads(stdout.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(entry["id"], "DE1")
+        self.assertEqual(entry["reopen_if"], "reopen condition")
+        self.assertEqual(
+            set(entry),
+            {"id", "date", "idea", "reason", "evidence", "reopen_if"},
+        )
+
+    def test_check_and_search_commands(self):
+        self._add_idea(idea="CLI searchable idea")
+        check_stdout = StringIO()
+        search_stdout = StringIO()
+
+        with redirect_stdout(check_stdout), redirect_stderr(StringIO()):
+            check_code = main(
+                ["memory", "--paper-root", str(self.paper_root), "check"]
+            )
+        with redirect_stdout(search_stdout), redirect_stderr(StringIO()):
+            search_code = main(
+                [
+                    "memory",
+                    "--paper-root",
+                    str(self.paper_root),
+                    "search",
+                    "searchable",
+                ]
+            )
+
+        self.assertEqual(check_code, 0)
+        self.assertEqual(json.loads(check_stdout.getvalue())["problem_count"], 0)
+        self.assertEqual(search_code, 0)
+        self.assertEqual(
+            json.loads(search_stdout.getvalue())["ideas"][0]["idea"],
+            "CLI searchable idea",
         )
 
     def test_invalid_add_is_a_tool_error(self):
