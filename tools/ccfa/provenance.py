@@ -11,12 +11,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
+import os  # Kept for the existing ccfa.provenance.os.replace patch seam.
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ccfa.cli import Problem, ToolEnvironmentError, emit, tool_error
+from ccfa.cli import (
+    Problem,
+    ToolEnvironmentError,
+    emit,
+    save_text_atomically,
+    tool_error,
+)
 
 VALID_CLASSIFICATIONS = ("real", "rescaled-real", "documented-substitute")
 
@@ -59,23 +65,6 @@ def load_store(path: Path) -> dict:
     return data
 
 
-def save_text_atomically(path: Path, text: str, *, description: str = "") -> None:
-    """Write text through a sibling temp file and atomic replace.
-
-    Any ``OSError`` on the way folds into ``ValueError`` so the CLI maps it to
-    exit 2 instead of leaking a traceback.
-    """
-    path = Path(path)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + ".tmp")
-        temporary.write_text(text, encoding="utf-8")
-        os.replace(temporary, path)
-    except OSError as exc:
-        what = f"{description} {path}".strip()
-        raise ValueError(f"无法写入 {what}: {exc}") from exc
-
-
 def save_store(path: Path, store: dict) -> None:
     payload = json.dumps(store, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     save_text_atomically(Path(path), payload, description="store")
@@ -102,7 +91,7 @@ def write_markdown(path: Path, text: str, force: bool = False) -> None:
     path = Path(path)
     if path.exists() and not force:
         raise ValueError(f"导出目标已存在: {path}（如需覆盖请显式使用 --force）")
-    save_text_atomically(path, text)
+    save_text_atomically(path, text, description="")
 
 
 def add_entry(

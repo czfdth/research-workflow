@@ -7,7 +7,9 @@ Exit codes: 0 clean, 1 problems found, 2 tool error. They are never merged.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 from typing import NamedTuple
 
 
@@ -49,3 +51,16 @@ def tool_error(message: str) -> int:
 
 class ToolEnvironmentError(Exception):
     """A missing or broken dependency in the tool's own environment."""
+
+
+def save_text_atomically(path: Path, text: str, description: str = "文件") -> None:
+    """Write *text* to *path* atomically, folding OSError into ValueError."""
+    path = Path(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, path)
+    except OSError as exc:
+        what = f"{description} {path}".strip()
+        raise ValueError(f"无法写入 {what}: {exc}") from exc
