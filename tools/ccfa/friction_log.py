@@ -240,7 +240,10 @@ def render_markdown(store: dict) -> str:
 def aggregate_stores(inputs: list[tuple[Path, str]]) -> dict:
     merged: list[dict] = []
     for path, label in inputs:
-        store = load_store(Path(path))
+        path = Path(path)
+        if not path.exists():
+            raise ValueError(f"聚合输入不存在: {path}")
+        store = load_store(path)
         for entry in store["entries"]:
             if isinstance(entry, dict):
                 merged.append({**entry, "source": label})

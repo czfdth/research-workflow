@@ -317,6 +317,38 @@ class FrictionLogTests(unittest.TestCase):
             ["first paper friction", "second paper friction"],
         )
 
+    def test_aggregate_with_missing_input_is_a_tool_error(self):
+        source = self.root / "source.json"
+        add_entry(
+            source,
+            stage="writing",
+            component="citation-manager",
+            category="tool-bug",
+            severity="high",
+            description="valid entry",
+        )
+        missing = self.root / "missing.json"
+        out = self.root / "merged.json"
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(
+                [
+                    "friction-log",
+                    "aggregate",
+                    f"{source}=paper-a",
+                    f"{missing}=paper-b",
+                    "--out",
+                    str(out),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertFalse(out.exists())
+        self.assertIn("聚合输入不存在", stderr.getvalue())
+
     def test_aggregate_out_existing_file_is_refused_without_force(self):
         source = self.root / "source.json"
         add_entry(
