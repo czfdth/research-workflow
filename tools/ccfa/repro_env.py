@@ -25,7 +25,7 @@ from ccfa.ledger import (
 LEDGER_RELATIVE_PATH = Path("data") / "repro-environment.yaml"
 TOP_FIELDS = ("python", "package_manager", "requirements", "lockfile", "system_tools")
 TOOL_FIELDS = ("name", "version", "command", "evidence")
-_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SHA256 = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 
 
 def _sha256(path: Path) -> str:
@@ -253,7 +253,7 @@ def check(paper_root: Path, ledger: Path | None = None) -> tuple[list, list]:
                 )
             else:
                 actual = _sha256(lock_path)
-                if actual != expected_sha:
+                if actual != expected_sha.lower():
                     problems.append(
                         problem(
                             "repro-env-lockfile-drift",

@@ -26,7 +26,7 @@ class ReproEnvTests(unittest.TestCase):
             "MiKTeX-pdfTeX 4.11 (MiKTeX 24.1)\n",
             encoding="utf-8",
         )
-        digest = "sha256:" + hashlib.sha256(
+        self.digest = "sha256:" + hashlib.sha256(
             (self.root / "tools" / "requirements.lock").read_bytes()
         ).hexdigest()
         self.path = self.root / "data" / "repro-environment.yaml"
@@ -36,7 +36,7 @@ class ReproEnvTests(unittest.TestCase):
             "package_manager: pip\n"
             "requirements: tools/requirements.txt\n"
             "lockfile: tools/requirements.lock\n"
-            f"lockfile_sha256: '{digest}'\n"
+            f"lockfile_sha256: '{self.digest}'\n"
             "system_tools:\n"
             "  - name: MiKTeX\n"
             "    version: '24.1'\n"
@@ -68,6 +68,18 @@ class ReproEnvTests(unittest.TestCase):
         )
         problems, _advisories = check(self.root)
         self.assertIn("repro-env-lockfile-drift", self._codes(problems))
+
+    def test_uppercase_lockfile_hash_is_accepted(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                self.digest,
+                self.digest[:7] + self.digest[7:].upper(),
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertNotIn("repro-env-invalid-hash", self._codes(problems))
+        self.assertNotIn("repro-env-lockfile-drift", self._codes(problems))
 
     def test_missing_requirements_is_a_problem(self):
         (self.root / "tools" / "requirements.txt").unlink()
