@@ -51,6 +51,8 @@ CLI_WRAPPERS = {
     "revision_ledger": "scripts/revision-ledger.ps1",
     "resubmit_pipeline": "scripts/resubmit-pipeline.ps1",
     "talk_pipeline": "scripts/talk-pipeline.ps1",
+    "venue_fixtures": "scripts/venue-fixtures.ps1",
+    "session_replay": "scripts/session-replay.ps1",
     "doctor": "scripts/doctor.ps1",
     "readiness": "scripts/readiness.ps1",
     "research_ledgers": "scripts/research-ledgers.ps1",

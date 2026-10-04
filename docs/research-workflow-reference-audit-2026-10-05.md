@@ -30,7 +30,8 @@ hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已�
 第七切片；open-science immutable artifact store 与 `.science` package 已完成
 第八切片；ARIS resubmit/talk pipeline guardrails 已完成第九切片。其余来源仍
 按下表分级；academic-research-skills passport ledger 与 citation calibration
-已完成第十切片。
+已完成第十切片；NeurIPS/ARR 官方 checklist fixture 已完成第十一切片；
+open-science session replay 已完成第十二切片。
 
 ## 1. AI-Research-SKILLs
 
@@ -182,8 +183,8 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 
 - `provenance.json`、`artifact-provenance.yaml`、run-log、repro bundle 已有。
 - `artifact_store.py` 已有内容寻址 immutable version、完整性验证、replay 和
-  `.science` zip；仍没有桌面 session replay 与完整 artifact execution history
-  graph。
+  `.science` zip；`session_replay.py` 已串联 passport、run ledger、artifact
+  store 和 review state 生成静态 replay。
 - app workbench 有聊天、工具桥和自定义 HTTP tools。
 - GitHub private repo、CI 和 release workflow 已有。
 
@@ -193,8 +194,8 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
   inventory 的全链 provenance graph。
 - 没有独立 context 的 turn-level reviewer。
 
-结论：**provenance、本地工作台、immutable artifacts 和 `.science` package
-已吸收；完整 execution graph 与 session replay 尚未实现。**
+结论：**provenance、本地工作台、immutable artifacts、`.science` package 和
+只读 session replay 已吸收；桌面工作台级 execution graph 交互仍可扩展。**
 
 ## 6. 官方方法学来源
 
@@ -203,12 +204,14 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 - `venue-checklist.yaml` 是通用 schema，支持状态和 evidence。
 - `artifact_badge.py` 已对齐 ACM Available/Evaluated/Reusable 三档。
 - `rigor.py` 已实现六维 0..4 评分和真人/模型边界。
+- `checklists/neurips-paper-checklist.yaml` 与
+  `checklists/arr-responsible-nlp.yaml` 已提供可校验、可 seed 的 fixture。
 
 缺口：
 
-- 没有把 NeurIPS Paper Checklist 和 ARR Responsible NLP Checklist 的官方条目
-  逐条固化进仓库。
-- Venue checklist 目前是手填台账，不是每个 venue 的官方 fixture。
+- 已固化的是 adapted structure，不是逐字官方文本；使用前仍需核对 venue 当年
+  版本。
+- 其他 venue 的 checklist fixture 尚未补齐。
 - ACM badge 有校验契约，但没有真实 DOI、第三方 evaluated、第三方 reusable。
 
 结论：**方法学 gate 的机械契约已有；官方 checklist 内容和外部归档证据未完成。**
@@ -223,8 +226,8 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 | ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state、resubmit/talk guardrails 已对齐；自动 fix/re-review 仍未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、完整 passport ledger、risk capability matrix、data-flow map、citation calibration 工具已对齐；live calibration 数据未产生 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
-| open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package 已对齐；完整 execution graph 与 session replay 未实现 |
-| NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge 已实现；官方 checklist fixture 未固化 |
+| open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package、只读 session replay 已对齐；GUI 级 execution graph 未实现 |
+| NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge、NeurIPS/ARR adapted fixtures 已实现；逐字官方版本与其他 venue fixture 未完成 |
 
 因此，之前说“参考了这些项目”只能成立为：
 
@@ -243,7 +246,7 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
    guardrails 已完成。
 3. 用真实 citation gold set 产生 live FNR/FPR 证据；passport ledger、
    risk matrix、data flows、hash-chain 已完成。
-4. 继续把 open-science 的 execution history graph 与 session replay 接入
-   workbench；immutable artifact store 与 `.science` package 已完成。
+4. 把 open-science 的 execution graph 与 session replay 接入 GUI workbench；
+   命令行 replay 已完成。
 
 这些才是“真正参考源码后”的下一轮工作，不是继续增加抽象 gate。

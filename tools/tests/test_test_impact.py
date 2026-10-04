@@ -203,6 +203,24 @@ class SelectTestsTests(unittest.TestCase):
         self.assertFalse(passport.full)
         self.assertFalse(calibration.full)
 
+    def test_venue_fixtures_select_their_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/venue_fixtures.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_venue_fixtures", selection.tests)
+        self.assertFalse(selection.full)
+
+    def test_session_replay_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/session_replay.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_session_replay", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_dashboard_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/dashboard.py"],

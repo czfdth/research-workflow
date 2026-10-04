@@ -122,6 +122,14 @@ _TOOLS_EXACT = {
         "tools.tests.test_citation_calibration",
         "tools.tests.test_docs_consistency",
     ),
+    "tools/ccfa/venue_fixtures.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_venue_fixtures",
+    ),
+    "tools/ccfa/session_replay.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_session_replay",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

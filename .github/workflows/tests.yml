@@ -67,8 +67,10 @@ jobs:
             tools/ccfa/rigor.py `
             tools/ccfa/passport_ledger.py `
             tools/ccfa/run_ledger.py `
+            tools/ccfa/session_replay.py `
             tools/ccfa/test_impact.py
             tools/ccfa/talk_pipeline.py
+            tools/ccfa/venue_fixtures.py
 
       - name: Run impacted tool tests
         shell: pwsh

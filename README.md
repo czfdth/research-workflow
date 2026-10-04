@@ -69,6 +69,7 @@ git -C $paper status --short
 | `tools/ccfa/run_ledger.py` | 在 run-log 旁维护 append-only、hash-chained peer ledger，检测缺失、篡改、链断与记录更新 | `scripts/run-ledger.ps1` |
 | `tools/ccfa/passport_ledger.py` | 保存 initial instructions、checkpoint、tool receipt、file reference 等 handoff-critical 事件的 hash chain | `scripts/passport-ledger.ps1` |
 | `tools/ccfa/citation_calibration.py` | 从 gold set 与预测计算 citation support 的 FNR/FPR 并按阈值 fail closed | `scripts/citation-calibration.ps1` |
+| `tools/ccfa/venue_fixtures.py` | 校验并 seed NeurIPS/ARR 官方方法学 checklist fixture 到 `venue-checklist.yaml` | `scripts/venue-fixtures.ps1` |
 | `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |
 | `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
 | `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |
@@ -104,6 +105,7 @@ git -C $paper status --short
 | `tools/ccfa/meta_optimize.py` | 聚合 friction store 与 readiness gate 失败，输出人类审批用的候选工作流改进 | `scripts/meta-optimize.ps1` |
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
 | `tools/ccfa/artifact_store.py` | 内容寻址的 immutable artifact store、完整性验证、provenance replay 与 `.science` 打包 | `scripts/artifact-store.ps1` |
+| `tools/ccfa/session_replay.py` | 串联 passport、run ledger、artifact store 与 review state，生成只读 session replay HTML | `scripts/session-replay.ps1` |
 | `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges 与关联，并构建索引、搜索和 query pack | `scripts/research-wiki.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 

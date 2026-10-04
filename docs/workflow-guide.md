@@ -165,6 +165,11 @@ scripts/passport-ledger.ps1 check --paper-root $paper
 scripts/citation-calibration.ps1 `
     --gold data/citation-gold.jsonl `
     --predictions data/citation-predictions.jsonl
+scripts/venue-fixtures.ps1 list
+scripts/venue-fixtures.ps1 check `
+    --fixture checklists/neurips-paper-checklist.yaml
+scripts/venue-fixtures.ps1 seed --paper-root $paper `
+    --fixture checklists/neurips-paper-checklist.yaml
 scripts/experiment-loop.ps1 next --paper-root $paper
 ```
 
@@ -256,6 +261,9 @@ scripts/artifact-store.ps1 put --paper-root $paper `
 scripts/artifact-store.ps1 verify --paper-root $paper
 scripts/artifact-store.ps1 package --paper-root $paper `
     --out "$paper/submission/research-artifact.science"
+scripts/session-replay.ps1 check --paper-root $paper
+scripts/session-replay.ps1 render --paper-root $paper `
+    --out "$paper/reviews/session-replay.html"
 ```
 
 在提交前检查匿名、页数、补充材料、AI 使用政策、预印本政策和一稿多投政策。

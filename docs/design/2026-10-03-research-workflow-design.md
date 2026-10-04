@@ -940,6 +940,32 @@ citation calibration：
 - 默认阈值 FNR≤0.15、FPR≤0.10，缺失或非法 prediction 一律 fail closed；
 - 该工具测量 citation judge，不替代真实 claim-support 审核。
 
+### 9.21 源码对齐第十一切片：官方 venue checklist fixture
+
+为消除“通用 checklist schema 已存在、官方条目仍未固化”的缺口，v6.1 新增：
+
+- `checklists/neurips-paper-checklist.yaml`
+- `checklists/arr-responsible-nlp.yaml`
+- `tools/ccfa/venue_fixtures.py` / `scripts/venue-fixtures.ps1`
+
+每个 fixture 固定记录 venue、source 和 item id/category/requirement/required。
+`check` 校验 fixture 结构；`seed` 把 fixture 转成论文的
+`data/venue-checklist.yaml`，初始状态全部为 pending，不伪造完成。标准发布
+前仍需作者逐条填写 evidence、owner 和 status。
+
+### 9.22 源码对齐第十二切片：open-science session replay
+
+按 open-science 的 session replay 与 artifact provenance view，v6.1 新增
+`tools/ccfa/session_replay.py` 与 `scripts/session-replay.ps1`：
+
+- 串联 passport ledger、run-ledger.jsonl、artifact store manifest 和
+  review-loop state；
+- 输出 read-only replay timeline；
+- `check` 检测 artifact 的 run_id 是否能在 run/passport ledger 中解析；
+- `render` 生成静态 HTML，显示每个 passport event、run、artifact version 和
+  review state；
+- replay 不执行代码、不恢复凭据，也不是科学正确性证明。
+
 ## 10. 目录结构
 
 模板库：

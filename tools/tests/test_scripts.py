@@ -45,6 +45,8 @@ CCFA_WRAPPERS = {
     "revision_ledger": "revision-ledger.ps1",
     "resubmit_pipeline": "resubmit-pipeline.ps1",
     "talk_pipeline": "talk-pipeline.ps1",
+    "venue_fixtures": "venue-fixtures.ps1",
+    "session_replay": "session-replay.ps1",
     "doctor": "doctor.ps1",
     "readiness": "readiness.ps1",
     "research_ledgers": "research-ledgers.ps1",

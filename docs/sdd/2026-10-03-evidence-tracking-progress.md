@@ -2573,3 +2573,22 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   FNR/FPR，并按阈值 fail closed。
 - readiness 在 passport ledger 存在时执行可选 gate。
 - 新增 passport 4 条、calibration 2 条测试；scripts/docs/CI/test-impact 同步。
+
+## 源码对齐第十一切片：官方 venue checklist fixture（2026-10-05）
+
+- 新增 `checklists/neurips-paper-checklist.yaml` 与
+  `checklists/arr-responsible-nlp.yaml`。
+- 新增 `venue_fixtures.py` / `venue-fixtures.ps1`，支持 list/check/seed。
+- `seed` 生成 pending `venue-checklist.yaml`，evidence、owner、status 不伪造，
+  必须由作者逐条完成。
+- 新增 `tools/tests/test_venue_fixtures.py` 4 条覆盖；scripts/docs/CI/
+  test-impact 同步。
+
+## 源码对齐第十二切片：open-science session replay（2026-10-05）
+
+- 新增 `session_replay.py` / `session-replay.ps1`，串联 passport ledger、
+  run-ledger.jsonl、artifact store manifest 与 review-loop state。
+- `check` 检测 artifact run_id 是否悬空；`render` 生成静态 HTML timeline。
+- replay 是只读证据视图，不执行代码、不恢复凭据，也不宣称科学正确性。
+- 新增 `tools/tests/test_session_replay.py` 3 条覆盖；scripts/docs/CI/
+  test-impact 同步。
