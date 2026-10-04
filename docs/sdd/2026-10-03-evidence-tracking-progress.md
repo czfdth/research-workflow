@@ -2471,3 +2471,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - `validate` 检查目录、mandatory file、计数、trace 节点与 cross-layer 条件。
 - 新增 `tools/tests/test_ara_compile.py` 4 条覆盖；README、workflow guide、
   设计文档、CI 与 test-impact 映射同步。
+
+## 源码对齐第三切片：ARIS proof run directory（2026-10-05）
+
+- 按 ARIS `skills/proof-orchestrator/SKILL.md`，新增 `tools/ccfa/proof_run.py`
+  与 `scripts/proof-run.ps1`。
+- `materialize` 从 proof campaign 创建 run directory 和 ARIS 文件契约；
+  目录必须位于 paper root 内，默认拒绝覆盖。
+- `check --notation-required` 校验 notation scorecard；核心语义对象保留
+  必须 100%，undefined symbols 与 symbol collisions 必须为 0。
+- `check --require-closed` 要求 `READY_FOR_USER`、非 draft final 和
+  `Top-down derivation structure: PASS`。
+- 新增 `tools/tests/test_proof_run.py` 5 条覆盖；scripts/docs/CI/test-impact
+  同步。

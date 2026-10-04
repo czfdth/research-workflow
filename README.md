@@ -93,6 +93,7 @@ git -C $paper status --short
 | `tools/ccfa/post_submission.py` | 校验 rebuttal 回复矩阵、resubmit venue 差异与 talk 大纲的产出物契约 | `scripts/post-submission.ps1` |
 | `tools/ccfa/rigor.py` | 校验六维 rigor rubric 的评分、证据引用与“模型只能 advisory、不能开释”边界 | `scripts/rigor-rubric.ps1` |
 | `tools/ccfa/proof_orchestrator.py` | 记录跨会话 proof campaign、失败尝试、阻塞点与下一步，并把 proved 绑定到真人 verified 证明复核 | `scripts/proof-orchestrator.ps1` |
+| `tools/ccfa/proof_run.py` | 按 ARIS 结构创建 proof run directory，校验 status、notation scorecard 与 top-down derivation gate | `scripts/proof-run.ps1` |
 | `tools/ccfa/meta_optimize.py` | 聚合 friction store 与 readiness gate 失败，输出人类审批用的候选工作流改进 | `scripts/meta-optimize.ps1` |
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
 | `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki 的 frontmatter、ID 与关联，并构建确定性索引与搜索 | `scripts/research-wiki.ps1` |

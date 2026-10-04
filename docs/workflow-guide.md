@@ -211,6 +211,8 @@ scripts/latex-check.ps1 `
 ```powershell
 scripts/argument-audit.ps1 --paper-root $paper
 scripts/proof-orchestrator.ps1 check --paper-root $paper
+scripts/proof-run.ps1 check --run-dir "$paper/prompts/260101-01" `
+    --notation-required --require-closed
 scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
     --strict-cross-family
 scripts/rigor-rubric.ps1 check --paper-root $paper

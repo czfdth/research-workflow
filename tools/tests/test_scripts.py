@@ -46,6 +46,7 @@ CCFA_WRAPPERS = {
     "post_submission": "post-submission.ps1",
     "rigor": "rigor-rubric.ps1",
     "proof_orchestrator": "proof-orchestrator.ps1",
+    "proof_run": "proof-run.ps1",
     "meta_optimize": "meta-optimize.ps1",
     "artifact_badge": "artifact-badge.ps1",
     "research_wiki": "research-wiki.ps1",

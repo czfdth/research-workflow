@@ -22,8 +22,9 @@
 `wanshuiyin/Auto-claude-code-research-in-sleep`。
 
 本轮状态：AI-Research-SKILLs 的 `research-state.yaml` 已完成第一切片；
-ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片，
-并明确报告未满足的 Seal Level 1 条件。其余来源仍按下表分级。
+ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片；
+ARIS proof run-directory + notation/derivation gate 已完成第三切片。其余来源
+仍按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -77,9 +78,8 @@ ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取�
 
 - `proof_orchestrator.py` 已记录 campaign、attempt、failure、next action，并把
   `proved` 绑定到真人 verified proof-audit。
-- 但没有 run directory 文件契约，没有 sources/handoff/browser prompt/raw
-  GPT Pro output/audit/final 的分阶段文件。
-- 没有 notation gate 和 top-down derivation structure gate。
+- `proof_run.py` 已提供 run directory 文件契约、status、notation scorecard
+  与 top-down derivation gate；manual GPT Pro handoff 仍是骨架，不会自动执行。
 - `cross_review.py` 只做一次结构化评审，没有 auto-review-loop 的多轮修复、
   reviewer memory、round state 和 acquittal log。
 - `meta_optimize.py` 已做聚合候选，但没有 bottleneck succession、trigger-rate
@@ -212,7 +212,7 @@ replay、`.science` package 尚未实现。**
 | 来源 | 是否参考过源码 | 我们对齐的程度 |
 | --- | --- | --- |
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft compiler 已对齐；完整语义提取和 code stub 仍缺 |
-| ARIS | 本轮补查 | proof campaign/meta/wiki/post-submission 概念对齐；run-dir、proof gates、multi-round review、graph wiki 未对齐 |
+| ARIS | 本轮补查 | proof campaign + run-dir + proof gates 已对齐；multi-round review、graph wiki、resubmit orchestrator 仍未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、run ledger、risk/governance 概念对齐；hash-chain、data-flow、calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench 概念对齐；immutable artifacts、replay、`.science` 未实现 |
@@ -231,8 +231,8 @@ replay、`.science` package 尚未实现。**
 1. 继续补齐 AI-Research-SKILLs 的 ARA 语义层，尤其是 concepts、solution、
    heuristics、code stub 与 source-grounded evidence；目录 contract 和
    research-state 已完成。
-2. 把 ARIS 的 proof run directory 与 notation/derivation gate 补进
-   `proof_orchestrator`。
+2. 继续对齐 ARIS 的 auto-review-loop、graph wiki 与 resubmit/talk pipeline；
+   proof run directory、notation/derivation gate 已完成。
 3. 把 academic-research-skills 的 hash-chained run ledger、risk capability
    matrix 和 `DATA_FLOWS.md` 纳入治理层。
 4. 把 open-science 的 immutable artifact version 与 portable package 接入

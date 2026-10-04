@@ -52,6 +52,7 @@ CLI_WRAPPERS = {
     "post_submission": "scripts/post-submission.ps1",
     "rigor": "scripts/rigor-rubric.ps1",
     "proof_orchestrator": "scripts/proof-orchestrator.ps1",
+    "proof_run": "scripts/proof-run.ps1",
     "meta_optimize": "scripts/meta-optimize.ps1",
     "artifact_badge": "scripts/artifact-badge.ps1",
     "research_wiki": "scripts/research-wiki.ps1",

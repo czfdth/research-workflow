@@ -783,6 +783,22 @@ Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
 该 compiler 不会把 draft 误报为 Seal Level 1 通过，也不会为通过结构校验而
 编造 concepts、heuristics 或 code stubs。
 
+### 9.13 源码对齐第三切片：ARIS proof run directory
+
+按 `wanshuiyin/Auto-claude-code-research-in-sleep` 的
+`skills/proof-orchestrator/SKILL.md`，v6.1 新增 `tools/ccfa/proof_run.py`
+与 `scripts/proof-run.ps1`：
+
+- `materialize` 从一个 proof campaign 创建 run directory，包含 `task.md`、
+  `materials.md`、`local-proof.md`、`source-manifest.md`、`codex-ledger.md`、
+  `audit.md`、`final.md`、`next.md` 和 `sources/`。
+- run directory 必须位于 paper root 内；已存在时必须显式 `--force`。
+- `check --require-closed` 要求 status 为 `READY_FOR_USER`，final 不能仍是
+  draft，并要求 `Top-down derivation structure: PASS`。
+- `check --notation-required` 解析 ARIS notation scorecard，核心语义对象保留
+  必须 100%，undefined symbols 与 symbol collisions 必须为 0。
+- 这个工具负责续跑、审计和 handoff 骨架，不自动证明、不替人批准定理。
+
 ## 10. 目录结构
 
 模板库：
