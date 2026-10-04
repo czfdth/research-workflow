@@ -158,6 +158,15 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_governance_map", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_artifact_store_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/artifact_store.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_artifact_store", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_dashboard_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/dashboard.py"],

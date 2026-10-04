@@ -27,7 +27,8 @@ ARIS proof run-directory + notation/derivation gate 已完成第三切片；
 ARIS typed graph wiki 已完成第四切片；academic-research-skills 的
 hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已完成
 第六切片；academic-research-skills risk capability matrix 与 data flows 已完成
-第七切片。其余来源仍按下表分级。
+第七切片；open-science immutable artifact store 与 `.science` package 已完成
+第八切片。其余来源仍按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -176,19 +177,20 @@ governance 的概念已吸收；完整 passport ledger 和 citation calibration 
 我们的实现：
 
 - `provenance.json`、`artifact-provenance.yaml`、run-log、repro bundle 已有。
+- `artifact_store.py` 已有内容寻址 immutable version、完整性验证、replay 和
+  `.science` zip；仍没有桌面 session replay 与完整 artifact execution history
+  graph。
 - app workbench 有聊天、工具桥和自定义 HTTP tools。
 - GitHub private repo、CI 和 release workflow 已有。
 
 缺口：
 
-- 没有不可变 artifact version store，也没有 session replay。
-- 没有可移植 `.science` package。
-- 没有 artifact-level producer code、execution history、environment inventory
-  的全链 provenance graph。
+- 没有完整 artifact-level producer code、execution history、environment
+  inventory 的全链 provenance graph。
 - 没有独立 context 的 turn-level reviewer。
 
-结论：**provenance 和本地工作台概念已吸收；immutable artifacts、session
-replay、`.science` package 尚未实现。**
+结论：**provenance、本地工作台、immutable artifacts 和 `.science` package
+已吸收；完整 execution graph 与 session replay 尚未实现。**
 
 ## 6. 官方方法学来源
 
@@ -217,7 +219,7 @@ replay、`.science` package 尚未实现。**
 | ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state 已对齐；resubmit orchestrator 和自动 fix/re-review 仍未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk capability matrix、data-flow map 已对齐；完整 passport/calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
-| open-science | 本轮补查 | provenance/workbench 概念对齐；immutable artifacts、replay、`.science` 未实现 |
+| open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package 已对齐；完整 execution graph 与 session replay 未实现 |
 | NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge 已实现；官方 checklist fixture 未固化 |
 
 因此，之前说“参考了这些项目”只能成立为：
@@ -238,7 +240,7 @@ replay、`.science` package 尚未实现。**
    typed graph wiki 已完成。
 3. 继续把 academic-research-skills 的完整 passport run ledger 与 citation
    calibration 纳入治理层；risk matrix、data flows、hash-chain 已完成。
-4. 把 open-science 的 immutable artifact version 与 portable package 接入
-   repro/release 流程。
+4. 继续把 open-science 的 execution history graph 与 session replay 接入
+   workbench；immutable artifact store 与 `.science` package 已完成。
 
 这些才是“真正参考源码后”的下一轮工作，不是继续增加抽象 gate。

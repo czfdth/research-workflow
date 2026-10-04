@@ -20,6 +20,7 @@ import yaml
 from ccfa import (
     argument_audit,
     artifact_badge,
+    artifact_store,
     citation_guard,
     cross_review,
     experiment_loop,
@@ -341,6 +342,13 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         or (paper_root / "data" / "data-flows.yaml").is_file()
     ):
         specs["governance-map"] = lambda: governance_map.check(paper_root)
+    if (
+        paper_root
+        / "ccfa-workfiles"
+        / "artifact-store"
+        / "manifest.json"
+    ).is_file():
+        specs["artifact-store"] = lambda: artifact_store.verify_store(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

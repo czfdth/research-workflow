@@ -102,6 +102,10 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_governance_map",
     ),
+    "tools/ccfa/artifact_store.py": (
+        "tools.tests.test_artifact_store",
+        "tools.tests.test_docs_consistency",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

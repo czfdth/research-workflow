@@ -99,6 +99,7 @@ git -C $paper status --short
 | `tools/ccfa/proof_run.py` | 按 ARIS 结构创建 proof run directory，校验 status、notation scorecard 与 top-down derivation gate | `scripts/proof-run.ps1` |
 | `tools/ccfa/meta_optimize.py` | 聚合 friction store 与 readiness gate 失败，输出人类审批用的候选工作流改进 | `scripts/meta-optimize.ps1` |
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
+| `tools/ccfa/artifact_store.py` | 内容寻址的 immutable artifact store、完整性验证、provenance replay 与 `.science` 打包 | `scripts/artifact-store.ps1` |
 | `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges 与关联，并构建索引、搜索和 query pack | `scripts/research-wiki.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 

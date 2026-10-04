@@ -870,6 +870,24 @@ Markdown 实体和图边是 source of truth；index 与 query pack 是生成物�
 - status 词表固定为 DESIGNED / NOT_RUN / MEASURED / MIXED，避免风险登记册
   用自造状态掩盖未运行证据。
 
+### 9.18 源码对齐第八切片：open-science immutable artifact
+
+按 `aipoch/open-science` 的 immutable artifact、provenance 和 `.science`
+portable package 概念，v6.1 新增 `tools/ccfa/artifact_store.py` 与
+`scripts/artifact-store.ps1`：
+
+- artifact 以 SHA-256 内容寻址，存放于
+  `ccfa-workfiles/artifact-store/blobs/`。
+- `manifest.json` 为每个逻辑 artifact 保留递增 version，不覆盖旧版本。
+- `put` 在内容不变时幂等；内容变化时追加新版本。
+- `verify` 检测 blob 缺失、hash 不匹配和 version 跳号。
+- `replay` 返回某 artifact 的版本、run_id 与来源路径。
+- `package` 生成 `.science` zip，包含 manifest、blobs、run ledger、
+  provenance 和 verify receipt。
+
+该层是内容不可变与可追踪契约，不宣称能科学上复现结果，也不替代 repro
+package 的执行验证。
+
 ## 10. 目录结构
 
 模板库：

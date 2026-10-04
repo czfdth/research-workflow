@@ -52,6 +52,7 @@ CCFA_WRAPPERS = {
     "proof_run": "proof-run.ps1",
     "meta_optimize": "meta-optimize.ps1",
     "artifact_badge": "artifact-badge.ps1",
+    "artifact_store": "artifact-store.ps1",
     "research_wiki": "research-wiki.ps1",
     "research_state": "research-state.ps1",
     "ara_compile": "ara-compile.ps1",

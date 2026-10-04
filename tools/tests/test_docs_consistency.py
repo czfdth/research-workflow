@@ -58,6 +58,7 @@ CLI_WRAPPERS = {
     "proof_run": "scripts/proof-run.ps1",
     "meta_optimize": "scripts/meta-optimize.ps1",
     "artifact_badge": "scripts/artifact-badge.ps1",
+    "artifact_store": "scripts/artifact-store.ps1",
     "research_wiki": "scripts/research-wiki.ps1",
     "research_state": "scripts/research-state.ps1",
     "ara_compile": "scripts/ara-compile.ps1",

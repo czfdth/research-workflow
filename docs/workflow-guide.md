@@ -247,6 +247,11 @@ scripts/repro-package.ps1 --paper-root $paper bundle `
     --out "$paper/submission/repro"
 scripts/repro-package.ps1 --paper-root $paper verify `
     --bundle "$paper/submission/repro"
+scripts/artifact-store.ps1 put --paper-root $paper `
+    --path "figures/threat-model-lattice.pdf" --role figure --run-id RUN1
+scripts/artifact-store.ps1 verify --paper-root $paper
+scripts/artifact-store.ps1 package --paper-root $paper `
+    --out "$paper/submission/research-artifact.science"
 ```
 
 在提交前检查匿名、页数、补充材料、AI 使用政策、预印本政策和一稿多投政策。

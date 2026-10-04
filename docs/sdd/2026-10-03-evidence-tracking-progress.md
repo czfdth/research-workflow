@@ -2534,3 +2534,15 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   `docs/data-flows.md`。
 - 新增 `tools/tests/test_governance_map.py` 5 条覆盖；create/readiness/
   scripts/docs/CI/test-impact 同步。
+
+## 源码对齐第八切片：open-science immutable artifact（2026-10-05）
+
+- 按 open-science 的 immutable artifact、provenance、`.science` package 概念，
+  新增 `tools/ccfa/artifact_store.py` 与 `scripts/artifact-store.ps1`。
+- 使用 SHA-256 内容寻址 blob 和递增 manifest version，拒绝原地覆盖旧版本。
+- `verify` 检查 blob 缺失、hash 不匹配和 version 跳号；`replay` 输出版本与
+  run provenance；`package` 生成包含 manifest、blobs、run ledger、provenance
+  和 verify receipt 的 `.science` zip。
+- readiness 在 manifest 存在时执行可选 artifact-store gate。
+- 新增 `tools/tests/test_artifact_store.py` 6 条覆盖；scripts/docs/CI/
+  test-impact 同步。
