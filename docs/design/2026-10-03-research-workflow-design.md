@@ -656,6 +656,20 @@ docker 模式默认拒绝注入 runner；测试或高级调用要注入 runner �
 `not-applicable` 必须有具体 reason。该工具只验证产出物契约与交叉引用，
 不判断 rebuttal 是否有说服力、talk 是否讲得清楚。
 
+### 9.5 六维 rigor rubric
+
+对标报告的 P2-13 缺一项可执行的严谨性评分。v6.1 新增
+`data/rigor-rubric.yaml`、`tools/ccfa/rigor.py` 与 `scripts/rigor-rubric.ps1`，
+固定六个维度：evidence relevance、falsifiability、scope、coherence、
+exploration integrity、methodology。
+
+每个维度必须填写 0..4 整数分数、非占位理由和至少一个证据引用。证据可以是
+claim id、真实 run id，或仓库内已有文件。`complete` 只能由 `human` 或
+`mixed` reviewer 填写；`model` reviewer 只能写 `model-advisory`，不能开释。
+standard profile 在台账存在时运行 advisory gate；high-assurance 使用
+`--require-complete`，要求真人完成的六维 rubric。该工具验证的是记录完整性
+和边界，不替代人的评分判断。
+
 ## 10. 目录结构
 
 模板库：

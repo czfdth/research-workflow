@@ -59,6 +59,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_post_submission",
         "tools.tests.test_readiness",
     ),
+    "tools/ccfa/rigor.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_readiness",
+        "tools.tests.test_rigor",
+    ),
     "tools/ccfa/cross_review.py": (
         "tools.tests.test_automation_e2e",
         "tools.tests.test_cross_review",

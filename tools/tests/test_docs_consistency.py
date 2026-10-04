@@ -50,6 +50,7 @@ CLI_WRAPPERS = {
     "test_impact": "scripts/test-impact.ps1",
     "experiment_loop": "scripts/experiment-loop.ps1",
     "post_submission": "scripts/post-submission.ps1",
+    "rigor": "scripts/rigor-rubric.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

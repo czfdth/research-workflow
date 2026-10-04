@@ -30,6 +30,7 @@ from ccfa import (
     repro_package,
     repro_env,
     research_ledgers,
+    rigor,
     stats_plan,
     trace_claims,
 )
@@ -60,6 +61,7 @@ EVIDENCE_LEDGER_PATHS = {
     "repro-environment": Path("data/repro-environment.yaml"),
     "human-coding": Path("data/human-coding-report.json"),
     "post-submission": Path("data/post-submission.yaml"),
+    "rigor-rubric": Path("data/rigor-rubric.yaml"),
 }
 
 PROFILE_REQUIRED_LEDGERS = {
@@ -73,6 +75,7 @@ PROFILE_REQUIRED_LEDGERS = {
         "cost-ledger",
         "risk-register",
         "experiment-loop",
+        "rigor-rubric",
         "citation-support",
         "figure-support",
         "novelty",
@@ -100,6 +103,7 @@ LEDGER_GATE_NAMES = {
     "repro-environment": "repro-environment",
     "human-coding": "human-coding",
     "experiment-loop": "experiment-loop",
+    "rigor-rubric": "rigor-rubric",
 }
 
 
@@ -293,6 +297,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         "repro-environment": lambda: repro_env.check(paper_root),
         "statistics": lambda: stats_plan.check(paper_root),
         "experiment-loop": lambda: experiment_loop.check(paper_root),
+        "rigor-rubric": lambda: rigor.check(
+            paper_root,
+            require_complete=profile == "high-assurance",
+        ),
     }
     for ledger in PROFILE_REQUIRED_LEDGERS[profile]:
         if not (paper_root / EVIDENCE_LEDGER_PATHS[ledger]).is_file():

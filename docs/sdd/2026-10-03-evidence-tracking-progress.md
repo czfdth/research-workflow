@@ -2374,3 +2374,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   空台账只产生 advisory，不伪装完成。
 - 新增 `tools/tests/test_post_submission.py` 7 条覆盖；create/readiness/scripts/
   docs 测试同步。
+
+## 六维 rigor rubric（2026-10-05）
+
+- 新增 `data/rigor-rubric.yaml`、`tools/ccfa/rigor.py` 与
+  `scripts/rigor-rubric.ps1`，落地对标报告 P2-13。
+- 六个固定维度：evidence_relevance、falsifiability、scope、coherence、
+  exploration_integrity、methodology；每维必须有 0..4 分、非占位理由和证据。
+- 证据必须是 claim id、真实 run id 或仓库内已有文件；悬空引用为 problem。
+- `complete` 只允许 human/mixed reviewer；model 只能 `model-advisory`，
+  不能开释；high-assurance 使用 `--require-complete`。
+- readiness 在台账存在时运行 `rigor-rubric` gate；新论文模板预置台账。
+- 新增 `tools/tests/test_rigor.py` 11 条覆盖；create/readiness/scripts/docs
+  测试同步。

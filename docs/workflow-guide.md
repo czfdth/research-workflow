@@ -202,17 +202,21 @@ scripts/latex-check.ps1 `
 - `data/proof-audit.yaml`
 - `data/citation-support.yaml`
 - `data/figure-support.yaml`
+- `data/rigor-rubric.yaml`
 - `reviews/*.json`
 
 ```powershell
 scripts/argument-audit.ps1 --paper-root $paper
 scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
     --strict-cross-family
+scripts/rigor-rubric.ps1 check --paper-root $paper
 ```
 
 人工复核应由真实的人完成。模型名字不能冒充 reviewer。跨族 provider 不可用时，
 同族 override 只能作为异常记录，不能当作独立评审；即使模型返回 pass，
-effective verdict 也会被检查器重算为 blocking。
+effective verdict 也会被检查器重算为 blocking。Rigor rubric 的六个维度必须
+逐项绑定 claim、run id 或仓库内文件；模型可以写 `model-advisory`，但不能把
+rubric 标成 `complete`。
 
 ### `submission-check`：冻结投稿包
 
