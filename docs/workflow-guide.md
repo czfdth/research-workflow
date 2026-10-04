@@ -227,6 +227,9 @@ scripts/proof-run.ps1 check --run-dir "$paper/prompts/260101-01" `
 scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
     --strict-cross-family
 scripts/review-loop.ps1 check --paper-root $paper
+scripts/review-loop.ps1 drive --paper-root $paper `
+    --fix-command '["powershell","-File","fix-review.ps1"]' `
+    --review-command '["powershell","-File","review-round.ps1"]'
 scripts/rigor-rubric.ps1 check --paper-root $paper
 ```
 

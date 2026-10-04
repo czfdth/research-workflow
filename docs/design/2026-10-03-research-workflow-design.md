@@ -853,6 +853,9 @@ Markdown 实体和图边是 source of truth；index 与 query pack 是生成物�
   configure-cross-family-review、blocked-max-rounds 或 stop。
 
 该 state machine 负责门禁和续跑，不自动修稿、不自动开释。
+`drive` 可注入 fix/review JSON argv，按 fix → review → record-round 循环，
+直到 cross-family pass、需要外部开释或达到 max rounds；CLI 本身不生成修复
+内容，修复动作由调用者提供的命令负责。
 
 ### 9.17 源码对齐第七切片：risk capability matrix 与 data flows
 

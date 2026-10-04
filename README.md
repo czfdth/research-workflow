@@ -77,7 +77,7 @@ git -C $paper status --short
 | `tools/ccfa/memory.py` | 管理选题记忆与反重复 dead-end 记录 | `scripts/memory.ps1` |
 | `tools/ccfa/milestones.py` | 读取 stage 并检查投稿倒排 checkpoint 与 gate 缺口 | `scripts/milestones.ps1` |
 | `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵；`run --model` 必填，同族评审即使 override 也不能开释为 pass；记录绑定输入哈希、指令摘要与真实 provider provenance | `scripts/cross-review.ps1` |
-| `tools/ccfa/review_loop.py` | 维护多轮 review loop state、reviewer memory 和 append-only acquittal log；同族或未知族不能 completed | `scripts/review-loop.ps1` |
+| `tools/ccfa/review_loop.py` | 维护多轮 review loop、reviewer memory、append-only acquittal log，并可注入 fix/review 命令自动驱动轮次 | `scripts/review-loop.ps1` |
 | `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |

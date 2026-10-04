@@ -99,8 +99,8 @@ ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取�
   匿名清点、edit whitelist 和 adversarial gate。
 
 结论：**proof/next action、meta-optimize、post-submission 已吸收；
-proof run-directory、typed graph wiki、review loop state 和 resubmit/talk
-guardrails 已对齐；自动 fix/re-review 仍未对齐。**
+proof run-directory、typed graph wiki、review loop state、resubmit/talk
+guardrails 和注入式自动 fix/re-review 已对齐。**
 
 ## 3. academic-research-skills
 
@@ -223,7 +223,7 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 | 来源 | 是否参考过源码 | 我们对齐的程度 |
 | --- | --- | --- |
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft/full compiler contract 已对齐；自动语义提取前端仍缺 |
-| ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state、resubmit/talk guardrails 已对齐；自动 fix/re-review 仍未对齐 |
+| ARIS | 本轮补查 | proof run-dir + proof gates、typed graph wiki、review loop、注入式 fix/re-review、resubmit/talk guardrails 已对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、完整 passport ledger、risk capability matrix、data-flow map、citation calibration 工具已对齐；live calibration 数据未产生 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package、只读 session replay 已对齐；GUI 级 execution graph 未实现 |
@@ -241,9 +241,8 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 
 1. 继续补齐 AI-Research-SKILLs 的自动 ARA 语义提取前端；本地
    `ara-input/` 到完整 Seal-valid ARA 的 compiler contract 已完成。
-2. 继续对齐 ARIS 的自动 fix/re-review；review loop state、proof run
-   directory、notation/derivation gate、typed graph wiki、resubmit/talk
-   guardrails 已完成。
+2. ARIS 的 review loop、fix/re-review runner、proof run directory、
+   notation/derivation gate、typed graph wiki、resubmit/talk guardrails 已完成。
 3. 用真实 citation gold set 产生 live FNR/FPR 证据；passport ledger、
    risk matrix、data flows、hash-chain 已完成。
 4. 把 open-science 的 execution graph 与 session replay 接入 GUI workbench；

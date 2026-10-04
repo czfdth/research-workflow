@@ -2524,6 +2524,8 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness 在 state 存在时执行可选 review-loop gate。
 - 新增 `tools/tests/test_review_loop.py` 4 条覆盖；scripts/docs/CI/test-impact
   同步。
+- 后续补 `drive` 注入式 fix/review runner 与 3 条测试，支持按轮执行并维持
+  fail-closed。
 
 ## 源码对齐第七切片：risk matrix 与 data flows（2026-10-05）
 

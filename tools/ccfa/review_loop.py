@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -176,6 +178,33 @@ def record_round(paper_root: Path, *, cross_review: Path) -> dict:
     return state
 
 
+def drive_loop(
+    paper_root: Path,
+    *,
+    fix_runner,
+    review_runner,
+) -> dict:
+    """Run fix/review rounds until pass, external blocker, or max rounds."""
+    paper_root = Path(paper_root).resolve()
+    state = _load_json(_state_path(paper_root))
+    if state.get("status") == "completed":
+        return state
+    while True:
+        if state.get("requires_external_acquittal"):
+            state["status"] = "blocked"
+            _save_state(paper_root, state)
+            return state
+        if int(state.get("round", 0)) >= int(state.get("max_rounds", 4)):
+            state["status"] = "blocked"
+            _save_state(paper_root, state)
+            return state
+        fix_runner(paper_root)
+        review_path = review_runner(paper_root, state)
+        state = record_round(paper_root, cross_review=Path(review_path))
+        if state.get("status") == "completed":
+            return state
+
+
 def check_loop(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
     paper_root = Path(paper_root).resolve()
     state_path = _state_path(paper_root)
@@ -325,6 +354,10 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("check", "next"):
         item = sub.add_parser(name)
         item.add_argument("--paper-root", required=True)
+    drive = sub.add_parser("drive")
+    drive.add_argument("--paper-root", required=True)
+    drive.add_argument("--fix-command")
+    drive.add_argument("--review-command")
     return parser
 
 
@@ -352,6 +385,61 @@ def main(argv: list[str]) -> int:
             return 0
         if args.command == "next":
             print(json.dumps(next_action(Path(args.paper_root)), ensure_ascii=False))
+            return 0
+        if args.command == "drive":
+            if not args.fix_command or not args.review_command:
+                raise ValueError("drive 需要 --fix-command 与 --review-command")
+            fix_argv = json.loads(args.fix_command)
+            review_argv = json.loads(args.review_command)
+            if (
+                not isinstance(fix_argv, list)
+                or not fix_argv
+                or not all(isinstance(item, str) for item in fix_argv)
+            ):
+                raise ValueError("--fix-command 必须是 JSON 字符串数组")
+            if (
+                not isinstance(review_argv, list)
+                or not review_argv
+                or not all(isinstance(item, str) for item in review_argv)
+            ):
+                raise ValueError("--review-command 必须是 JSON 字符串数组")
+            paper_root = Path(args.paper_root).resolve()
+            review_path = paper_root / "reviews" / "cross-review.json"
+
+            def fix_runner(root: Path) -> None:
+                completed = subprocess.run(
+                    fix_argv,
+                    cwd=str(root),
+                    shell=False,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    raise ValueError(f"fix command 失败: {completed.returncode}")
+
+            def review_runner(root: Path, state: dict) -> Path:
+                env = os.environ.copy()
+                env["CCFA_PAPER_ROOT"] = str(root)
+                env["CCFA_CROSS_REVIEW_PATH"] = str(review_path)
+                env["CCFA_REVIEW_ROUND"] = str(state.get("round", 0) + 1)
+                completed = subprocess.run(
+                    review_argv,
+                    cwd=str(root),
+                    env=env,
+                    shell=False,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    raise ValueError(f"review command 失败: {completed.returncode}")
+                if not review_path.is_file():
+                    raise ValueError(f"review command 未生成 {review_path}")
+                return review_path
+
+            result = drive_loop(
+                paper_root,
+                fix_runner=fix_runner,
+                review_runner=review_runner,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         problems, advisories = check_loop(Path(args.paper_root))
         return emit(problems, advisories)
