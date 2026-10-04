@@ -832,6 +832,25 @@ Markdown 实体和图边是 source of truth；index 与 query pack 是生成物�
 该 ledger 不替代 `run_log.py` 的实验记录，只提供防意外损坏的追加式证据链；
 它不是密码学签名，不能抵抗拥有完整写权限的人重写整个文件。
 
+### 9.16 源码对齐第六切片：ARIS review loop state
+
+按 ARIS `skills/auto-review-loop/SKILL.md`，v6.1 新增
+`tools/ccfa/review_loop.py` 与 `scripts/review-loop.ps1`：
+
+- `reviews/review-loop-state.json` 记录 run_id、round、max_rounds、status、
+  executor/reviewer model、backend、family relation、last verdict 与
+  cross-review sha256。
+- `reviews/reviewer-memory.md` 追加每轮 verdict、family 和 blocking 标题。
+- `reviews/ACQUITTAL_LOG.jsonl` 只在真正 cross-family pass 时追加，且为
+  append-only。
+- 同族或未知族即使 cross-review 返回 pass，也只能进入 blocked 并标记
+  `requires_external_acquittal`，不能 completed。
+- `check` 检测 state 非法、review stale、self-acquittal、缺 memory 或
+  malformed acquittal log；`next` 输出 run-review、fix-blockers、
+  configure-cross-family-review、blocked-max-rounds 或 stop。
+
+该 state machine 负责门禁和续跑，不自动修稿、不自动开释。
+
 ## 10. 目录结构
 
 模板库：

@@ -25,7 +25,8 @@
 ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片；
 ARIS proof run-directory + notation/derivation gate 已完成第三切片；
 ARIS typed graph wiki 已完成第四切片；academic-research-skills 的
-hash-chained run ledger 已完成第五切片。其余来源仍按下表分级。
+hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已完成
+第六切片。其余来源仍按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -81,8 +82,8 @@ ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取�
   `proved` 绑定到真人 verified proof-audit。
 - `proof_run.py` 已提供 run directory 文件契约、status、notation scorecard
   与 top-down derivation gate；manual GPT Pro handoff 仍是骨架，不会自动执行。
-- `cross_review.py` 只做一次结构化评审，没有 auto-review-loop 的多轮修复、
-  reviewer memory、round state 和 acquittal log。
+- `review_loop.py` 已提供 round state、reviewer memory 和 append-only
+  acquittal log；自动修稿和模型驱动的 fix/re-review 尚未实现。
 - `meta_optimize.py` 已做聚合候选，但没有 bottleneck succession、trigger-rate
   evaluation、proposal IDs 或独立 apply gate。
 - `research_wiki.py` 已有 paper/idea/experiment/claim/gap kinds、
@@ -214,7 +215,7 @@ replay、`.science` package 尚未实现。**
 | 来源 | 是否参考过源码 | 我们对齐的程度 |
 | --- | --- | --- |
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft compiler 已对齐；完整语义提取和 code stub 仍缺 |
-| ARIS | 本轮补查 | proof campaign + run-dir + proof gates 已对齐；typed graph wiki 第一切片已完成；multi-round review 和 resubmit orchestrator 仍未对齐 |
+| ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state 已对齐；resubmit orchestrator 和自动 fix/re-review 仍未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk/governance 概念对齐；data-flow、capability matrix、calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench 概念对齐；immutable artifacts、replay、`.science` 未实现 |
@@ -233,8 +234,9 @@ replay、`.science` package 尚未实现。**
 1. 继续补齐 AI-Research-SKILLs 的 ARA 语义层，尤其是 concepts、solution、
    heuristics、code stub 与 source-grounded evidence；目录 contract 和
    research-state 已完成。
-2. 继续对齐 ARIS 的 auto-review-loop 与 resubmit/talk pipeline；
-   proof run directory、notation/derivation gate 和 typed graph wiki 第一切片已完成。
+2. 继续对齐 ARIS 的自动 fix/re-review 与 resubmit/talk pipeline；
+   review loop state、proof run directory、notation/derivation gate 和
+   typed graph wiki 已完成。
 3. 继续把 academic-research-skills 的 risk capability matrix 和
    `DATA_FLOWS.md` 纳入治理层；hash-chained run ledger 已完成。
 4. 把 open-science 的 immutable artifact version 与 portable package 接入

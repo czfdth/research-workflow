@@ -34,6 +34,7 @@ CLI_WRAPPERS = {
     "memory": "scripts/memory.ps1",
     "milestones": "scripts/milestones.ps1",
     "cross_review": "scripts/cross-review.ps1",
+    "review_loop": "scripts/review-loop.ps1",
     "argument_audit": "scripts/argument-audit.ps1",
     "human_coding": "scripts/human-coding.ps1",
     "novelty": "scripts/novelty.ps1",

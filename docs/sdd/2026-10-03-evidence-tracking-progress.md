@@ -2509,3 +2509,15 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness 在 ledger 存在时执行可选 run-ledger gate。
 - 新增 `tools/tests/test_run_ledger.py` 5 条覆盖；scripts/docs/CI/test-impact
   同步。
+
+## 源码对齐第六切片：ARIS review loop state（2026-10-05）
+
+- 按 ARIS `skills/auto-review-loop/SKILL.md`，新增
+  `tools/ccfa/review_loop.py` 与 `scripts/review-loop.ps1`。
+- 维护 review-loop-state.json、reviewer-memory.md 和 append-only
+  ACQUITTAL_LOG.jsonl；同族/未知族 pass 强制 blocked，不能 completed。
+- `check` 检测 self-acquittal、review stale、缺 memory 与 malformed
+  acquittal log；`next` 输出下一动作。
+- readiness 在 state 存在时执行可选 review-loop gate。
+- 新增 `tools/tests/test_review_loop.py` 4 条覆盖；scripts/docs/CI/test-impact
+  同步。
