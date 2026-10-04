@@ -387,6 +387,10 @@ scripts/research-wiki.ps1 add-edge --dir library/wiki `
     --from rw:002 --to rw:001 --type inspired_by --evidence "file:notes.md"
 scripts/research-wiki.ps1 query-pack --dir library/wiki `
     --out library/wiki/query_pack.md
+scripts/research-wiki.ps1 sync --dir library/wiki --bib library/refs.bib
+scripts/research-wiki.ps1 rebuild --dir library/wiki
+scripts/research-wiki.ps1 append-log --dir library/wiki `
+    --message "rebuilt after new literature ingest"
 ```
 
 从已有 claim、exploration、figure 和 run 台账生成 ARA draft：

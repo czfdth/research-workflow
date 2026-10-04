@@ -814,6 +814,8 @@ Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
 - `add-edge` 追加边而不是重写文件；`check` 与 `index` 会同时校验实体和边。
 - `query-pack` 生成紧凑 Markdown，包含实体、边和 kind counts，供下游 ideation
   或检索消费。
+- `sync` 从 `library/refs.bib` 批量创建缺失的 paper card；`rebuild` 重新生成
+  `index.md` 与 `gap_map.md`；`append-log` 维护 append-only `log.md`。
 
 Markdown 实体和图边是 source of truth；index 与 query pack 是生成物。
 

@@ -93,8 +93,8 @@ ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取�
 - `meta_optimize.py` 已做聚合候选，但没有 bottleneck succession、trigger-rate
   evaluation、proposal IDs 或独立 apply gate。
 - `research_wiki.py` 已有 paper/idea/experiment/claim/gap kinds、
-  `graph/edges.jsonl` 八类 typed edges、`add-edge` 和 `query-pack`；
-  仍缺自动 ingest/sync、log/gap map 和完整查询索引。
+  `graph/edges.jsonl` 八类 typed edges、`add-edge`、`query-pack`，
+  以及 BibTeX `sync`、`index.md`/`gap_map.md` rebuild 和 append-only `log.md`。
 - `post_submission.py` 只校验产出物契约，没有真正执行 resubmit 的物理隔离、
   匿名清点、edit whitelist 和 adversarial gate。
 

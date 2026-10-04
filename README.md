@@ -106,7 +106,7 @@ git -C $paper status --short
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
 | `tools/ccfa/artifact_store.py` | 内容寻址的 immutable artifact store、完整性验证、provenance replay 与 `.science` 打包 | `scripts/artifact-store.ps1` |
 | `tools/ccfa/session_replay.py` | 串联 passport、run ledger、artifact store 与 review state，生成只读 session replay HTML | `scripts/session-replay.ps1` |
-| `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges 与关联，并构建索引、搜索和 query pack | `scripts/research-wiki.ps1` |
+| `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges；支持 BibTeX sync、catalog/gap map 重建、搜索和 query pack | `scripts/research-wiki.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查

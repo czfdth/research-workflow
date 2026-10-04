@@ -2500,6 +2500,8 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   query pack 已加入 gitignore。
 - `tools/tests/test_research_wiki.py` 扩展到 11 条覆盖；README、workflow guide、
   设计文档、CI/test-impact 同步。
+- 后续补 BibTeX sync、index/gap_map 重建和 append-log，扩展到 13 条测试，
+  覆盖自动 ingest 与 catalog 生成。
 
 ## 源码对齐第五切片：hash-chained run ledger（2026-10-05）
 

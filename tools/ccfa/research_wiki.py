@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from ccfa.cli import Problem, emit, tool_error
+from ccfa.bib import load_records
 from ccfa.friction_log import write_text_output
 
 
@@ -406,6 +407,102 @@ def query_pack(wiki_dir: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+def sync_bibliography(wiki_dir: Path, bib_path: Path) -> dict:
+    """Create paper cards for BibTeX entries not yet present in the wiki."""
+    wiki_dir = Path(wiki_dir)
+    bib_path = Path(bib_path)
+    try:
+        records = load_records(bib_path).records
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    index = build_index(wiki_dir)
+    known = {entry["id"] for entry in index.get("entries", [])}
+    created = []
+    for key, record in records.items():
+        paper_id = f"paper:{key}"
+        if paper_id in known:
+            continue
+        title = record.title or key
+        year = record.year or ""
+        authors = record.authors or ""
+        metadata = {
+            "id": paper_id,
+            "kind": "paper",
+            "title": str(title),
+            "status": "active",
+            "tags": [],
+            "projects": [],
+            "evidence": [f"file:{bib_path.name}"],
+            "related": [],
+            "updated_at": dt.date.today().isoformat(),
+            "authors": authors,
+            "year": str(year),
+        }
+        content = "---\n" + yaml.safe_dump(
+            metadata,
+            sort_keys=False,
+            allow_unicode=True,
+        ) + "---\n\n# " + str(title) + "\n"
+        target = wiki_dir / "papers" / f"{key}.md"
+        save = write_text_output
+        save(target, content)
+        created.append(paper_id)
+    return {"created": sorted(created), "count": len(created)}
+
+
+def rebuild_catalog(wiki_dir: Path) -> dict:
+    """Regenerate index.md and gap_map.md from wiki entities and edges."""
+    wiki_dir = Path(wiki_dir)
+    index = build_index(wiki_dir)
+    entries = index.get("entries", [])
+    edges = index.get("edges", [])
+    by_kind: dict[str, list[dict]] = {}
+    for entry in entries:
+        by_kind.setdefault(str(entry.get("kind")), []).append(entry)
+    index_lines = ["# Research Wiki Index", ""]
+    for kind in sorted(by_kind):
+        index_lines.extend([f"## {kind}", ""])
+        for entry in sorted(by_kind[kind], key=lambda item: item["id"]):
+            index_lines.append(f"- `{entry['id']}` {entry['title']}")
+        index_lines.append("")
+    index_path = wiki_dir / "index.md"
+    index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+    gap_lines = ["# Gap Map", ""]
+    for entry in sorted(
+        (item for item in entries if item.get("kind") == "gap"),
+        key=lambda item: item["id"],
+    ):
+        gap_lines.append(f"## {entry['id']}: {entry['title']}")
+        related = [
+            edge
+            for edge in edges
+            if edge.get("to") == entry["id"] or edge.get("from") == entry["id"]
+        ]
+        if related:
+            for edge in related:
+                gap_lines.append(
+                    f"- {edge['from']} --{edge['type']}--> {edge['to']}"
+                )
+        else:
+            gap_lines.append("- no mapped edges")
+        gap_lines.append("")
+    gap_path = wiki_dir / "gap_map.md"
+    gap_path.write_text("\n".join(gap_lines) + "\n", encoding="utf-8")
+    return {
+        "files": ["index.md", "gap_map.md"],
+        "entry_count": len(entries),
+        "edge_count": len(edges),
+    }
+
+
+def append_log(wiki_dir: Path, message: str) -> None:
+    path = Path(wiki_dir) / "log.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"- {timestamp}: {message.strip()}\n")
+
+
 def build_index(wiki_dir: Path) -> dict:
     """Build a deterministic JSON index for wiki search."""
     problems, _advisories = check_wiki(wiki_dir)
@@ -507,6 +604,14 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--dir", required=True)
     query.add_argument("--out", required=True)
     query.add_argument("--force", action="store_true")
+    sync = sub.add_parser("sync", help="从 BibTeX 批量创建缺失 paper cards")
+    sync.add_argument("--dir", required=True)
+    sync.add_argument("--bib", required=True)
+    rebuild = sub.add_parser("rebuild", help="重建 index.md 与 gap_map.md")
+    rebuild.add_argument("--dir", required=True)
+    log = sub.add_parser("append-log", help="追加 wiki 时间线记录")
+    log.add_argument("--dir", required=True)
+    log.add_argument("--message", required=True)
     return parser
 
 
@@ -540,6 +645,17 @@ def main(argv: list[str]) -> int:
                 query_pack(Path(args.dir)),
                 force=args.force,
             )
+            return 0
+        if args.command == "sync":
+            result = sync_bibliography(Path(args.dir), Path(args.bib))
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.command == "rebuild":
+            result = rebuild_catalog(Path(args.dir))
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.command == "append-log":
+            append_log(Path(args.dir), args.message)
             return 0
         index_path = Path(args.index)
         index = json.loads(index_path.read_text(encoding="utf-8"))

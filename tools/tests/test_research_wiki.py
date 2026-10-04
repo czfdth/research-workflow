@@ -5,10 +5,13 @@ from pathlib import Path
 
 from ccfa.research_wiki import (
     add_edge,
+    append_log,
     build_index,
     check_wiki,
     query_pack,
+    rebuild_catalog,
     search_index,
+    sync_bibliography,
 )
 
 
@@ -198,6 +201,41 @@ class ResearchWikiTests(unittest.TestCase):
         self.assertEqual(edge["type"], "inspired_by")
         self.assertIn("inspired_by", pack)
         self.assertIn("rw:001", pack)
+
+    def test_sync_bibliography_creates_paper_cards(self):
+        bib = self.wiki / "refs.bib"
+        bib.write_text(
+            "@article{demo2026,\n"
+            "  title={Demo Paper},\n"
+            "  author={Doe, Jane},\n"
+            "  year={2026},\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        first = sync_bibliography(self.wiki, bib)
+        second = sync_bibliography(self.wiki, bib)
+
+        self.assertEqual(first["created"], ["paper:demo2026"])
+        self.assertEqual(second["created"], [])
+        self.assertTrue((self.wiki / "papers" / "demo2026.md").is_file())
+
+    def test_rebuild_catalog_and_log(self):
+        self._write_entry("one.md")
+        self._write_entry(
+            "gap.md",
+            ENTRY.replace("id: rw:001", "id: gap:1")
+            .replace("kind: decision", "kind: gap")
+            .replace("title: Use a dedicated artifact badge ledger", "title: Missing evaluation"),
+        )
+
+        result = rebuild_catalog(self.wiki)
+        append_log(self.wiki, "catalog rebuilt")
+
+        self.assertIn("index.md", result["files"])
+        self.assertIn("gap_map.md", result["files"])
+        self.assertIn("Missing evaluation", (self.wiki / "gap_map.md").read_text(encoding="utf-8"))
+        self.assertIn("catalog rebuilt", (self.wiki / "log.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
