@@ -255,6 +255,7 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 | `statistics`（v6 补记） | 检查预注册统计设计：alpha、功效、样本量、多重比较、种子、停止规则、缺失数据处理 |
 | `governance`（v6 补记） | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露 |
 | `repro-env`（v6 补记） | 检查 requirements、lockfile 哈希、系统工具版本与证据文件 |
+| `doctor`（v6 补记） | 预检本地平台耦合：git、LaTeX 工具链、codex、Docker、nvidia-smi 与两个 venv；缺什么就点名它禁用了哪个能力。只读，不安装任何东西 |
 
 **分期说明（v6 补记）**：`research-version` 推迟到"复现与归档"计划实施，且默认按 **git 的薄封装**（tag + 真实 diff）而非独立版本库来做。理由：论文库本身已是 git 仓库，独立快照库会制造"两个版本真相"——同一份稿子的"第几版"到底以哪个为准。先不建与 git 打架的东西，比建了再拆便宜。
 
