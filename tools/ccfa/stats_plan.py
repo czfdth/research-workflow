@@ -9,6 +9,7 @@ handling, and multiple-comparison correction before the design is frozen.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -82,6 +83,7 @@ def _check_claim(path: Path, index: int, claim: object) -> list:
     if (
         isinstance(effect_size, bool)
         or not isinstance(effect_size, (int, float))
+        or not math.isfinite(effect_size)
         or effect_size <= 0
     ):
         problems.append(

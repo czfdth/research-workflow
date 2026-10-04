@@ -13,6 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from ccfa.bib import load_records
 from ccfa.cli import emit, tool_error
 from ccfa.ledger import (
     is_iso_date,
@@ -71,6 +72,17 @@ def _check_search(path: Path, search: object) -> list:
                 "search.databases 至少需要两个非空数据库名",
             )
         )
+    elif len(
+        {item.strip().casefold() for item in databases}
+    ) != len(databases):
+        problems.append(
+            problem(
+                "novelty-duplicate-database",
+                path,
+                None,
+                "search.databases 不能包含重复项",
+            )
+        )
     queries = search.get("queries")
     if (
         not isinstance(queries, list)
@@ -121,6 +133,7 @@ def _check_neighbors(
     path: Path,
     neighbors: object,
     claims: list[str],
+    bib_keys: set[str],
 ) -> list:
     problems = []
     if not isinstance(neighbors, list) or len(neighbors) < 3:
@@ -133,6 +146,7 @@ def _check_neighbors(
             )
         ]
     ids: set[str] = set()
+    titles: set[str] = set()
     covered: set[str] = set()
     for index, neighbor in enumerate(neighbors):
         if not isinstance(neighbor, dict):
@@ -178,6 +192,15 @@ def _check_neighbors(
                 )
             )
         ids.add(neighbor_id)
+        if neighbor_id not in bib_keys:
+            problems.append(
+                problem(
+                    "novelty-unknown-neighbor",
+                    path,
+                    None,
+                    f"neighbor {neighbor_id!r} 不在 manuscript/references.bib 中",
+                )
+            )
         for field in ("title", "venue", "overlap", "difference"):
             if not is_nonempty_str(neighbor.get(field)):
                 problems.append(
@@ -188,6 +211,19 @@ def _check_neighbors(
                         f"{neighbor_id}: {field} 必须是非空字符串",
                     )
                 )
+        title = neighbor.get("title")
+        if is_nonempty_str(title):
+            normalised_title = _normalise_title(title)
+            if normalised_title in titles:
+                problems.append(
+                    problem(
+                        "novelty-duplicate-neighbor-title",
+                        path,
+                        None,
+                        f"neighbor title 重复: {title.strip()}",
+                    )
+                )
+            titles.add(normalised_title)
         for field in ("overlap", "difference"):
             text = neighbor.get(field)
             if is_nonempty_str(text):
@@ -217,7 +253,17 @@ def _check_neighbors(
                 )
             )
         else:
-            covered.update(item.strip() for item in claim_ids)
+            normalised_claim_ids = {item.strip() for item in claim_ids}
+            for claim_id in sorted(normalised_claim_ids - set(claims)):
+                problems.append(
+                    problem(
+                        "novelty-unknown-claim",
+                        path,
+                        None,
+                        f"{neighbor_id}: claim_ids 引用了未声明的 {claim_id!r}",
+                    )
+                )
+            covered.update(normalised_claim_ids)
     for claim in claims:
         if claim not in covered:
             problems.append(
@@ -231,9 +277,22 @@ def _check_neighbors(
     return problems
 
 
-def check(paper_root: Path, ledger: Path | None = None) -> tuple[list, list]:
+def _normalise_title(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def check(
+    paper_root: Path,
+    ledger: Path | None = None,
+    bib: Path | None = None,
+) -> tuple[list, list]:
     paper_root = Path(paper_root)
     path = Path(ledger) if ledger else paper_root / LEDGER_RELATIVE_PATH
+    bib_path = (
+        Path(bib)
+        if bib
+        else paper_root / "manuscript" / "references.bib"
+    )
     payload, problems = load_ledger(path, code="novelty-ledger-missing")
     if payload is None:
         return problems, []
@@ -265,7 +324,19 @@ def check(paper_root: Path, ledger: Path | None = None) -> tuple[list, list]:
         claims: list[str] = []
     else:
         claims = [item.strip() for item in claims_raw]
-    problems.extend(_check_neighbors(path, payload["neighbors"], claims))
+        if len(claims) != len(set(claims)):
+            problems.append(
+                problem(
+                    "novelty-duplicate-claim",
+                    path,
+                    None,
+                    "claims 不能包含重复项",
+                )
+            )
+    bib_keys = set(load_records(bib_path).records)
+    problems.extend(
+        _check_neighbors(path, payload["neighbors"], claims, bib_keys)
+    )
     return problems, []
 
 
@@ -275,11 +346,13 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--paper-root", default=".")
     parser.add_argument("--ledger")
+    parser.add_argument("--bib")
     args = parser.parse_args(argv[1:])
     try:
         problems, advisories = check(
             Path(args.paper_root),
             Path(args.ledger) if args.ledger else None,
+            Path(args.bib) if args.bib else None,
         )
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))

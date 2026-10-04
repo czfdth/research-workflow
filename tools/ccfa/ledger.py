@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 import yaml
 
 from ccfa.cli import Problem
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def load_ledger(
@@ -31,7 +34,7 @@ def load_ledger(
         return None, [
             Problem(code, str(path), None, "台账顶层必须是映射")
         ]
-    if payload.get("version") != version:
+    if type(payload.get("version")) is not int or payload.get("version") != version:
         return None, [
             Problem(code, str(path), None, f"台账 version 必须是 {version}")
         ]
@@ -43,7 +46,7 @@ def is_nonempty_str(value: object) -> bool:
 
 
 def is_iso_date(value: object) -> bool:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _ISO_DATE.fullmatch(value) is None:
         return False
     try:
         dt.date.fromisoformat(value)

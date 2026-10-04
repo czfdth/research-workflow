@@ -6,10 +6,11 @@
 
 **裁定：**
 
-- **E75 `novelty`**：`data/novelty-audit.yaml` 记录检索数据库（≥2）、查询、检索日期与
-  cutoff、≥3 篇最近邻、每篇的 overlap/difference、以及每篇覆盖的 claim id。
-  每个声明 claim 必须被至少一个近邻差异覆盖；禁止“没人做过 / no one has done /
-  first to”式未支撑表述。脚本不证明新颖性，只强制检索与差异留痕。
+- **E75 `novelty`**：`data/novelty-audit.yaml` 记录检索数据库（≥2，去重）、查询、
+  检索日期与 cutoff、≥3 篇最近邻（id 必须存在于 `manuscript/references.bib`，标题去重）、
+  每篇的 overlap/difference、以及每篇覆盖的 claim id；claim id 必须属于声明的 claims，
+  claims 去重。每个声明 claim 必须被至少一个近邻差异覆盖；禁止“没人做过 /
+  no one has done / first to”式未支撑表述。脚本不证明新颖性，只强制检索与差异留痕。
 - **E76 `statistics`**：`data/statistics-plan.yaml` 记录 alpha、multiple_comparison、
   每个 claim 的 endpoint/test/effect_size/target_power/sample_size/seeds/stopping_rule/
   missing_data。多个 claim 时 `multiple_comparison` 不能为 none；缺失功效、样本量、
@@ -26,14 +27,15 @@
 ### Task 1: novelty
 
 - 输入 `data/novelty-audit.yaml`；输出 JSON problems 到 stdout，人读摘要到 stderr。
-- 判别力：少于三个近邻、单数据库、cutoff 晚于检索日、claim 未被任何近邻差异覆盖、
+- 判别力：少于三个近邻、单数据库/重复数据库、bib 中不存在的 neighbor、未知或重复
+  claim id、重复近邻标题、cutoff 晚于检索日、claim 未被任何近邻差异覆盖、
   “no one has done this”表述都触发对应 problem；完整台账通过。
 
 ### Task 2: statistics
 
 - 输入 `data/statistics-plan.yaml`。
-- 判别力：alpha 越界、sample_size 非正、seeds 为空、多 claim 但 correction=none
-  都触发 problem；完整计划通过。
+- 判别力：alpha 越界、effect_size 非正或非有限、sample_size 非正、seeds 为空、
+  多 claim 但 correction=none 都触发 problem；完整计划通过。
 
 ### Task 3: governance
 

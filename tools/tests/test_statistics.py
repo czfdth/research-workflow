@@ -79,6 +79,16 @@ class StatisticsTests(unittest.TestCase):
         problems, _advisories = check(self.root)
         self.assertIn("statistics-invalid", self._codes(problems))
 
+    def test_non_finite_effect_size_is_a_problem(self):
+        for value in (".nan", ".inf"):
+            with self.subTest(value=value):
+                self.path.write_text(
+                    VALID.replace("effect_size: 0.5", f"effect_size: {value}"),
+                    encoding="utf-8",
+                )
+                problems, _advisories = check(self.root)
+                self.assertIn("statistics-invalid", self._codes(problems))
+
 
 if __name__ == "__main__":
     unittest.main()

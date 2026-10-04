@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 
 from ccfa.governance import check, main
+from ccfa.ledger import load_ledger
 
 VALID = """\
 version: 1
@@ -122,6 +123,20 @@ class GovernanceTests(unittest.TestCase):
             code = main(["governance", "--paper-root", str(self.root)])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["problem_count"], 0)
+
+    def test_ledger_version_must_be_strict_int(self):
+        for value in ("true", "1.0"):
+            with self.subTest(value=value):
+                self.path.write_text(
+                    f"version: {value}\n",
+                    encoding="utf-8",
+                )
+                payload, problems = load_ledger(self.path)
+                self.assertIsNone(payload)
+                self.assertIn(
+                    "ledger-invalid",
+                    {problem.code for problem in problems},
+                )
 
 
 if __name__ == "__main__":

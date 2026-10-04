@@ -91,6 +91,43 @@ SEED_FILES = {
         "# 如需精确到单行，加可选 line: <1 起的行号>。\n"
         "waivers: []\n"
     ),
+    "data/novelty-audit.yaml": (
+        "version: 1\n"
+        "# 完成文献检索后填写；结构见 "
+        "docs/plans/2026-10-04-governance-statistics-novelty.md。\n"
+        "search:\n"
+        "  databases: []\n"
+        "  queries: []\n"
+        "  searched_at: null\n"
+        "  cutoff: null\n"
+        "neighbors: []\n"
+        "claims: []\n"
+    ),
+    "data/statistics-plan.yaml": (
+        "version: 1\n"
+        "alpha: null\n"
+        "multiple_comparison: ''\n"
+        "claims: []\n"
+    ),
+    "data/governance.yaml": (
+        "version: 1\n"
+        "authors: []\n"
+        "conflicts: []\n"
+        "ethics:\n"
+        "  human_subjects: false\n"
+        "  data_license: ''\n"
+        "ai_usage:\n"
+        "  disclosed: false\n"
+        "  policy: ''\n"
+        "plagiarism:\n"
+        "  checked: false\n"
+        "  tool: ''\n"
+        "  date: null\n"
+        "responsible_disclosure:\n"
+        "  dual_use_reviewed: false\n"
+        "  disclosure_contact: ''\n"
+        "  notes: ''\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

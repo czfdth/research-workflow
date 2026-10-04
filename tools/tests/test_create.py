@@ -95,6 +95,9 @@ class TestCreateProject(unittest.TestCase):
             "manuscript/references.bib",
             "data/claims.yaml",
             "data/provenance.json",
+            "data/novelty-audit.yaml",
+            "data/statistics-plan.yaml",
+            "data/governance.yaml",
             "experiments/log",
             "experiments/results",
             "figures",
@@ -585,6 +588,9 @@ class TestCreateProject(unittest.TestCase):
         self.assertIn("ccfa.yaml", tracked)
         self.assertIn("manuscript/main.tex", tracked)
         self.assertIn("data/claims.yaml", tracked)
+        self.assertIn("data/novelty-audit.yaml", tracked)
+        self.assertIn("data/statistics-plan.yaml", tracked)
+        self.assertIn("data/governance.yaml", tracked)
         self.assertIn("memory/ideas.md", tracked)
         self.assertEqual(_run_git(root, "status", "--porcelain").strip(), "")
 
