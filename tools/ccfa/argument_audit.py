@@ -713,30 +713,37 @@ def _check_citation_support(
     }
 
 
-def _declared_claims(paper_root: Path) -> set[str]:
-    """Return the claim ids declared by the novelty audit, if any.
+def _declared_claims(paper_root: Path) -> set[str] | None:
+    """Return the claim ids declared by the novelty audit.
 
     The novelty ledger owns the canonical claim registry; a figure that
     asserts evidence must bind to one of those ids, otherwise the binding is
-    just a free-form string that no other gate understands.
+    just a free-form string that no other gate understands. ``None`` means the
+    registry cannot be trusted (missing, unparseable, wrong version, or not a
+    list of non-empty strings); an empty set means a valid registry that
+    declares no claims. Callers must not treat a partial registry as usable.
     """
     path = Path(paper_root) / NOVELTY_LEDGER_RELATIVE_PATH
     if not path.is_file():
-        return set()
+        return None
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
-        return set()
+        return None
     if not isinstance(payload, dict):
-        return set()
+        return None
+    version = payload.get("version")
+    if type(version) is not int or version != 1:
+        return None
     raw = payload.get("claims")
     if not isinstance(raw, list):
-        return set()
-    return {
-        item.strip()
-        for item in raw
-        if isinstance(item, str) and item.strip()
-    }
+        return None
+    claims: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            return None
+        claims.add(item.strip())
+    return claims
 
 
 def _load_figure_manifest(

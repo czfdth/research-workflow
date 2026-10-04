@@ -377,6 +377,45 @@ class FigureSupportAuditTests(unittest.TestCase):
             "figure-support-claims-unavailable", self._codes(problems)
         )
 
+    def test_partially_malformed_claims_is_a_problem(self):
+        self._write_valid_manifest()
+        (self.root / "data" / "novelty-audit.yaml").write_text(
+            "version: 1\nclaims:\n  - C1\n  - 123\n", encoding="utf-8"
+        )
+        self._write_ledger(self._valid_ledger())
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-claims-unavailable", self._codes(problems)
+        )
+
+    def test_wrong_novelty_version_is_a_problem(self):
+        self._write_valid_manifest()
+        (self.root / "data" / "novelty-audit.yaml").write_text(
+            "version: 2\nclaims:\n  - C1\n", encoding="utf-8"
+        )
+        self._write_ledger(self._valid_ledger())
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-claims-unavailable", self._codes(problems)
+        )
+
+    def test_empty_claim_registry_cannot_bind_evidence(self):
+        self._write_valid_manifest()
+        (self.root / "data" / "novelty-audit.yaml").write_text(
+            "version: 1\nclaims: []\n", encoding="utf-8"
+        )
+        self._write_ledger(self._valid_ledger())
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-claims-unavailable", self._codes(problems)
+        )
+
     def test_claims_unavailable_is_reported_once(self):
         self._write_manifest(
             self._manifest_entry(name="main-results")
