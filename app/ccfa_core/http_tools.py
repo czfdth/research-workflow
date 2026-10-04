@@ -21,6 +21,7 @@ intended caller; the registry itself writes nothing.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,7 @@ import yaml
 SCHEMA_VERSION = 1
 MAX_TIMEOUT_S = 120.0
 MAX_RESPONSE_CHARS = 20_000
+_MAX_RESPONSE_BYTES = 200_000
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
@@ -274,6 +276,7 @@ def _parse_tool(
     if (
         isinstance(timeout, bool)
         or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
         or timeout <= 0
         or timeout > MAX_TIMEOUT_S
     ):
@@ -316,21 +319,33 @@ def _parse_tool(
             )
         )
 
-    headers = _string_map(item.get("headers"), path, f"tools[{index}].headers", issues)
+    headers = {
+        key.strip(): value
+        for key, value in _string_map(
+            item.get("headers"), path, f"tools[{index}].headers", issues
+        ).items()
+    }
     for header, value in headers.items():
-        if header.casefold() in _SENSITIVE_HEADERS:
-            if not value.startswith(_SECRET_PREFIX) or not value[
-                len(_SECRET_PREFIX) :
-            ].strip():
+        if value.startswith(_SECRET_PREFIX):
+            if _PLACEHOLDER.search(value):
                 issues.append(
                     _issue(
-                        "registry-literal-secret",
+                        "registry-invalid-field",
                         path,
-                        f"工具 {name or index} 的敏感头 {header} 必须写成 "
-                        '"secret:<key_name>"，不能写明文凭据',
+                        f"工具 {name or index} 的 {header} secret 引用不能含占位符",
                     )
                 )
-        if _SECRET_PREFIX in value and not value.startswith(_SECRET_PREFIX):
+            continue
+        if header.casefold() in _SENSITIVE_HEADERS:
+            issues.append(
+                _issue(
+                    "registry-literal-secret",
+                    path,
+                    f"工具 {name or index} 的敏感头 {header} 必须写成 "
+                    '"secret:<key_name>"，不能写明文凭据',
+                )
+            )
+        elif _SECRET_PREFIX in value:
             issues.append(
                 _issue(
                     "registry-literal-secret",
@@ -494,22 +509,40 @@ class HttpToolRegistry:
             raise HttpToolError("unknown-tool", f"未知 HTTP 工具: {name!r}")
         request = self._build_request(spec, arguments or {})
         try:
-            with httpx.Client(
-                transport=self._transport,
-                timeout=spec.timeout_s,
-            ) as client:
-                response = client.request(**request)
-        except httpx.HTTPError as exc:
+            return self._send(spec, request)
+        except HttpToolError:
+            raise
+        except Exception as exc:
+            # httpx.InvalidURL is not an HTTPError and its message can contain
+            # the interpolated URL, so only the exception type is reported.
             raise HttpToolError(
                 "http-error",
                 f"请求失败: {type(exc).__name__}",
             ) from None
-        if response.status_code >= 400:
-            raise HttpToolError(
-                "http-status",
-                f"HTTP {response.status_code}",
-            )
-        return _read_response(response)
+
+    def _send(self, spec: HttpToolSpec, request: dict) -> dict:
+        kwargs: dict[str, Any] = {"headers": request["headers"]}
+        if "params" in request:
+            kwargs["params"] = request["params"]
+        if "json" in request:
+            kwargs["json"] = request["json"]
+        with httpx.Client(
+            transport=self._transport,
+            timeout=spec.timeout_s,
+        ) as client:
+            with client.stream(
+                request["method"], request["url"], **kwargs
+            ) as response:
+                status = response.status_code
+                if status >= 400:
+                    raise HttpToolError("http-status", f"HTTP {status}")
+                body = bytearray()
+                for chunk in response.iter_bytes():
+                    body.extend(chunk)
+                    if len(body) >= _MAX_RESPONSE_BYTES:
+                        del body[_MAX_RESPONSE_BYTES:]
+                        break
+                return _read_response(status, bytes(body))
 
     def execute(self, name: str, arguments: dict | None = None) -> dict:
         """Convenience wrapper returning the bridge's result envelope."""
@@ -596,11 +629,11 @@ def _render_headers(
     return headers
 
 
-def _read_response(response: httpx.Response) -> dict:
+def _read_response(status: int, body: bytes) -> dict:
+    text = body.decode("utf-8", errors="replace")
     try:
-        return {"status": response.status_code, "json": response.json()}
+        return {"status": status, "json": json.loads(text)}
     except ValueError:
-        text = response.text
         if len(text) > MAX_RESPONSE_CHARS:
             text = text[:MAX_RESPONSE_CHARS] + "...(truncated)"
-        return {"status": response.status_code, "text": text}
+        return {"status": status, "text": text}

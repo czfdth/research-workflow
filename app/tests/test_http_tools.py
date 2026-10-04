@@ -148,6 +148,35 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(issues, [])
         self.assertEqual(specs[0].headers["Authorization"], "secret:arxiv-key")
 
+    def test_sensitive_header_with_surrounding_whitespace_is_rejected(self):
+        text = VALID.replace(
+            "    query:\n",
+            '    headers:\n      " Authorization ": "Bearer literal"\n'
+            "    query:\n",
+        )
+
+        _specs, issues = self._load(text)
+
+        self.assertEqual(self._codes(issues), ["registry-literal-secret"])
+
+    def test_secret_reference_may_not_contain_a_placeholder(self):
+        text = VALID.replace(
+            "    query:\n",
+            '    headers:\n      Authorization: "secret:{key_name}"\n'
+            "    query:\n",
+        )
+
+        _specs, issues = self._load(text)
+
+        self.assertIn("registry-invalid-field", self._codes(issues))
+
+    def test_non_finite_timeout_is_rejected(self):
+        text = VALID.replace("timeout_s: 20", "timeout_s: .nan")
+
+        _specs, issues = self._load(text)
+
+        self.assertEqual(self._codes(issues), ["registry-invalid-timeout"])
+
     def test_invalid_method_and_risk_are_rejected(self):
         text = VALID.replace("method: GET", "method: DELETE").replace(
             "risk: read", "risk: admin"
@@ -227,8 +256,19 @@ class RegistryExecutionTests(unittest.TestCase):
         def handler(request):
             raise httpx.ConnectError("cannot connect")
 
+        path = self.root / "with-secret.yaml"
+        path.write_text(
+            VALID.replace(
+                "    query:\n",
+                "    headers:\n      Authorization: \"secret:arxiv-key\"\n"
+                "    query:\n",
+            ),
+            encoding="utf-8",
+        )
+        specs, issues = load_registry(path)
+        assert issues == []
         registry = HttpToolRegistry(
-            self.specs,
+            specs,
             resolve_secret=lambda name: "s3cret",
             transport=httpx.MockTransport(handler),
         )
@@ -238,6 +278,44 @@ class RegistryExecutionTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"]["code"], "http-error")
         self.assertNotIn("s3cret", json.dumps(result))
+
+    def test_invalid_url_value_is_reported_without_echoing_it(self):
+        path = self.root / "url-param.yaml"
+        path.write_text(
+            VALID.replace(
+                'url: "https://export.arxiv.org/api/query"',
+                'url: "https://example.com:{search_query}"',
+            ).replace("    query:\n      search_query: \"{search_query}\"\n", ""),
+            encoding="utf-8",
+        )
+        specs, issues = load_registry(path)
+        assert issues == []
+
+        def handler(request):  # pragma: no cover - must not be reached
+            raise AssertionError("request should not be sent")
+
+        registry = HttpToolRegistry(
+            specs,
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = registry.execute(
+            "arxiv_search", {"search_query": "sk-SECRET-VALUE"}
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "http-error")
+        self.assertNotIn("sk-SECRET-VALUE", json.dumps(result))
+
+    def test_large_response_body_is_bounded(self):
+        registry = self._registry(
+            httpx.Response(200, json={"data": "x" * 500_000}),
+        )
+
+        result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertTrue(result["ok"])
+        self.assertLess(len(json.dumps(result)), 100_000)
 
     def test_missing_secret_is_an_error_and_is_not_echoed(self):
         path = self.root / "with-secret.yaml"
