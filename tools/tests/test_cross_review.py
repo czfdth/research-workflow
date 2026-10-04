@@ -227,7 +227,7 @@ class TestRunReview(CrossReviewTests):
 
     def test_input_hashes_keep_binary_bytes_exact(self):
         path = self.paper_root / "manuscript" / "blob.bin"
-        path.write_bytes(b"\x00line one\r\nline two\r\n")
+        path.write_bytes(b"line one\r\nline two\r\n")
 
         result = self._run(
             self._runner(),
@@ -235,7 +235,7 @@ class TestRunReview(CrossReviewTests):
         )
 
         digest = hashlib.sha256(
-            b"\x00line one\r\nline two\r\n"
+            b"line one\r\nline two\r\n"
         ).hexdigest()
         self.assertEqual(
             result["input_hashes"]["manuscript/blob.bin"],

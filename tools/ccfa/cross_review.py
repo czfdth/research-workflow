@@ -47,6 +47,31 @@ _STDERR_LIMIT = 4000
 _RAW_LAST_MESSAGE_LIMIT = 10000
 _STDERR_TRUNCATION_MARKER = "...[truncated]"
 _BLOCKING_QUOTE_MIN_LENGTH = 20
+_TEXT_SUFFIXES = frozenset(
+    {
+        ".bib",
+        ".cfg",
+        ".csv",
+        ".css",
+        ".html",
+        ".ini",
+        ".js",
+        ".json",
+        ".md",
+        ".ps1",
+        ".py",
+        ".rst",
+        ".schema",
+        ".sh",
+        ".tex",
+        ".toml",
+        ".ts",
+        ".txt",
+        ".xml",
+        ".yaml",
+        ".yml",
+    }
+)
 
 
 def _now_iso() -> str:
@@ -104,9 +129,9 @@ def _relative_input(paper_root: Path, path: Path) -> tuple[Path, str]:
 
 def _sha256(path: Path) -> str:
     data = path.read_bytes()
-    # Text hashes must not depend on the checkout's CRLF/LF policy. Binary
-    # inputs keep their exact bytes.
-    if b"\0" not in data:
+    # Only known text suffixes are normalized, so an arbitrary binary file
+    # without NUL bytes keeps its exact digest.
+    if path.suffix.casefold() in _TEXT_SUFFIXES:
         data = data.replace(b"\r\n", b"\n")
     digest = hashlib.sha256(data).hexdigest()
     return f"sha256:{digest}"
