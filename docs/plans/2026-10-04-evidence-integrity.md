@@ -20,6 +20,22 @@
 - `create.py`：scaffold 完成后 `git init`（若目标已在仓库内则用 `git init` 独立 .git）、写论文级 `.gitignore`（TeX 中间产物、`*.pdf` 除外交付物、`__pycache__`）、`git add -A` + 首次提交；身份缺失时用 `git -c user.name=... -c user.email=...` 的本地默认（不写全局配置），提交失败则整体失败并清理（保持既有"不留下半成品"契约）。
 - `research_version.py`：所有子命令先解析 `git -C <repo> rev-parse --show-toplevel`；不等于 `<repo>`（realpath 比较）→ `ValueError("论文目录不是独立 git 仓库……拒绝在父仓库上打 tag")` → 2。新增 `--allow-parent-repo`？**不加**（E61：不留后门）。
 - **Task 1b（待 run_log.py 的并行改动落地后派）**：记录 git 身份时验证 toplevel；命中父仓库 → `git_repo: "foreign"`、`git_commit: null`、`git_dirty: null`；自身仓库 → `git_repo: "self"` + 既有字段；`check` 对 `foreign` 记 advisory（如实，不误报为"干净"）。
+
+### Task 1b（文件已解锁）：run-log 记录真实的仓库身份
+
+**Files:** Modify `tools/ccfa/run_log.py`、`tools/tests/test_run_log.py`（及 e2e 如需）
+
+| 条件 | 结果 |
+| --- | --- |
+| `rev-parse --show-toplevel` == paper_root（realpath） | `git_repo: "self"` + 既有 `git_commit`/`git_dirty` |
+| toplevel 是父仓库或其它仓库 | `git_repo: "foreign"`、`git_commit: null`、`git_dirty: null`（绝不记录父仓库提交） |
+| git 不可用 / rev-parse 失败 | `git_repo: "none"` + 两个 null |
+| 旧记录缺 `git_repo` | `check` → advisory `run-log-git-repo-unknown` |
+| `git_repo == "foreign"` | `check` → problem `run-log-foreign-repo` |
+| `git_repo == "none"` | `check` → problem `run-log-no-git-repo` |
+
+- 测试约 8 条；判别力实测：去掉 toplevel 校验 → foreign 用例失败。
+- commit：`feat: record whether a run happened in the paper repository`
 - 迁移：对既有 `papers/rag-attack-defense` 执行 `git init` + 首次提交（内容不变，仅加 .git 与论文级 .gitignore）；迁移后重跑一条 run-log 记录，断言 `git_commit` 指向论文仓库。
 - 测试（约 14 条）：新建项目自动成仓库且首提交含论文文件；仓库内嵌套目录运行 research-version → 拒绝；自身仓库 → 正常；run-log 在嵌套非仓库目录 → `foreign/null`；迁移文档步骤可照做。
 - 判别力实测：去掉 toplevel 校验 → 逃逸用例失败；去掉 init → 首提交用例失败。
@@ -44,6 +60,14 @@
 **Task 3a Files:** Modify `tools/ccfa/doi_lookup.py`、`tools/ccfa/citation_guard.py`、`tools/ccfa/citation_ledger.py`、`tools/tests/test_citation_guard*.py`、`tools/tests/test_doi_lookup*.py`。**不得触碰 cross_review.py / run_log.py / milestones.py 及其测试。**
 
 **Task 3b（待派）Files:** `tools/ccfa/cross_review.py`、`tools/tests/test_cross_review.py`、`tools/ccfa/run_log.py`（purpose → declared_purpose）、`tools/ccfa/milestones.py`（gate 证据化）
+
+### Task 3b（文件已解锁）：自声明降级 + 引文可核验
+
+1. **自声明降级**：run-log 新写入 `declared_purpose`（继续接受旧 `purpose` 读取）；help/docstring 明说这是调用者声明、不构成证据。
+2. **T-30 豁免可见**：T-30 之后 `declared_purpose=="build"` 仍豁免 `t30-new-experiment`，但必须输出 advisory `t30-declared-build-run`（含 run id 与日期）；experiment 仍是 problem。
+3. **cross-review 引文**：每条 blocking 的 `evidence` 至少含一条 ≥20 字符、且在 `--path` 输入文件拼接文本中逐字命中（空白归一化）的引文；否则 problem `review-uncited-blocking`（退 1）。
+4. 测试约 12 条；判别力：build 豁免改静默跳过 → advisory 用例失败；去掉引文校验 → 编造引文用例失败。
+5. commit：`feat: mark declarations as declared and require quotable review findings`
 
 - **DOI**：`lookup` 读响应体 JSON，校验返回 DOI == 请求 DOI（大小写归一），提取 title；`LookupResult` 增 `evidence`（body sha256、retrieved_at、matched_title）；title 与 bib 条目 title 做归一化相似度（≥0.9 视为匹配，低则 `found=False, detail="title mismatch"`）。`citation_guard --verify-online` 写台账时 `status=verified` 必须携带 evidence；无 evidence 的 verified 条目 → problem `citation-self-asserted`。
 - **run-log**：`purpose` 字段改 `declared_purpose`（并保留兼容读）；`check` 输出明确"declared 字段不构成证据"；milestones 的 `experiments-running` gate 证据改为"存在 run-log 记录且无 metrics-pending"（已可查），`submission-check` 要求 repro verify 记录存在。

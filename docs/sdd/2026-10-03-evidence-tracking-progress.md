@@ -1883,3 +1883,13 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   - 其余全部通过：DOI 归一/变体、expected_title=None 语义、坏 JSON 双源、evidence 校验、原子写、只读失败退 2、help 如实、key 哨兵不入台账、二次核验幂等；判别力两条独立复现。
   - 修复已派 `Confucius`：无可用标题 → `found=False, detail="title missing"`（保证写读收敛）；补真实往返 + 边界用例；证据哈希改原始字节并写清防伪造边界。commit `fix: never write evidence the ledger reader rejects`。
 - **更正：并行未提交改动的归属**。控制器核对 `read_thread`：`Ampere`（01a1015b）是 2026-10-03 run-log Part B 的**旧评审者**（已 completed、只读），并非工作树中 `run_log.py`/`milestones.py`/`cross_review.py` 未提交改动的作者。该批改动来自**另一个未知会话**；Task 1b（run-log git 身份）与 Task 3b（cross-review 引文 / declared_purpose / gate 证据化）在其归属澄清前保持不触碰。
+
+## 在途改动纳入（用户授权，2026-10-04）
+
+- 用户选择"授权接管并纳入"。控制器先跑全量确认自洽（**891 tests OK**），再按语义分三笔纳入：
+  1. `b06913a feat: mark run purpose and exempt build runs from the T-30 freeze`：run-log 新增 `purpose=experiment|build`（校验 + CLI `--purpose`），T-30 扫描跳过声明为 build 的运行。
+  2. `975fb61 fix: stop the review prompt from treating its own absence as blocking`：internal-review 的 prompt 明确"本次运行就是在生成评审报告"，不再把"记录不存在/历史 blocking"本身判为 blocking（对应用户审计里的循环自指）。
+  3. `c9b9694 docs: add the research workflow introduction`：面向使用者的工作流介绍（`docs/research-workflow-intro.md`）。
+  - 三笔提交信息均注明"adopted from an in-flight session with the user's authorization"；原作者未知。
+- **Task 3a 修复 `e834edc`**（`Confucius`）：无可用标题 → `found=False, detail="title missing"`，不再写 `matched_title: null`；补真实往返与相似度边界用例；证据哈希改原始字节并写明防伪造边界（commit `fix: never write evidence the ledger reader rejects`）。待 `Kierkegaard` 定向复验。
+- 计划已补 **Task 1b**（run-log 记 `git_repo: self|foreign|none`；foreign → problem、旧记录 → advisory）与 **Task 3b**（`declared_purpose` + T-30 build 豁免 advisory + cross-review 引文逐字命中）两个可派发小节。Task 1b 与 3b 都改 `run_log.py`，按序执行。
