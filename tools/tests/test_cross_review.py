@@ -468,6 +468,30 @@ class TestCheckReview(CrossReviewTests):
             [],
         )
 
+    def test_missing_provenance_is_flagged_even_for_a_cross_family_looking_model(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("execution_model", None)
+        record.pop("provider", None)
+        record.pop("family_override", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-same-family"],
+        )
+        self.assertEqual(
+            check_review(self.paper_root, allow_same_family=True),
+            [],
+        )
+
     def test_blocking_record_is_review_blocking(self):
         quote = (
             "The baseline comparison omits the strongest published method "

@@ -594,7 +594,19 @@ def check_review(
         else "unknown"
     )
     stored_family = record.get("family_judgement")
-    if isinstance(stored_family, str) and stored_family != computed_family:
+    provenance_complete = (
+        isinstance(stored_family, str)
+        and stored_family in {"same-family", "cross-family", "unknown"}
+        and isinstance(record.get("execution_model"), str)
+        and bool(record.get("execution_model").strip())
+        and isinstance(record.get("family_override"), bool)
+        and "provider" in record
+    )
+    if (
+        provenance_complete
+        and isinstance(stored_family, str)
+        and stored_family != computed_family
+    ):
         problems.append(
             Problem(
                 "review-family-mismatch",
@@ -606,17 +618,25 @@ def check_review(
             )
         )
     family_override = record.get("family_override") is True
-    if computed_family != "cross-family" and not (
-        family_override or allow_same_family
-    ):
+    same_family_gate = not provenance_complete or computed_family != "cross-family"
+    if same_family_gate and not (family_override or allow_same_family):
+        if not provenance_complete:
+            detail = (
+                "评审记录缺少完整跨族 provenance"
+                "（provider/execution_model/family_override）"
+            )
+        else:
+            detail = (
+                "评审模型不是跨族；"
+                f"family_judgement={computed_family!r}，"
+                "且没有显式 allow-same-family override"
+            )
         problems.append(
             Problem(
                 "review-same-family",
                 str(path),
                 None,
-                "评审模型不是跨族；"
-                f"family_judgement={computed_family!r}，"
-                "且没有显式 allow-same-family override",
+                detail,
             )
         )
     hashes = record.get("input_hashes")
