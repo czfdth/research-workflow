@@ -74,6 +74,8 @@ _SENSITIVE_HEADER_HINTS = (
     "secret",
     "credential",
     "password",
+    "session",
+    "cookie",
 )
 _SECRET_PREFIX = "secret:"
 

@@ -224,7 +224,14 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self._codes(issues), ["registry-invalid-field"])
 
     def test_common_credential_header_names_require_a_secret(self):
-        for header in ("X-Api-Token", "Token", "apikey", "X-Access-Token"):
+        for header in (
+            "X-Api-Token",
+            "Token",
+            "apikey",
+            "X-Access-Token",
+            "X-Session-Id",
+            "X-Session-Cookie",
+        ):
             with self.subTest(header=header):
                 text = VALID.replace(
                     "    query:\n",
@@ -497,6 +504,46 @@ class RegistryExecutionTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"]["code"], "http-error")
         self.assertNotIn("sk-SECRET-VALUE", json.dumps(result))
+        self.assertNotIn("keyring exploded", json.dumps(result))
+
+    def test_every_non_identity_content_encoding_is_refused(self):
+        for encoding in (
+            "gzip",
+            "br",
+            "zstd",
+            "deflate",
+            "GZip",
+            "gzip, br",
+            " gzip ",
+        ):
+            with self.subTest(encoding=encoding):
+                response = _FakeResponse(
+                    headers={"content-encoding": encoding}
+                )
+                registry = HttpToolRegistry(self.specs, transport=None)
+
+                with mock.patch.object(
+                    httpx, "Client", lambda **kwargs: _FakeClient(response)
+                ):
+                    result = registry.execute(
+                        "arxiv_search", {"search_query": "rag"}
+                    )
+
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"]["code"], "http-encoding")
+                self.assertFalse(response.iterated)
+
+    def test_identity_content_encoding_is_read(self):
+        response = _FakeResponse(headers={"content-encoding": "identity"})
+        registry = HttpToolRegistry(self.specs, transport=None)
+
+        with mock.patch.object(
+            httpx, "Client", lambda **kwargs: _FakeClient(response)
+        ):
+            result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(response.iterated)
 
     def test_missing_secret_is_an_error_and_is_not_echoed(self):
         path = self.root / "with-secret.yaml"

@@ -201,7 +201,7 @@ tools:
 
 - v1 只支持 HTTP，不支持任意 Python handler——那样会拿到应用自身权限，且无法校验。
 - `http://` 明文默认拒绝，必须显式写 `allow_http: true`。
-- 凭据头只能写 `secret:<key_name>`，由 keyring 取值。判定按名字：`Authorization`/`Proxy-Authorization`/`Cookie`/`Set-Cookie`，以及任何名字含 `token`/`key`/`auth`/`secret`/`credential`/`password` 的头（如 `X-Api-Token`、`apikey`）。写明文凭据是加载错误，`secret:` 必须给出非空 key 名且不能含占位符。
+- 凭据头只能写 `secret:<key_name>`，由 keyring 取值。判定按名字：`Authorization`/`Proxy-Authorization`/`Cookie`/`Set-Cookie`，以及任何名字含 `token`/`key`/`auth`/`secret`/`credential`/`password`/`session`/`cookie` 的头（如 `X-Api-Token`、`apikey`、`X-Session-Id`）。写明文凭据是加载错误，`secret:` 必须给出非空 key 名且不能含占位符。名字匹配是刻意保守的启发式：像 `Public-Key-Pins`、`X-Monkey` 这类非凭据名也会被要求走 keyring，代价是麻烦而不是泄露。
 - url / query / json / headers 里的 `{占位符}` 必须在 `parameters` 中声明；GET 不许带 json body。
 - 响应默认按未压缩读取（请求带 `Accept-Encoding: identity`）；服务端仍返回压缩体时拒绝（`http-encoding`），因为解压会在限流前吃掉内存——确需压缩响应的工具要显式写 `allow_compressed: true`。
 - **任一工具非法，整个注册表不加载**（fail-closed），不会留下「一半工具悄悄生效」的状态。
