@@ -515,6 +515,32 @@ class TestCheckReview(CrossReviewTests):
             [],
         )
 
+    def test_mismatch_survives_incomplete_provenance_and_allow_flag(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["family_override"] = False
+        record["family_judgement"] = "cross-family"
+        record.pop("provider", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-family-mismatch", "review-same-family"],
+        )
+        self.assertEqual(
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-family-mismatch"],
+        )
+
     def test_blocking_record_is_review_blocking(self):
         quote = (
             "The baseline comparison omits the strongest published method "

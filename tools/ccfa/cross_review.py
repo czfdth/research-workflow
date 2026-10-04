@@ -602,8 +602,8 @@ def check_review(
         and "provider" in record
     )
     if (
-        provenance_complete
-        and isinstance(stored_family, str)
+        isinstance(stored_family, str)
+        and computed_family != "unknown"
         and stored_family != computed_family
     ):
         problems.append(
