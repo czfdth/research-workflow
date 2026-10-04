@@ -103,7 +103,24 @@ def _run_git(
         return None
 
 
-def git_state(paper_root: Path) -> GitState:
+def _is_untracked_under(record: str, paper_root: Path, exclude: Path) -> bool:
+    """Return whether a porcelain record is an untracked file under *exclude*."""
+    if not record.startswith("?? "):
+        return False
+    raw_path = record[3:]
+    try:
+        candidate = (paper_root / raw_path).resolve()
+        candidate.relative_to(exclude.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def git_state(
+    paper_root: Path,
+    *,
+    exclude: Path | None = None,
+) -> GitState:
     """Record whether the run happened in the paper's own repository.
 
     ``self`` keeps the commit/dirty fields. A directory inside a parent or
@@ -125,7 +142,10 @@ def git_state(paper_root: Path) -> GitState:
     if not same_repository:
         return GitState("foreign", None, None)
     head = _run_git(paper_root, ["rev-parse", "HEAD"])
-    status = _run_git(paper_root, ["status", "--porcelain"])
+    status = _run_git(
+        paper_root,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )
     if (
         head is None
         or status is None
@@ -133,11 +153,14 @@ def git_state(paper_root: Path) -> GitState:
         or status.returncode != 0
     ):
         return GitState("self", None, None)
-    return GitState(
-        "self",
-        head.stdout.strip() or None,
-        bool(status.stdout.strip()),
-    )
+    records = [record for record in status.stdout.split("\0") if record]
+    if exclude is not None:
+        records = [
+            record
+            for record in records
+            if not _is_untracked_under(record, paper_root, exclude)
+        ]
+    return GitState("self", head.stdout.strip() or None, bool(records))
 
 
 def read_config(path: Path, *, paper_root: Path) -> dict:
@@ -193,7 +216,7 @@ def run_command(
 
     run_id, record_path = new_run_id(log_dir)
     config_entry = read_config(config, paper_root=paper_root) if config else None
-    state = git_state(paper_root)
+    state = git_state(paper_root, exclude=log_dir)
     started_at = _now_iso()
     started = time.monotonic()
     record = {

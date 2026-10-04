@@ -342,6 +342,29 @@ class TestScanClaims(BaseCase):
 
 
 class TestCoverageReport(BaseCase):
+    def test_report_paths_do_not_depend_on_absolute_paper_root(self):
+        self.write_main(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+        )
+
+        relative_report = claims_coverage_report(self.root)
+        relative_paths = [
+            item["path"] for item in relative_report["problems"]
+        ]
+        self.assertEqual(
+            relative_paths,
+            ["manuscript/main.tex"],
+        )
+
+        absolute_report = claims_coverage_report(self.root.resolve())
+        absolute_paths = [
+            item["path"] for item in absolute_report["problems"]
+        ]
+        self.assertEqual(absolute_paths, relative_paths)
+        self.assertNotIn(str(self.root.resolve()), absolute_paths[0])
+
     def test_report_counts_match_scan(self):
         self.write_main(
             "\\begin{abstract}\n"

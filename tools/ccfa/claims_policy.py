@@ -351,6 +351,11 @@ def _path_relative_to(path: str | Path, paper_root: Path) -> str:
         return Path(path).as_posix()
 
 
+def _report_path(path: str | Path, paper_root: Path) -> str:
+    """Return a stable repository-relative path for machine-readable output."""
+    return _path_relative_to(path, paper_root)
+
+
 def _matching_waiver(
     item_path: str,
     item_line: int,
@@ -394,7 +399,7 @@ def scan_claims(
             problems.append(
                 Problem(
                     "claims-policy-unknown-section",
-                    str(root / POLICY_RELATIVE_PATH),
+                    POLICY_RELATIVE_PATH.as_posix(),
                     None,
                     f"protected_sections 条目 {section!r} "
                     "未在 manuscript 中找到任何标题匹配",
@@ -428,7 +433,7 @@ def scan_claims(
                 advisories.append(
                     Problem(
                         "untagged-number",
-                        item.path,
+                        _report_path(item.path, root),
                         item.line,
                         f"未标记的数字线索（需人工复核）: {item.text}",
                     )
@@ -447,7 +452,7 @@ def scan_claims(
                 problems.append(
                     Problem(
                         "protected-untagged-number",
-                        item.path,
+                        _report_path(item.path, root),
                         item.line,
                         f"受保护区未绑定数字（需绑定或逐条豁免）: {item.text}",
                     )
@@ -459,7 +464,7 @@ def scan_claims(
             advisories.append(
                 Problem(
                     "waived-number",
-                    item.path,
+                    _report_path(item.path, root),
                     item.line,
                     "受保护区数字已豁免"
                     f"（命中 {hit_counts[index]} 处；"

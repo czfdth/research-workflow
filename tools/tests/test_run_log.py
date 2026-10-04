@@ -180,14 +180,11 @@ class TestRunCommand(BaseCase):
 
     def test_record_carries_git_repo_identity(self):
         self.init_repo(self.root)
-        # Keep the record outside the repository so run-log's own placeholder
-        # does not make the measured tree dirty.
-        log_dir = Path(tempfile.mkdtemp()) / "log"
         run, _ = self.runner(exit_code=0)
 
         run_id, record = run_command(
             ["python", "train.py"],
-            log_dir,
+            self.log_dir,
             self.root,
             runner=run,
         )
@@ -196,9 +193,55 @@ class TestRunCommand(BaseCase):
         self.assertTrue(record["git_commit"])
         self.assertFalse(record["git_dirty"])
         persisted = json.loads(
-            (log_dir / f"{run_id}.json").read_text(encoding="utf-8")
+            (self.log_dir / f"{run_id}.json").read_text(encoding="utf-8")
         )
         self.assertEqual(persisted["git_repo"], "self")
+
+    def test_in_repo_log_directory_does_not_create_false_dirty_state(self):
+        self.init_repo(self.root)
+        run, _ = self.runner(exit_code=0)
+
+        _, first = run_command(
+            ["python", "train.py"], self.log_dir, self.root, runner=run
+        )
+        _, second = run_command(
+            ["python", "train.py"], self.log_dir, self.root, runner=run
+        )
+
+        self.assertFalse(first["git_dirty"])
+        self.assertFalse(second["git_dirty"])
+        self.assertEqual(first["git_commit"], second["git_commit"])
+
+    def test_other_changes_still_mark_a_repo_dirty(self):
+        self.init_repo(self.root)
+        (self.root / "uncommitted.txt").write_text("dirty\n", encoding="utf-8")
+        run, _ = self.runner(exit_code=0)
+
+        _, record = run_command(
+            ["python", "train.py"], self.log_dir, self.root, runner=run
+        )
+
+        self.assertTrue(record["git_dirty"])
+
+    def test_tracked_changes_inside_log_dir_still_mark_a_repo_dirty(self):
+        self.init_repo(self.root)
+        tracked = self.log_dir / "tracked.txt"
+        tracked.parent.mkdir(parents=True, exist_ok=True)
+        tracked.write_text("committed\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=self.root, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "track log fixture"],
+            cwd=self.root,
+            check=True,
+        )
+        tracked.write_text("modified\n", encoding="utf-8")
+        run, _ = self.runner(exit_code=0)
+
+        _, record = run_command(
+            ["python", "train.py"], self.log_dir, self.root, runner=run
+        )
+
+        self.assertTrue(record["git_dirty"])
 
     def test_nested_directory_records_foreign_without_parent_commit(self):
         parent = self.root / "template"
