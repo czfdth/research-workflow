@@ -62,6 +62,7 @@ class GitHubWorkflowTests(unittest.TestCase):
             "app/.venv/Scripts/python.exe -m unittest",
             workflow,
         )
+        self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 2)
 
     def test_actions_use_current_node24_compatible_majors(self):
         workflow_text = "\n".join(

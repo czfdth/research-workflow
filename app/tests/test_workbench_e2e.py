@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -39,6 +40,29 @@ class WorkbenchEndToEnd(unittest.TestCase):
         self.addCleanup(self._temporary.cleanup)
         self.root = Path(self._temporary.name)
         self.settings_path = self.root / "settings.json"
+        self.codex_home = self.root / "codex-home"
+        template = (
+            self.codex_home
+            / "skills"
+            / "ccf-latex-templates"
+            / "NeurIPS"
+        )
+        template.mkdir(parents=True)
+        (template / "neurips_2026.tex").write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}Workbench E2E\\end{document}\n",
+            encoding="utf-8",
+        )
+        (template / "neurips_2026.sty").write_text(
+            "% minimal deterministic E2E fixture\n",
+            encoding="utf-8",
+        )
+        environment = mock.patch.dict(
+            os.environ,
+            {"CODEX_HOME": str(self.codex_home)},
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
 
         self.project_dir = create_project(
             papers_root=self.root / "papers",
