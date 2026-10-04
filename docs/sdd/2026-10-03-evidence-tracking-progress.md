@@ -1862,3 +1862,13 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   - **对示例论文的真实数字**（机制立刻命中了审计预言）：`tags=62, protected_total=8, bound=7, unbound=1`；唯一未绑定项 = `manuscript/main.tex:58` 的 `Coding 43`（摘要 "systematizes 43 works"）。口径说明：用户审计计 56/59 处标记，当前 HEAD 实测 62，属计数口径差异（`find_untagged` 逐行候选 vs 其它口径），已记录。
   - 待办：Task 2 评审（`Kierkegaard`，干净 worktree）。
 - **Task 3 拆分**：3a（DOI/引用证据；不等 Ampere）本次派发；3b（cross-review 引文 + run-log `declared_purpose`/gate 证据化）待 Ampere 的 `cross_review.py`/`run_log.py`/`milestones.py` 落地后派。
+
+## evidence-integrity 执行记录（Task 2 评审 + Task 3a）
+
+- **Task 2 评审（`Kierkegaard`）**：**Approved**（3 Minor，无 Critical/Important）。干净 worktree（detached `11239ad` + 挂现有 venv）工具全量 **853 OK**；判别力独立复现（受保护区改回 advisory → `protected-untagged-number` 用例失败）。
+  - 示例论文独立复跑（复制到临时目录 + 默认 policy）：`tags=62, protected_total=8, bound=7, waived=0, unbound=1`；未绑定 = `main.tex:58` 的 `Coding 43`——与实施者一致。旧示例论文尚未迁移 policy/checks（Task 4 范围）。
+  - 3 条 Minor：① 未知 `protected_sections` 名被静默接受（拼错节名 → 该节静默退化为 advisory）；② waiver 的 `line_text` 只归一化空白、不归一化大小写；③ 同一 waiver 命中同文件多处时全部豁免（契约允许但不可见）。
+  - 修复已改派 `Confucius`（原实施者线程失效）：未知节名 → problem `claims-policy-unknown-section`；waiver 匹配 `casefold`；`waived-number` 消息标注"命中 N 处"并在模板/报告写明可选 `line` 字段。commit `fix: make claims policy failures and waivers visible`。
+- **Task 3a `4118590`**（`Confucius`）：`doi_lookup` 读响应体——Crossref `message.DOI`/`title`、DataCite `data.attributes.doi`/`titles`；归一化 DOI 必须等于请求（否则 `doi mismatch`）；`expected_title` 相似度 <0.9 → `title mismatch`（NFKC+casefold、去标点、折叠空白、SequenceMatcher）；成功携带 `LookupEvidence(body_sha256="sha256:<64hex>", retrieved_at, matched_title, source)`；`LookupResult.evidence` 默认 `None` 保持向后兼容。`citation_ledger` 新增 `LedgerEvidence` + 证据校验（缺失/非法不崩、记 `evidence`/`evidence_error`）+ `save_ledger` 原子写；`citation_guard` 对无有效证据的 `verified` 报 `citation-self-asserted`（离线同样，退 1），`--verify-online` 写 evidence 或 failed。判别力：只看 200 → `test_doi_mismatch_is_not_found` 失败；去 evidence 校验 → `citation-self-asserted` 用例失败。工具全量 874（含 Ampere 并行用例）。
+  - 评审已派 `Kierkegaard`（review-e709fe8..4118590.diff，干净 worktree）。
+- **插曲（"没有反应"）**：Task 2 评审与 Task 3a 实际都已完成，但完成通知未送达/被截断；控制器通过 `read_thread` 取回了完整结论。流程改进口径：**长时间等待改用 read_thread 主动取证，而不是只等通知**。
