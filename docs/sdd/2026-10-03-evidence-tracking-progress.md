@@ -2139,3 +2139,31 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 真机冒烟（`357fbed`）：`scripts/doctor.ps1` 退 0，9 项 `found`（git/pdflatex/bibtex/xelatex/codex/docker/nvidia-smi/tools venv/app venv），daemon 探测通过。
 - 最终代码 HEAD 为 `357fbed`（其后仅本账本提交）。
 - 未实现边界：`found` 不证明命令可执行成功（PATH 上的坏 shim 仍会显示 found）；不安装或修复任何依赖；不检查 daemon 之外的运行时状态。
+
+## 自定义 HTTP 工具注册表（2026-10-04，E83）
+
+- 目标：P2——让使用者不写代码就能把自己的 API 接进工作台。做法是声明式 YAML 注册表，`ToolBridge` 把注册的工具与内置工具合并，走同一套参数校验、写操作确认与摘要审计。
+- **加载规则（fail-closed）**：v1 只支持 HTTP，不支持任意 Python handler（那样会拿到应用自身权限且无法校验）；`http://` 需显式 `allow_http: true`；凭据头只能写 `secret:<key_name>`（判定按名字：`Authorization`/`Proxy-Authorization`/`Cookie`/`Set-Cookie`，以及任何含 token/key/auth/secret/credential/password/session/cookie 的名字），明文凭据是加载错误；占位符必须在 `parameters` 中声明；GET 不许带 json body；**任一工具非法则整份注册表不加载**。
+- **运行规则**：请求带 `Accept-Encoding: identity`；响应若仍带非 identity 的 `Content-Encoding`，在读取请求体之前就报 `http-encoding`（解压会在限流前吃内存），确需压缩响应的工具要写 `allow_compressed: true`。响应体按字节上限流式读取，再解析 JSON 或截断文本。所有请求异常只报异常类型名，不报消息，避免把插值后的 URL/占位符/凭据带出去。
+- **接入**：`ToolBridge(project_root, http_tools=HttpToolRegistry(specs, resolve_secret=...))`；`ToolBridge.openai_tools()` 同时给出内置与注册工具。
+- 边界（如实）：注册表到 `ToolBridge` 的核心链路已通；把它接到设置界面与聊天面板（`http_tools` 设置项 + 启动加载）与 P3 打包仍未做。名字启发式刻意保守，`Public-Key-Pins`/`X-Monkey` 这类非凭据名也会被要求走 keyring——代价是麻烦而不是泄露。
+
+### 实现与评审
+
+- `3efc6ce feat: add a declarative HTTP tool registry`：首版实现 + 24 条用例（改动前 `ModuleNotFoundError` 全失败）。
+- 第一轮独立只读评审（`http-tools-review.json`）判 **fail**，6 条：带空白的敏感头名绕过明文检查（important）；`httpx.InvalidURL` 不是 `HTTPError`，坏 URL 占位符值会带 traceback 逃出并回显（important）；响应体在截断前被完整缓冲（important）；`secret:{key}` 里的占位符不被校验（minor）；`timeout_s: .nan` 通过范围检查（minor）；网络失败泄漏用例因为 spec 没有 secret 头而形同虚设（minor）。
+- 修复 `ae397ea fix: close HTTP tool registry leak and bounds gaps`：头名 strip 后再判定；请求路径改捕所有异常且只报类型名；响应改为流式 + 字节上限；`secret:` 引用不得含占位符；用 `math.isfinite` 拒绝 NaN/inf；泄漏用例改用带 secret 头的 spec。补 5 条判别用例（对 `3efc6ce` 全部失败）。
+- 第二轮复核（`http-tools-review-2.json`）判 **needs-fixes**，2 条：`iter_bytes()` 未给 chunk_size，压缩响应可在截断前放大出超大解码块（important）；空 `secret:` 引用被放行（minor）。
+- 修复 `2275e73 fix: bound decoded response chunks and reject empty secret refs`：按 8 KiB 分块读取并按剩余预算切片；`secret:` 必须给出非空 key 名。补 3 条用例（对 `ae397ea` 失败）。
+- 第三轮复核（`http-tools-review-3.json`）判 **needs-fixes**，4 条：chunk_size 只是重新切片，httpx 内部仍会整块解压（important）；敏感头白名单漏掉 `X-Api-Token`/`apikey`/`Token`（important）；两条限流用例绕过 content decoding（minor）；`resolve_secret` 抛异常时逃出净化路径（minor）。
+- 修复 `650d20e fix: refuse compressed responses and broaden credential headers`：请求带 `Accept-Encoding: identity`，并**在读取前拒绝**任何非 identity 压缩响应（`allow_compressed: true` 才放行）——这是真正把内存钉住的唯一办法；凭据名改为「显式集合 + 名字含 token/key/auth/secret/credential/password」；`_build_request` 移进净化 try。补 4 条判别用例（对 `2275e73` 全部失败）。
+- 第四轮复核（`http-tools-review-4.json`）输出**不符合 schema**（键名错、缺 summary、被代码围栏包住），3 条 finding。逐条核验后：两条**驳回**（都用实测探针证伪），一条部分成立。驳回证据：① 声称压缩守卫可被 `br`/`zstd`/`gzip, br`/大小写绕过——实测这些取值全部报 `http-encoding` 且 `body_read=False`，守卫是「只允许 identity」的白名单而非黑名单，代码里也没有 `response.json()/read()`；② 声称 resolver 消息会泄漏——实测 envelope 只有 `请求失败: RuntimeError`，resolver 文本整体不出现。成立部分：`X-Session-Id` 确实没被匹配。
+- 修复 `acddaf5 fix: cover session headers; lock the encoding and resolver invariants`：加入 session/cookie 名字提示；补 3 条回归用例，把两条被驳回的结论钉成不变量（非 identity 编码全拒且不读体、resolver 消息不回显）。
+- 第五轮定向复核（`http-tools-review-5.json`，HEAD `acddaf5`）判 **pass，findings 为空**：独立重推后无法推翻两条驳回（httpx 只按 `Content-Encoding` 解码、守卫在读体前拒绝；错误格式化只输出类型名），并确认 session/cookie 修复与用例判别力。该轮评审自述本地探针被策略拦截，非 2xx 响应体/`agent-tools.jsonl` 两条向量依赖控制器的探针证据与静态推理。
+
+### 验证
+
+- 按用户裁定只跑受影响模块：`app/tests/test_http_tools.py` **40 tests OK**、`app/tests/test_tools_bridge.py` **32 tests OK**、`tools/tests/test_docs_consistency.py` **15 tests OK**，合计 **87 tests OK**。未跑全量，也未跑其它 app 模块（本轮只触碰注册表与工具桥）。
+- 真机/内存探针：压缩编码 7 种取值全部在读体前拒绝；resolver 抛含 secret 的消息只回显类型名。
+- 最终代码 HEAD 为 `acddaf5`（其后仅本账本与文档提交）。
+- 未实现边界：GUI/设置接线与打包未做；名字启发式保守（可能要求无关头走 keyring）；`allow_compressed: true` 明确接受解压内存风险。
