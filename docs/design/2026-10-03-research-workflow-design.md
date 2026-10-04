@@ -799,6 +799,21 @@ Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
   必须 100%，undefined symbols 与 symbol collisions 必须为 0。
 - 这个工具负责续跑、审计和 handoff 骨架，不自动证明、不替人批准定理。
 
+### 9.14 源码对齐第四切片：ARIS typed graph wiki
+
+按 ARIS `skills/research-wiki/SKILL.md`，扩展 `tools/ccfa/research_wiki.py`：
+
+- `kind` 增加 paper、idea、experiment、claim、gap，保留原有 source、decision、
+  dead-end、method、result。
+- 新增 `graph/edges.jsonl`，支持 extends、contradicts、addresses_gap、
+  inspired_by、tested_by、supports、invalidates、supersedes 八类边。
+- 每条 edge 必须绑定真实 from/to wiki id 和非空 evidence。
+- `add-edge` 追加边而不是重写文件；`check` 与 `index` 会同时校验实体和边。
+- `query-pack` 生成紧凑 Markdown，包含实体、边和 kind counts，供下游 ideation
+  或检索消费。
+
+Markdown 实体和图边是 source of truth；index 与 query pack 是生成物。
+
 ## 10. 目录结构
 
 模板库：

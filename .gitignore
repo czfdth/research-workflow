@@ -14,6 +14,7 @@ library/papers/*.pdf
 /library/watch-state.json
 # Rebuilt from Markdown wiki entries by research-wiki index.
 /library/wiki/index.json
+/library/wiki/query_pack.md
 # Derived paper projects created by tools/newpaper land here.
 /papers/
 __pycache__/

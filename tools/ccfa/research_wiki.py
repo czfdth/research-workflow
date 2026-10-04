@@ -17,8 +17,29 @@ from ccfa.friction_log import write_text_output
 
 
 WIKI_VERSION = 1
-KINDS = {"source", "claim", "decision", "dead-end", "method", "result"}
+KINDS = {
+    "paper",
+    "idea",
+    "experiment",
+    "claim",
+    "gap",
+    "source",
+    "decision",
+    "dead-end",
+    "method",
+    "result",
+}
 STATUSES = {"active", "superseded", "rejected", "archived"}
+EDGE_TYPES = {
+    "extends",
+    "contradicts",
+    "addresses_gap",
+    "inspired_by",
+    "tested_by",
+    "supports",
+    "invalidates",
+    "supersedes",
+}
 REQUIRED_FIELDS = (
     "id",
     "kind",
@@ -101,6 +122,99 @@ def _evidence_problem(value: object) -> bool:
     if value.startswith("url:"):
         return URL.fullmatch(value[4:]) is None
     return not value.startswith(("run:", "file:", "claim:", "project:"))
+
+
+def _edge_path(wiki_dir: Path) -> Path:
+    return Path(wiki_dir) / "graph" / "edges.jsonl"
+
+
+def _load_edges(
+    wiki_dir: Path,
+    known_ids: set[str],
+) -> tuple[list[dict], list[Problem]]:
+    """Load and validate graph/edges.jsonl when it exists."""
+    path = _edge_path(wiki_dir)
+    if not path.is_file():
+        return [], []
+    problems: list[Problem] = []
+    edges: list[dict] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        return [], [
+            _problem("research-wiki-invalid-edge", path, f"无法读取 edges: {exc}")
+        ]
+    for line_number, raw in enumerate(lines, start=1):
+        if not raw.strip():
+            continue
+        try:
+            edge = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            problems.append(
+                Problem(
+                    "research-wiki-invalid-edge",
+                    str(path),
+                    line_number,
+                    f"edge JSON 非法: {exc}",
+                )
+            )
+            continue
+        if not isinstance(edge, dict):
+            problems.append(
+                Problem(
+                    "research-wiki-invalid-edge",
+                    str(path),
+                    line_number,
+                    "edge 必须是对象",
+                )
+            )
+            continue
+        missing = [
+            field
+            for field in ("from", "to", "type", "evidence")
+            if field not in edge
+        ]
+        if missing:
+            problems.append(
+                Problem(
+                    "research-wiki-invalid-edge",
+                    str(path),
+                    line_number,
+                    f"edge 缺少字段: {', '.join(missing)}",
+                )
+            )
+            continue
+        if edge.get("type") not in EDGE_TYPES:
+            problems.append(
+                Problem(
+                    "research-wiki-invalid-edge-type",
+                    str(path),
+                    line_number,
+                    f"edge type 非法: {edge.get('type')!r}",
+                )
+            )
+        for endpoint in ("from", "to"):
+            value = edge.get(endpoint)
+            if value not in known_ids:
+                problems.append(
+                    Problem(
+                        "research-wiki-unknown-edge-endpoint",
+                        str(path),
+                        line_number,
+                        f"edge {endpoint} 不存在: {value!r}",
+                    )
+                )
+        if not isinstance(edge.get("evidence"), str) or not edge["evidence"].strip():
+            problems.append(
+                Problem(
+                    "research-wiki-invalid-edge-evidence",
+                    str(path),
+                    line_number,
+                    "edge evidence 必须是非空字符串",
+                )
+            )
+        edges.append(edge)
+    return edges, problems
 
 
 def check_wiki(wiki_dir: Path) -> tuple[list[Problem], list[Problem]]:
@@ -218,7 +332,78 @@ def check_wiki(wiki_dir: Path) -> tuple[list[Problem], list[Problem]]:
                         f"related 引用了不存在的 id: {related!r}",
                     )
                 )
+    _edges, edge_problems = _load_edges(wiki_dir, known)
+    problems.extend(edge_problems)
     return problems, []
+
+
+def add_edge(
+    wiki_dir: Path,
+    *,
+    from_id: str,
+    to_id: str,
+    edge_type: str,
+    evidence: str,
+) -> dict:
+    """Append one typed edge to graph/edges.jsonl after endpoint checks."""
+    wiki_dir = Path(wiki_dir)
+    if edge_type not in EDGE_TYPES:
+        raise ValueError(
+            f"edge type 非法: {edge_type!r}，应为 {' / '.join(sorted(EDGE_TYPES))}"
+        )
+    if not evidence or not evidence.strip():
+        raise ValueError("edge evidence 不能为空")
+    index = build_index(wiki_dir)
+    known = {entry["id"] for entry in index.get("entries", [])}
+    for label, value in (("from", from_id), ("to", to_id)):
+        if value not in known:
+            raise ValueError(f"edge {label} 不存在: {value!r}")
+    edge = {
+        "from": from_id,
+        "to": to_id,
+        "type": edge_type,
+        "evidence": evidence.strip(),
+    }
+    path = _edge_path(wiki_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(edge, ensure_ascii=False, sort_keys=True) + "\n")
+    return edge
+
+
+def query_pack(wiki_dir: Path) -> str:
+    """Build a compact, deterministic query pack for downstream ideation."""
+    index = build_index(wiki_dir)
+    entries = index.get("entries", [])
+    edges = index.get("edges", [])
+    by_kind: dict[str, int] = {}
+    for entry in entries:
+        kind = str(entry.get("kind", "unknown"))
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+    lines = [
+        "# Research Wiki Query Pack",
+        "",
+        f"- entries: {len(entries)}",
+        f"- edges: {len(edges)}",
+        "",
+        "## Entities",
+        "",
+    ]
+    for entry in entries[:50]:
+        lines.append(f"- `{entry['id']}` [{entry['kind']}] {entry['title']}")
+    lines.extend(["", "## Edges", ""])
+    if edges:
+        for edge in edges:
+            lines.append(
+                f"- `{edge['from']}` --{edge['type']}--> `{edge['to']}`: "
+                f"{edge['evidence']}"
+            )
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Kind Counts", ""])
+    for kind in sorted(by_kind):
+        lines.append(f"- `{kind}`: {by_kind[kind]}")
+    return "\n".join(lines) + "\n"
 
 
 def build_index(wiki_dir: Path) -> dict:
@@ -255,10 +440,14 @@ def build_index(wiki_dir: Path) -> dict:
                 ).casefold(),
             }
         )
+    known_ids = {entry["id"] for entry in entries}
+    edges, _edge_problems = _load_edges(wiki_dir, known_ids)
     return {
         "version": WIKI_VERSION,
         "entry_count": len(entries),
+        "edge_count": len(edges),
         "entries": entries,
+        "edges": edges,
     }
 
 
@@ -306,6 +495,18 @@ def build_parser() -> argparse.ArgumentParser:
     search = sub.add_parser("search", help="在已构建索引中做确定性搜索")
     search.add_argument("--index", required=True)
     search.add_argument("--query", required=True)
+
+    add_edge_parser = sub.add_parser("add-edge", help="追加一条 typed graph edge")
+    add_edge_parser.add_argument("--dir", required=True)
+    add_edge_parser.add_argument("--from", dest="from_id", required=True)
+    add_edge_parser.add_argument("--to", dest="to_id", required=True)
+    add_edge_parser.add_argument("--type", dest="edge_type", required=True)
+    add_edge_parser.add_argument("--evidence", required=True)
+
+    query = sub.add_parser("query-pack", help="生成紧凑的下游查询包")
+    query.add_argument("--dir", required=True)
+    query.add_argument("--out", required=True)
+    query.add_argument("--force", action="store_true")
     return parser
 
 
@@ -320,6 +521,23 @@ def main(argv: list[str]) -> int:
             write_text_output(
                 Path(args.out),
                 json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                force=args.force,
+            )
+            return 0
+        if args.command == "add-edge":
+            edge = add_edge(
+                Path(args.dir),
+                from_id=args.from_id,
+                to_id=args.to_id,
+                edge_type=args.edge_type,
+                evidence=args.evidence,
+            )
+            print(json.dumps(edge, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.command == "query-pack":
+            write_text_output(
+                Path(args.out),
+                query_pack(Path(args.dir)),
                 force=args.force,
             )
             return 0

@@ -2484,3 +2484,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   `Top-down derivation structure: PASS`。
 - 新增 `tools/tests/test_proof_run.py` 5 条覆盖；scripts/docs/CI/test-impact
   同步。
+
+## 源码对齐第四切片：ARIS typed graph wiki（2026-10-05）
+
+- 按 ARIS `skills/research-wiki/SKILL.md`，扩展 `research_wiki.py` 的 kind
+  到 paper/idea/experiment/claim/gap/source/decision/dead-end/method/result。
+- 新增 `graph/edges.jsonl` 和八类 typed edge：extends、contradicts、
+  addresses_gap、inspired_by、tested_by、supports、invalidates、supersedes。
+- `add-edge` 校验真实端点与非空 evidence 后追加；`check`/`index` 校验边；
+  `query-pack` 生成实体、边和 kind counts 的紧凑摘要。
+- Markdown 实体与 edges.jsonl 是 source of truth；index/query pack 是生成物，
+  query pack 已加入 gitignore。
+- `tools/tests/test_research_wiki.py` 扩展到 11 条覆盖；README、workflow guide、
+  设计文档、CI/test-impact 同步。

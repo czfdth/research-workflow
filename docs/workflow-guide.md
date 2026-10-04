@@ -355,6 +355,10 @@ scripts/meta-optimize.ps1 `
 scripts/research-wiki.ps1 check --dir library/wiki
 scripts/research-wiki.ps1 index --dir library/wiki --out library/wiki/index.json
 scripts/research-wiki.ps1 search --index library/wiki/index.json --query "artifact"
+scripts/research-wiki.ps1 add-edge --dir library/wiki `
+    --from rw:002 --to rw:001 --type inspired_by --evidence "file:notes.md"
+scripts/research-wiki.ps1 query-pack --dir library/wiki `
+    --out library/wiki/query_pack.md
 ```
 
 从已有 claim、exploration、figure 和 run 台账生成 ARA draft：

@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 
 from ccfa.research_wiki import (
+    add_edge,
     build_index,
     check_wiki,
+    query_pack,
     search_index,
 )
 
@@ -137,6 +139,65 @@ class ResearchWikiTests(unittest.TestCase):
             "research-wiki-missing",
             [problem.code for problem in problems],
         )
+
+    def test_typed_edge_resolves_and_is_indexed(self):
+        self._write_entry("one.md")
+        self._write_entry(
+            "two.md",
+            ENTRY.replace("id: rw:001", "id: rw:002")
+            .replace("kind: decision", "kind: experiment")
+            .replace("related: []", "related: [rw:001]"),
+        )
+        graph = self.wiki / "graph"
+        graph.mkdir()
+        (graph / "edges.jsonl").write_text(
+            '{"from":"rw:002","to":"rw:001","type":"tested_by","evidence":"run:RUN1"}\n',
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check_wiki(self.wiki)
+        index = build_index(self.wiki)
+
+        self.assertEqual(problems, [])
+        self.assertEqual(index["edge_count"], 1)
+        self.assertEqual(index["edges"][0]["type"], "tested_by")
+
+    def test_invalid_edge_type_and_endpoint_are_problems(self):
+        self._write_entry("one.md")
+        graph = self.wiki / "graph"
+        graph.mkdir()
+        (graph / "edges.jsonl").write_text(
+            '{"from":"rw:001","to":"rw:404","type":"mystery","evidence":"run:RUN1"}\n',
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check_wiki(self.wiki)
+
+        codes = [problem.code for problem in problems]
+        self.assertIn("research-wiki-invalid-edge-type", codes)
+        self.assertIn("research-wiki-unknown-edge-endpoint", codes)
+
+    def test_add_edge_appends_and_query_pack_summarizes(self):
+        self._write_entry("one.md")
+        self._write_entry(
+            "two.md",
+            ENTRY.replace("id: rw:001", "id: rw:002")
+            .replace("title: Use a dedicated artifact badge ledger", "title: New idea")
+            .replace("kind: decision", "kind: idea"),
+        )
+
+        edge = add_edge(
+            self.wiki,
+            from_id="rw:002",
+            to_id="rw:001",
+            edge_type="inspired_by",
+            evidence="file:notes.md",
+        )
+        pack = query_pack(self.wiki)
+
+        self.assertEqual(edge["type"], "inspired_by")
+        self.assertIn("inspired_by", pack)
+        self.assertIn("rw:001", pack)
 
 
 if __name__ == "__main__":
