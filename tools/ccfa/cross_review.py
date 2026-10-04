@@ -425,6 +425,10 @@ def run_review(
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root)
+    if not paths:
+        raise ValueError(
+            "评审输入不能为空：跨模型评审至少要有一个 --path"
+        )
     execution_model = DEFAULT_EXECUTION_MODEL
     family = _family_judgement(model, execution_model)
     if family != "cross-family" and not allow_same_family:
@@ -708,7 +712,7 @@ def check_review(
             )
         )
     hashes = record.get("input_hashes")
-    hashes_usable = isinstance(hashes, dict)
+    hashes_usable = isinstance(hashes, dict) and bool(hashes)
     if not isinstance(hashes, dict):
         problems.append(
             Problem(
@@ -716,6 +720,15 @@ def check_review(
                 str(path),
                 None,
                 "评审记录缺少 input_hashes",
+            )
+        )
+    elif not hashes:
+        problems.append(
+            Problem(
+                "review-malformed",
+                str(path),
+                None,
+                "评审记录的 input_hashes 为空：不存在没有评审输入的跨模型评审",
             )
         )
     else:

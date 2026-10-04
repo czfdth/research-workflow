@@ -344,6 +344,12 @@ class TestRunReview(CrossReviewTests):
         ).hexdigest()
         self.assertEqual(result["prompt_sha256"], f"sha256:{digest}")
 
+    def test_run_review_rejects_an_empty_input_list(self):
+        runner = self._runner(payload=self._payload())
+
+        with self.assertRaisesRegex(ValueError, "评审输入"):
+            self._run(runner, paths=[])
+
     def test_long_stderr_is_bounded_in_complete_record(self):
         runner = self._runner(
             payload=self._payload(),
@@ -677,6 +683,48 @@ class TestCheckReview(CrossReviewTests):
         problems = check_review(self.paper_root, allow_same_family=True)
 
         self.assertEqual(problems, [])
+
+    def test_empty_input_hashes_is_review_malformed(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["input_hashes"] = {}
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-malformed"],
+        )
+
+    def test_missing_stage_is_review_prompt_unknown(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("stage", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-unknown"],
+        )
+
+    def test_blank_stage_is_review_prompt_unknown(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["stage"] = "   "
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-unknown"],
+        )
 
     def test_record_without_prompt_hash_is_review_prompt_unknown(self):
         runner = self._runner(payload=self._payload())
