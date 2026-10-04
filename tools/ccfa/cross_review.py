@@ -103,7 +103,12 @@ def _relative_input(paper_root: Path, path: Path) -> tuple[Path, str]:
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    data = path.read_bytes()
+    # Text hashes must not depend on the checkout's CRLF/LF policy. Binary
+    # inputs keep their exact bytes.
+    if b"\0" not in data:
+        data = data.replace(b"\r\n", b"\n")
+    digest = hashlib.sha256(data).hexdigest()
     return f"sha256:{digest}"
 
 

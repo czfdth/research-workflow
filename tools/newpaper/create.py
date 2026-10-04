@@ -125,6 +125,8 @@ __pycache__/
 !manuscript/figs/**/*.pdf
 """
 
+PAPER_GITATTRIBUTES = "* text=auto eol=lf\n"
+
 
 class InvalidSlugError(ValueError):
     """Raised when a slug is not safe to use as a directory name."""
@@ -185,6 +187,10 @@ def init_paper_repository(
     target = Path(target)
     _git_or_error(["init", "-q"], target, run)
     (target / ".gitignore").write_text(PAPER_GITIGNORE, encoding="utf-8")
+    (target / ".gitattributes").write_text(
+        PAPER_GITATTRIBUTES,
+        encoding="utf-8",
+    )
     _git_or_error(["add", "-A"], target, run)
     overrides = _identity_overrides(run, target)
     _git_or_error(

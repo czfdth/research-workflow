@@ -210,6 +210,38 @@ class TestRunReview(CrossReviewTests):
         result = self._run(second, force=True)
         self.assertEqual(result["verdict"], "blocking")
 
+    def test_input_hashes_normalize_text_line_endings(self):
+        path = self.paper_root / "manuscript" / "crlf.tex"
+        path.write_bytes(b"line one\r\nline two\r\n")
+
+        result = self._run(
+            self._runner(),
+            paths=[Path("manuscript/crlf.tex")],
+        )
+
+        digest = hashlib.sha256(b"line one\nline two\n").hexdigest()
+        self.assertEqual(
+            result["input_hashes"]["manuscript/crlf.tex"],
+            f"sha256:{digest}",
+        )
+
+    def test_input_hashes_keep_binary_bytes_exact(self):
+        path = self.paper_root / "manuscript" / "blob.bin"
+        path.write_bytes(b"\x00line one\r\nline two\r\n")
+
+        result = self._run(
+            self._runner(),
+            paths=[Path("manuscript/blob.bin")],
+        )
+
+        digest = hashlib.sha256(
+            b"\x00line one\r\nline two\r\n"
+        ).hexdigest()
+        self.assertEqual(
+            result["input_hashes"]["manuscript/blob.bin"],
+            f"sha256:{digest}",
+        )
+
     def test_input_hashes_are_recorded(self):
         runner = self._runner(payload=self._payload())
 

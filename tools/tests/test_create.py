@@ -572,9 +572,15 @@ class TestCreateProject(unittest.TestCase):
         self.assertEqual(toplevel.resolve(), root.resolve())
         self.assertTrue((root / ".git").is_dir())
         self.assertTrue((root / ".gitignore").is_file())
+        self.assertTrue((root / ".gitattributes").is_file())
+        self.assertEqual(
+            (root / ".gitattributes").read_text(encoding="utf-8"),
+            "* text=auto eol=lf\n",
+        )
         log = _run_git(root, "log", "--oneline").strip()
         self.assertTrue(log, "首次提交缺失")
         tracked = _run_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+        self.assertIn(".gitattributes", tracked)
         self.assertIn(".gitignore", tracked)
         self.assertIn("ccfa.yaml", tracked)
         self.assertIn("manuscript/main.tex", tracked)
