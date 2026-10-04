@@ -2007,4 +2007,9 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **清理**：每个 attempt 生成独立 `ccfa-` 容器名；超时/卡死 kill Docker CLI 后，`finally` 执行 best-effort `docker rm -f`，避免容器继续占 GPU。宿主进程被强杀或断电后仍可能残留容器，需要 `docker ps` 人工清理。
 - **测试**：`tools/tests/test_queue.py` 新增精确 argv（只读根、只读 `/workspace`、可写 `/outputs`、`--network none`、`--workdir`、镜像与命令顺序）、docker_output 逃逸/根目录/逗号路径拒绝、daemon 失败前置、CLI 退 2 且不写 run-log、policy 记录、宿主环境不泄漏、超时清理、Docker cwd containment 等用例。
 - **真实验证**：本机 Docker Desktop 的 `dockerDesktopLinuxEngine` 管道当前不可达。真实 CLI 冒烟按预期输出 `工具错误: Docker daemon 不可用...`，退 2，`LOG_JSON=0`，没有回退执行，也没有伪造 run-log。daemon 可达后的真实容器只读/可写/禁网冒烟留待下一次环境可用时补；当前证据只能证明“不可用时不回退”这条安全性质。
-- 全量：tools **982 tests OK**，app（offscreen）**141 tests OK**。提交后补独立只读评审，评审通过后再更新本节。
+
+### 评审与修复
+
+- 独立只读评审（`deepseek-v4-pro`，`os-sandbox-review.json`）判 **fail**，4 条 finding：清单 `sandbox: docker` 可被 CLI `--sandbox none|policy` 静默降级为主机执行（high）；Docker argv 校验错误发生在 `run_command` 写入 `running` 之后，会留下永久 `running` 记录（medium）；docker 模式允许注入 runner 冒充 Docker（medium）；symlink 与 Windows drive-relative `docker_output` 缺判别测试（low）。
+- 修复：新增 `allow_sandbox_downgrade`（CLI `--allow-sandbox-downgrade`），清单声明 docker 时降级到 none/policy 默认拒绝；新增 `allow_injected_runner`，policy/docker 默认拒绝注入 runner，测试或高级调用必须显式开启；`_docker_argv` 移到 `run_command` 之前构造，校验失败不再留下 `running`；补 symlink 逃逸不留记录、Windows drive-relative 拒绝、降级与注入 runner 判别用例。
+- 修复后全量：tools **987 tests OK**，app（offscreen）**141 tests OK**。第二轮独立只读评审确认后更新结论。

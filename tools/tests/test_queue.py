@@ -139,6 +139,8 @@ class QueueTests(unittest.TestCase):
         gpu_budget_s=None,
         gpu_meter_factory=None,
         sandbox=None,
+        allow_sandbox_downgrade=False,
+        allow_injected_runner=False,
     ):
         return run_queue(
             self.queue_path,
@@ -149,6 +151,8 @@ class QueueTests(unittest.TestCase):
             gpu_budget_s=gpu_budget_s,
             gpu_meter_factory=gpu_meter_factory,
             sandbox=sandbox,
+            allow_sandbox_downgrade=allow_sandbox_downgrade,
+            allow_injected_runner=allow_injected_runner,
         )
 
 
@@ -299,6 +303,18 @@ class TestLoadQueue(QueueTests):
         self.assertEqual(options["docker_network"], "none")
         self.assertEqual(options["docker_gpus"], "all")
         self.assertEqual(options["docker_output"], "artifacts")
+
+    @unittest.skipUnless(os.name == "nt", "drive-relative paths are Windows-only")
+    def test_load_queue_rejects_windows_drive_relative_docker_output(self):
+        self._write_queue(
+            [],
+            sandbox="docker",
+            docker_image="python:3.12-slim",
+            docker_output="C:foo",
+        )
+
+        with self.assertRaisesRegex(ValueError, "docker_output"):
+            load_queue(self.queue_path)
 
 
 class TestRunQueue(QueueTests):
@@ -877,9 +893,66 @@ class TestDockerSandbox(QueueTests):
 
         with mock.patch("ccfa.queue._docker_available"):
             with self.assertRaisesRegex(ValueError, "沙箱策略"):
+                self._run(
+                    runner,
+                    sandbox="docker",
+                    allow_injected_runner=True,
+                )
+
+        self.assertEqual(runner.calls, [])
+
+    def test_docker_mode_rejects_injected_runner_by_default(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        with mock.patch("ccfa.queue._docker_available"):
+            with self.assertRaisesRegex(ValueError, "注入 runner"):
                 self._run(runner, sandbox="docker")
 
         self.assertEqual(runner.calls, [])
+
+    def test_docker_manifest_downgrade_requires_explicit_flag(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        with self.assertRaisesRegex(ValueError, "allow-sandbox-downgrade"):
+            self._run(runner, sandbox="none")
+
+        self.assertEqual(runner.calls, [])
+
+    def test_docker_manifest_downgrade_runs_only_with_explicit_flag(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        result = self._run(
+            runner,
+            sandbox="none",
+            allow_sandbox_downgrade=True,
+        )
+
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertEqual(runner.calls[0]["argv"], ["python", "-c", "print('ok')"])
+        self.assertIsNone(self._records()[0]["policy"])
+
+    def test_docker_argv_symlink_escape_leaves_no_running_record(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        link = self.root / "runs"
+        try:
+            link.symlink_to(outside.name, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("当前平台不允许创建目录 symlink")
+        self._docker_queue()
+
+        with mock.patch("ccfa.queue._docker_available"):
+            with self.assertRaisesRegex(ValueError, "逃出"):
+                self._run(
+                    RecordingRunner([0]),
+                    sandbox="docker",
+                    allow_injected_runner=True,
+                )
+
+        self.assertEqual(self._records(), [])
 
     def test_main_docker_unavailable_exits_two_without_a_record(self):
         self._docker_queue()
@@ -917,7 +990,11 @@ class TestDockerSandbox(QueueTests):
         with mock.patch("ccfa.queue._docker_available"), mock.patch(
             "ccfa.queue._docker_remove"
         ):
-            result = self._run(runner, sandbox="docker")
+            result = self._run(
+                runner,
+                sandbox="docker",
+                allow_injected_runner=True,
+            )
 
         self.assertEqual(result["runs"][0]["status"], "complete")
         self.assertEqual(len(runner.calls), 1)
@@ -947,7 +1024,11 @@ class TestDockerSandbox(QueueTests):
         ), mock.patch("ccfa.queue._docker_available"), mock.patch(
             "ccfa.queue._docker_remove"
         ):
-            self._run(runner, sandbox="docker")
+            self._run(
+                runner,
+                sandbox="docker",
+                allow_injected_runner=True,
+            )
 
         docker_argv = runner.calls[0]["argv"]
         self.assertFalse(
@@ -962,7 +1043,11 @@ class TestDockerSandbox(QueueTests):
         with mock.patch("ccfa.queue._docker_available"), mock.patch(
             "ccfa.queue._docker_remove"
         ) as remove:
-            result = self._run(runner, sandbox="docker")
+            result = self._run(
+                runner,
+                sandbox="docker",
+                allow_injected_runner=True,
+            )
 
         self.assertEqual(result["runs"][0]["status"], "timeout")
         self.assertEqual(remove.call_count, 1)
@@ -1241,12 +1326,14 @@ class TestMain(QueueTests):
                         "12",
                         "--sandbox",
                         "policy",
+                        "--allow-sandbox-downgrade",
                     ]
                 )
 
         self.assertEqual(code, 0)
         self.assertEqual(run.call_args.kwargs["gpu_budget_s"], 12)
         self.assertEqual(run.call_args.kwargs["sandbox"], "policy")
+        self.assertTrue(run.call_args.kwargs["allow_sandbox_downgrade"])
 
     def test_main_success_zero_failure_one_and_invalid_two(self):
         self._write_queue([self._item()])

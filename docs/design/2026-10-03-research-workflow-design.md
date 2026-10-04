@@ -528,7 +528,11 @@ help、计划与账本都按此边界陈述，不把策略层写成容器隔离�
 镜像运行队列项：容器根文件系统只读，队列根以只读方式挂载到 `/workspace`，
 仅 `docker_output`（默认 `runs`）以可写方式挂载到 `/outputs`，网络默认
 `none`，只有 `docker_gpus: all` 时才加 `--gpus all`。Docker daemon 不可用
-时直接退 2，不静默回退到宿主机；容器内只注入显式 `CCFA_WORKSPACE` /
+时直接退 2，不静默回退到宿主机；清单声明 `docker` 时，CLI 降级到
+`none`/`policy` 默认拒绝，必须显式 `--allow-sandbox-downgrade`。policy 与
+docker 模式默认拒绝注入 runner；测试或高级调用要注入 runner 必须显式
+`allow_injected_runner=True`，否则 run-log 可能声称 Docker 而实际在宿主机执行。
+容器内只注入显式 `CCFA_WORKSPACE` /
 `CCFA_OUTPUT_DIR` 变量，并把 `HOME` 指到 tmpfs（`/tmp`），不继承宿主机环境。
 超时或卡死会 kill Docker CLI
 并在 `finally` 执行 best-effort `docker rm -f`，避免容器继续占 GPU；宿主

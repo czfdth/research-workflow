@@ -40,10 +40,12 @@
 
 - 清单新增 `docker_image`（`sandbox: docker` 时必填）、`docker_network`（默认 `none`）、`docker_gpus`（`null` 或 `all`）、`docker_output`（默认 `runs`，必须是队列根内的相对目录）。
 - `run_queue` 在进入队列循环前调用一次 `docker info`。daemon 不可用 → `ValueError`，CLI 退 2，且不调用任何队列项；绝不回退到宿主机执行。
+- 清单声明 `sandbox: docker` 时，CLI `--sandbox none|policy` 属于降级，默认拒绝；确需降级必须显式 `--allow-sandbox-downgrade`。policy/docker 模式默认拒绝注入 runner；测试或高级调用要注入 runner 必须显式 `allow_injected_runner=True`，否则 run-log 可能声称 Docker 而实际在宿主机执行。
 - 每个 attempt 生成独立容器名，`docker run` 参数固定包含 `--rm --read-only --security-opt no-new-privileges`，队列根以 `readonly` 方式挂到 `/workspace`，`docker_output` 可写挂到 `/outputs`，工作目录映射为 `/workspace/<item cwd>`。
+- Docker argv 在 `run_command` 写入 `running` 之前构造；symlink 逃逸、逗号路径、输出目录创建失败等校验错误不会留下无终态的 `running` 记录。
 - 宿主机环境不进入容器；容器只收到 `HOME=/tmp`（让只读根上的缓存写入落到 tmpfs）、`CCFA_WORKSPACE=/workspace`、`CCFA_OUTPUT_DIR=/outputs` 与显式 `env` 参数。run-log 的 `policy` 记录镜像、网络、GPU、输出目录与容器内 `workdir`，但 `command` 仍是原始队列命令。
 - 超时或卡死会 kill Docker CLI；`finally` 再执行一次 best-effort `docker rm -f <name>`，避免 CLI 被杀后容器继续占 GPU。宿主进程被强杀或机器断电仍可能留下 `ccfa-` 前缀容器，需要用 `docker ps` 人工清理；这是 v1 的已知边界。
-- 判别力：精确断言 mount/network/workdir/命令顺序；daemon 不可用时不执行、不留 run-log；超时 attempt 必定调用清理；宿主 `QUEUE_TEST_SECRET` 不出现在容器 argv。
+- 判别力：精确断言 mount/network/workdir/命令顺序；daemon 不可用时不执行、不留 run-log；CLI 降级需显式 flag；注入 runner 默认拒绝；构造 argv 失败不留 `running`；symlink/drive-relative `docker_output` 被拒；超时 attempt 必定调用清理；宿主 `QUEUE_TEST_SECRET` 不出现在容器 argv。
 
 ## 完成定义
 

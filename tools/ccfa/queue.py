@@ -697,6 +697,8 @@ def run_queue(
     gpu_budget_s: float | None = None,
     gpu_meter_factory=None,
     sandbox: str | None = None,
+    allow_sandbox_downgrade: bool = False,
+    allow_injected_runner: bool = False,
 ) -> dict:
     """Run queue items in order and return per-run outcomes.
 
@@ -709,6 +711,11 @@ def run_queue(
     and network disabled by default. Docker daemon availability is checked
     once before the first item; an unavailable daemon is a tool error and is
     never treated as permission to fall back to the host.
+
+    A CLI ``sandbox`` override may strengthen a manifest, but downgrading a
+    manifest that declares ``docker`` requires ``allow_sandbox_downgrade``.
+    Injected runners are a test seam: policy and Docker modes reject them
+    unless ``allow_injected_runner`` is set explicitly.
     """
     queue_path = Path(queue_path)
     queue_root = queue_path.parent
@@ -720,6 +727,16 @@ def run_queue(
     if sandbox_mode not in SANDBOX_MODES:
         raise ValueError(
             f"sandbox 必须是 {' 或 '.join(SANDBOX_MODES)}: {sandbox_mode!r}"
+        )
+    if (
+        options["sandbox"] == "docker"
+        and sandbox_mode != "docker"
+        and not allow_sandbox_downgrade
+    ):
+        raise ValueError(
+            "队列声明 sandbox=docker；CLI 覆盖到 "
+            f"{sandbox_mode} 会关闭容器隔离；"
+            "确需降级请显式 --allow-sandbox-downgrade"
         )
     if gpu_budget_s is None:
         gpu_budget_s = options.get("gpu_budget_s")
@@ -736,10 +753,15 @@ def run_queue(
         _docker_available()
 
     default_runner = runner is None or runner is _default_runner
-    if sandbox_mode == "policy" and not default_runner:
+    if (
+        sandbox_mode in ("policy", "docker")
+        and not default_runner
+        and not allow_injected_runner
+    ):
         raise ValueError(
-            "sandbox=policy 仅支持默认 runner；注入 runner 无法保证"
-            "环境白名单与 stall 看门狗"
+            f"sandbox={sandbox_mode} 仅支持默认 runner；"
+            "注入 runner 必须显式 allow_injected_runner=True，"
+            "否则无法保证沙箱语义"
         )
     run = runner or _default_runner
     now = clock or time.monotonic
@@ -816,27 +838,32 @@ def run_queue(
                     meter = gpu_meter_factory()
                     meter.start()
 
+                container_name = None
+                docker_argv = None
+                if sandbox_mode == "docker":
+                    container_name = _docker_container_name(
+                        item["name"], index, attempts
+                    )
+                    docker_argv = _docker_argv(
+                        item,
+                        queue_root,
+                        image=docker_image,
+                        network=docker_network,
+                        gpus=docker_gpus,
+                        output_relative=docker_output,
+                        env={},
+                        name=container_name,
+                    )
+
                 def attempt_runner(argv, attempt_cwd):
                     nonlocal timed_out, stalled
-                    container_name = None
-                    if sandbox_mode == "docker":
-                        container_name = _docker_container_name(
-                            item["name"], index, attempts
-                        )
-                        argv = _docker_argv(
-                            item,
-                            queue_root,
-                            image=docker_image,
-                            network=docker_network,
-                            gpus=docker_gpus,
-                            output_relative=docker_output,
-                            env={},
-                            name=container_name,
-                        )
+                    effective_argv = (
+                        docker_argv if docker_argv is not None else argv
+                    )
                     try:
                         return (
                             invoke(
-                                argv,
+                                effective_argv,
                                 attempt_cwd,
                                 item["timeout_s"],
                                 item=item,
@@ -952,6 +979,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sandbox=policy 只做 cwd 与环境白名单，不是 OS 隔离。"
             "sandbox=docker 只读挂载队列根、仅 docker_output 可写、"
             "默认禁网；Docker daemon 不可用退 2，不静默回退。"
+            "清单声明 docker 时，CLI 降级到 none/policy 需显式 --allow-sandbox-downgrade。"
             "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
             "stdout 只输出结果 JSON；子进程 stdout/stderr 流式转发到 stderr。"
         )
@@ -963,6 +991,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--budget-seconds", type=float)
     run.add_argument("--gpu-budget-seconds", type=float)
     run.add_argument("--sandbox", choices=SANDBOX_MODES)
+    run.add_argument(
+        "--allow-sandbox-downgrade",
+        action="store_true",
+        help="显式允许 CLI 覆盖清单里的 docker 沙箱；默认拒绝",
+    )
     return parser
 
 
@@ -975,6 +1008,7 @@ def main(argv: list[str]) -> int:
             budget_s=args.budget_seconds,
             gpu_budget_s=args.gpu_budget_seconds,
             sandbox=args.sandbox,
+            allow_sandbox_downgrade=args.allow_sandbox_downgrade,
         )
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))
