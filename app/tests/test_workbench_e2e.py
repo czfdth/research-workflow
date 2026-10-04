@@ -106,7 +106,12 @@ class WorkbenchEndToEnd(unittest.TestCase):
 
         self.assertIn("neurips-workbench", refs)
         self.assertIsNone(refs["neurips-workbench"].error)
-        self.assertEqual(refs["neurips-workbench"].dir, self.project_dir)
+        self.assertTrue(
+            os.path.samefile(
+                refs["neurips-workbench"].dir,
+                self.project_dir,
+            )
+        )
         self.assertTrue((self.project_dir / "ccfa.yaml").is_file())
         self.assertTrue(
             (self.project_dir / "manuscript" / "neurips_2026.tex").is_file()
