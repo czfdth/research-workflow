@@ -2360,3 +2360,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness standard/high-assurance 接入第八类台账，新论文模板自动生成。
 - 新增 `tools/tests/test_experiment_loop.py` 9 条覆盖；create/readiness/scripts/
   docs 测试同步。
+
+## 投稿后产出物契约（2026-10-05）
+
+- 新增 `data/post-submission.yaml`、`tools/ccfa/post_submission.py` 与
+  `scripts/post-submission.ps1`，补齐对标报告 P1-9 的 rebuttal/resubmit/talk。
+- `rebuttal` 校验回复矩阵路径、承诺列表与新增证据 run id；`resubmit` 校验
+  venue 差异表、改写章节与 evidence；`talk` 校验 slide 大纲、claim id、
+  figure id 与 talking points。
+- 三个 section 支持 not-started/in-progress/complete/not-applicable；
+  不适用必须写具体 reason，占位文本与悬空引用均为 problem。
+- readiness 在台账存在时执行 `post-submission` gate；新论文模板预置空台账，
+  空台账只产生 advisory，不伪装完成。
+- 新增 `tools/tests/test_post_submission.py` 7 条覆盖；create/readiness/scripts/
+  docs 测试同步。

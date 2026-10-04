@@ -46,6 +46,16 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_readiness", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_post_submission_selects_readiness_integration_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/post_submission.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_post_submission", selection.tests)
+        self.assertIn("tools.tests.test_readiness", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_test_module_selects_itself(self):
         selection = select_tests(
             ["tools/tests/test_research_ledgers.py"],

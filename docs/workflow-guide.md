@@ -243,6 +243,15 @@ scripts/repro-package.ps1 --paper-root $paper verify `
 
 审稿意见逐条进入 revision ledger。最终归档终稿、复现包、来源文档和评审材料。
 
+尾部产出统一写入 `data/post-submission.yaml`。rebuttal 的回复矩阵、
+resubmit 的 venue 差异表与改写章节、talk 的 slide 大纲都必须能追溯到真实
+run id、claim id 和 figure id：
+
+```powershell
+scripts/revision-ledger.ps1 --ledger "$paper/reviews/revision-ledger.md"
+scripts/post-submission.ps1 check --paper-root $paper
+```
+
 ## 6. 推进与回退
 
 所有检查通过并完成必要人工判断后，先提交论文仓库：

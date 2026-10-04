@@ -26,6 +26,7 @@ from ccfa import (
     governance,
     latex_check,
     novelty,
+    post_submission,
     repro_package,
     repro_env,
     research_ledgers,
@@ -58,6 +59,7 @@ EVIDENCE_LEDGER_PATHS = {
     "statistics": Path("data/statistics-plan.yaml"),
     "repro-environment": Path("data/repro-environment.yaml"),
     "human-coding": Path("data/human-coding-report.json"),
+    "post-submission": Path("data/post-submission.yaml"),
 }
 
 PROFILE_REQUIRED_LEDGERS = {
@@ -301,6 +303,9 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
 
     if profile == "minimal":
         return list(specs.items())
+
+    if (paper_root / EVIDENCE_LEDGER_PATHS["post-submission"]).is_file():
+        specs["post-submission"] = lambda: post_submission.check(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

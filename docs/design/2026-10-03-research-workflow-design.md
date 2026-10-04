@@ -640,6 +640,22 @@ docker 模式默认拒绝注入 runner；测试或高级调用要注入 runner �
 `next` 只输出当前待办动作，不自动运行实验、不自动改论文结论。纯 SoK 或
 不含实验的论文可以 `not_applicable: true`，但必须写明具体 reason。
 
+### 9.4 投稿后产出物契约
+
+对标报告指出 rebuttal、resubmit、talk 只有 stage 名称，没有产物契约。v6.1
+新增 `data/post-submission.yaml` 与 `tools/ccfa/post_submission.py`：
+
+- `rebuttal`：回复矩阵路径、新增证据 run id、承诺清单；complete 时回复矩阵
+  必须存在，新增证据 run id 必须能在 `experiments/log/` 中找到。
+- `resubmit`：from/to venue、venue 差异表、需要改写的章节；complete 时差异表
+  和章节清单不能为空，evidence 必须是真实 run id 或仓库内文件。
+- `talk`：slide 大纲；每页必须绑定至少一个真实 claim id，figure id 若出现则
+  必须存在于 `figures/manifest.yaml`，并写出 talking points。
+
+三个阶段支持 `not-started`、`in-progress`、`complete`、`not-applicable`；
+`not-applicable` 必须有具体 reason。该工具只验证产出物契约与交叉引用，
+不判断 rebuttal 是否有说服力、talk 是否讲得清楚。
+
 ## 10. 目录结构
 
 模板库：

@@ -186,6 +186,23 @@ SEED_FILES = {
         "inner_loop: []\n"
         "outer_loop: []\n"
     ),
+    "data/post-submission.yaml": (
+        "version: 1\n"
+        "rebuttal:\n"
+        "  status: not-started\n"
+        "  response_ledger: ''\n"
+        "  new_evidence_run_ids: []\n"
+        "  commitments: []\n"
+        "resubmit:\n"
+        "  status: not-started\n"
+        "  from_venue: ''\n"
+        "  to_venue: ''\n"
+        "  venue_diff: []\n"
+        "  sections_to_rewrite: []\n"
+        "talk:\n"
+        "  status: not-started\n"
+        "  slide_outline: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

@@ -85,6 +85,7 @@ git -C $paper status --short
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/research_ledgers.py` | 校验 claim registry、assumptions/limitations、venue checklist、artifact provenance、探索图、成本账本与风险登记册 | `scripts/research-ledgers.ps1` |
 | `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id，并输出下一批待办动作 | `scripts/experiment-loop.ps1` |
+| `tools/ccfa/post_submission.py` | 校验 rebuttal 回复矩阵、resubmit venue 差异与 talk 大纲的产出物契约 | `scripts/post-submission.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查
@@ -117,6 +118,7 @@ git -C $paper status --short
 | `submission-check` | `scripts/governance.ps1` | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与披露 |
 | `submission-check` | `scripts/repro-env.ps1` | 检查 lockfile 哈希与系统工具版本证据 |
 | `submission-check`、`archived` | `scripts/repro-package.ps1` | 生成复现包并实际重跑 |
+| `rebuttal`、`major-revision`、`response-letter`、`resubmitted` | `scripts/post-submission.ps1` | 校验 rebuttal/resubmit/talk 合同，绑定真实 run id、claim 与 figure 台账 |
 | 任意需要快照的阶段 | `scripts/research-version.ps1` | 建立版本 tag 或比较两版差异 |
 
 常用命令：
