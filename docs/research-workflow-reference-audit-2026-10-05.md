@@ -225,17 +225,17 @@ calibration、risk capability matrix、data-flow map、governance 已吸收；
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft/full compiler contract 已对齐；自动语义提取前端仍缺 |
 | ARIS | 本轮补查 | proof run-dir + proof gates、typed graph wiki、review loop、注入式 fix/re-review、resubmit/talk guardrails 已对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、完整 passport ledger、risk capability matrix、data-flow map、citation calibration 工具已对齐；live calibration 数据未产生 |
-| ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
+| ARA paperbench | 本轮补查 | claim/exploration/evidence/code stub/DAG contract 已对齐；expert rubric 与自动抽取前端未完成 |
 | open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package、只读 session replay 已对齐；GUI 级 execution graph 未实现 |
 | NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge、NeurIPS/ARR adapted fixtures 已实现；逐字官方版本与其他 venue fixture 未完成 |
 
-因此，之前说“参考了这些项目”只能成立为：
+此前说“参考了这些项目”只能成立为：
 
 > 参考了报告对这些项目的结构化摘要，并按相同方向设计了本地实现。
 
-不能成立为：
+本轮已经实际读取源码并完成可确定性契约对齐，但仍不能成立为：
 
-> 逐仓库阅读源码后等价复刻了这些系统。
+> 逐字等价复刻了这些系统的全部语义抽取、GUI 交互和外部验证能力。
 
 下一步若继续升级，优先级最高的仍是：
 
