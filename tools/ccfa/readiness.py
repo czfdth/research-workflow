@@ -19,6 +19,7 @@ import yaml
 
 from ccfa import (
     argument_audit,
+    artifact_badge,
     citation_guard,
     cross_review,
     experiment_loop,
@@ -64,6 +65,7 @@ EVIDENCE_LEDGER_PATHS = {
     "post-submission": Path("data/post-submission.yaml"),
     "rigor-rubric": Path("data/rigor-rubric.yaml"),
     "proof-orchestrator": Path("data/proof-campaign.yaml"),
+    "artifact-badge": Path("data/artifact-badge.yaml"),
 }
 
 PROFILE_REQUIRED_LEDGERS = {
@@ -108,6 +110,7 @@ LEDGER_GATE_NAMES = {
     "experiment-loop": "experiment-loop",
     "rigor-rubric": "rigor-rubric",
     "proof-orchestrator": "proof-orchestrator",
+    "artifact-badge": "artifact-badge",
 }
 
 
@@ -308,6 +311,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         "proof-orchestrator": lambda: proof_orchestrator.check(
             paper_root,
             require_complete=profile == "high-assurance",
+        ),
+        "artifact-badge": lambda: artifact_badge.check(
+            paper_root,
+            require_verified=profile == "high-assurance",
         ),
     }
     for ledger in PROFILE_REQUIRED_LEDGERS[profile]:

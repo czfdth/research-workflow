@@ -89,6 +89,7 @@ git -C $paper status --short
 | `tools/ccfa/rigor.py` | 校验六维 rigor rubric 的评分、证据引用与“模型只能 advisory、不能开释”边界 | `scripts/rigor-rubric.ps1` |
 | `tools/ccfa/proof_orchestrator.py` | 记录跨会话 proof campaign、失败尝试、阻塞点与下一步，并把 proved 绑定到真人 verified 证明复核 | `scripts/proof-orchestrator.ps1` |
 | `tools/ccfa/meta_optimize.py` | 聚合 friction store 与 readiness gate 失败，输出人类审批用的候选工作流改进 | `scripts/meta-optimize.ps1` |
+| `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查
@@ -124,6 +125,7 @@ git -C $paper status --short
 | `submission-check` | `scripts/repro-env.ps1` | 检查 lockfile 哈希与系统工具版本证据 |
 | `submission-check`、`archived` | `scripts/repro-package.ps1` | 生成复现包并实际重跑 |
 | `rebuttal`、`major-revision`、`response-letter`、`resubmitted` | `scripts/post-submission.ps1` | 校验 rebuttal/resubmit/talk 合同，绑定真实 run id、claim 与 figure 台账 |
+| `accepted`、`camera-ready`、`archived` | `scripts/artifact-badge.ps1` | 校验 artifact badge、独立复核、reuse 记录与 Zenodo/OSF DOI 归档 |
 | 任意需要快照的阶段 | `scripts/research-version.ps1` | 建立版本 tag 或比较两版差异 |
 
 常用命令：

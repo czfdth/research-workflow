@@ -2412,3 +2412,15 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 支持 Markdown/JSON 输出、原子写和不覆盖已有报告。
 - 新增 `tools/tests/test_meta_optimize.py` 5 条覆盖；scripts/docs/test-impact
   测试同步。
+
+## Artifact badge 与长期归档（2026-10-05）
+
+- 新增 `data/artifact-badge.yaml`、`tools/ccfa/artifact_badge.py` 与
+  `scripts/artifact-badge.ps1`，落地对标报告 P2-12。
+- 校验 available/evaluated/reusable badge、证据、理由、code/data license、
+  DOI 与 archive_url；evaluated 需要独立真人 reviewer，reusable 需要
+  reuse_context。
+- standard profile 在台账存在时运行结构 gate；high-assurance 使用
+  `--require-verified` 要求三类 badge 与归档证据完整。
+- 新论文模板预置台账；新增 `tools/tests/test_artifact_badge.py` 6 条覆盖；
+  create/readiness/scripts/docs 测试同步。

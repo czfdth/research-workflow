@@ -256,6 +256,7 @@ run id、claim id 和 figure id：
 ```powershell
 scripts/revision-ledger.ps1 --ledger "$paper/reviews/revision-ledger.md"
 scripts/post-submission.ps1 check --paper-root $paper
+scripts/artifact-badge.ps1 check --paper-root $paper
 ```
 
 ## 6. 推进与回退

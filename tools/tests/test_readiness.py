@@ -254,6 +254,7 @@ class ReadinessTests(unittest.TestCase):
         report = build_report(self.paper_root, profile="high-assurance")
 
         self.assertIn("proof", report["evidence"]["missing_required"])
+        self.assertIn("artifact-badge", report["evidence"]["missing_required"])
         self.assertEqual(
             report["dimensions"]["independently-reviewed"],
             "missing-human-evidence",

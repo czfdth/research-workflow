@@ -242,6 +242,31 @@ SEED_FILES = {
         "not_applicable_reason: ''\n"
         "campaigns: []\n"
     ),
+    "data/artifact-badge.yaml": (
+        "version: 1\n"
+        "status: not-started\n"
+        "doi: ''\n"
+        "archive_url: ''\n"
+        "license:\n"
+        "  code: ''\n"
+        "  data: ''\n"
+        "badges:\n"
+        "  available:\n"
+        "    status: not-started\n"
+        "    evidence: []\n"
+        "    rationale: ''\n"
+        "  evaluated:\n"
+        "    status: not-started\n"
+        "    evidence: []\n"
+        "    rationale: ''\n"
+        "    independent_reviewer: ''\n"
+        "    reviewed_at: ''\n"
+        "  reusable:\n"
+        "    status: not-started\n"
+        "    evidence: []\n"
+        "    rationale: ''\n"
+        "    reuse_context: ''\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

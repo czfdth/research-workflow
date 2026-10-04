@@ -111,6 +111,7 @@ class TestCreateProject(unittest.TestCase):
             "data/post-submission.yaml",
             "data/rigor-rubric.yaml",
             "data/proof-campaign.yaml",
+            "data/artifact-badge.yaml",
             "experiments/log",
             "experiments/results",
             "figures",
@@ -617,6 +618,7 @@ class TestCreateProject(unittest.TestCase):
         self.assertIn("data/post-submission.yaml", tracked)
         self.assertIn("data/rigor-rubric.yaml", tracked)
         self.assertIn("data/proof-campaign.yaml", tracked)
+        self.assertIn("data/artifact-badge.yaml", tracked)
         self.assertIn("memory/ideas.md", tracked)
         self.assertEqual(_run_git(root, "status", "--porcelain").strip(), "")
 

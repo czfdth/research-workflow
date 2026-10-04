@@ -700,6 +700,20 @@ standard profile 在台账存在时运行 advisory gate；high-assurance 使用
   `proposed`，必须由人批准后才能改 skill、gate 或代码。
 - Markdown/JSON 输出支持落盘不覆盖；不自动修改论文或工作流。
 
+### 9.8 Artifact badge 与长期归档
+
+对标报告的 P2-12 要求把 ACM Artifact Badging 与 DOI 归档变成可核验契约。
+v6.1 新增 `data/artifact-badge.yaml`、`tools/ccfa/artifact_badge.py` 与
+`scripts/artifact-badge.ps1`：
+
+- `available`：代码/数据/材料可获取，必须有 URL 或 release 证据。
+- `evaluated`：第三方重跑主结果，必须有独立真人 reviewer、日期和评估证据；
+  模型名不能充当 reviewer。
+- `reusable`：第三方在新场景复用，必须有 reuse_context 与复用记录。
+- `verified` 需要 DOI 或 archive_url，并记录 code/data license。
+- standard profile 在台账存在时做结构检查；high-assurance 使用
+  `--require-verified`，要求三类 badge、独立复核与归档证据完整。
+
 ## 10. 目录结构
 
 模板库：
