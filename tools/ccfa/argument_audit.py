@@ -155,11 +155,16 @@ def _scan_theorem_environments(manuscript: Path) -> list[dict]:
     return entries
 
 
+def _seal_region(region: dict, end_line: int) -> None:
+    region["end"] = end_line
+    region["text"] = _normalise_whitespace(" ".join(region.pop("lines")))
+
+
 def _scan_protected_citations(
     manuscript: Path,
     protected_sections: set[str],
-) -> dict[str, list[tuple[str, int]]]:
-    citations: dict[str, list[tuple[str, int]]] = {}
+) -> dict[str, list[dict]]:
+    citations: dict[str, list[dict]] = {}
     try:
         tex_files = iter_tex_files(Path(manuscript))
     except OSError as exc:
@@ -172,13 +177,19 @@ def _scan_protected_citations(
             raise ValueError(f"无法读取 {tex}: {exc}") from exc
         active_stack: list[tuple[int, bool]] = []
         in_abstract = False
+        current_region: dict | None = None
         for line_number, raw in enumerate(lines, start=1):
             line = strip_comment(raw)
             if _ABSTRACT_BEGIN.search(line):
+                if (
+                    "abstract" in protected_sections
+                    and current_region is not None
+                ):
+                    _seal_region(current_region, line_number - 1)
+                    current_region = None
                 in_abstract = True
             if in_abstract and _ABSTRACT_END.search(line):
                 in_abstract = False
-                continue
             heading = _HEADING.search(line)
             if heading:
                 level = 1 if heading.group(1) == "section" else 2
@@ -195,19 +206,42 @@ def _scan_protected_citations(
                         or normalised in protected_sections,
                     )
                 )
+                if (
+                    level == 1
+                    and normalised in protected_sections
+                    and current_region is not None
+                ):
+                    _seal_region(current_region, line_number - 1)
+                    current_region = None
             protected = (
                 (in_abstract and "abstract" in protected_sections)
                 or (active_stack and active_stack[-1][1])
             )
+            if protected and current_region is None:
+                current_region = {
+                    "path": relative,
+                    "start": line_number,
+                    "lines": [],
+                }
+            elif not protected and current_region is not None:
+                _seal_region(current_region, line_number - 1)
+                current_region = None
             if not protected:
                 continue
+            current_region["lines"].append(line)
             for match in _CITE.finditer(line):
                 for key in match.group(1).split(","):
                     key = key.strip()
                     if key:
                         citations.setdefault(key, []).append(
-                            (relative, line_number)
+                            {
+                                "path": relative,
+                                "line": line_number,
+                                "region": current_region,
+                            }
                         )
+        if current_region is not None:
+            _seal_region(current_region, len(lines))
     return citations
 
 
@@ -219,28 +253,6 @@ def _bib_keys(bib: Path) -> set[str]:
     except OSError as exc:
         raise ValueError(f"无法读取 BibTeX {bib}: {exc}") from exc
     return {match.group(1) for match in _BIB_KEY.finditer(text)}
-
-
-def _claim_appears_in_files(
-    manuscript: Path,
-    relative_paths: set[str],
-    needle: str,
-    cache: dict[str, str],
-) -> bool:
-    for relative in sorted(relative_paths):
-        if relative not in cache:
-            try:
-                cache[relative] = _normalise_whitespace(
-                    (manuscript / relative).read_text(
-                        encoding="utf-8",
-                        errors="replace",
-                    )
-                )
-            except OSError:
-                cache[relative] = ""
-        if needle and needle in cache[relative]:
-            return True
-    return False
 
 
 def _check_proofs(
@@ -407,7 +419,7 @@ def _check_proofs(
 def _check_citation_support(
     paper_root: Path,
     manuscript: Path,
-    protected_citations: dict[str, list[tuple[str, int]]],
+    protected_citations: dict[str, list[dict]],
     ledger_path: Path,
     bib_keys: set[str],
 ) -> tuple[list[Problem], list[Problem], dict]:
@@ -453,11 +465,10 @@ def _check_citation_support(
             "required": len(protected_citations),
             "reviewed": 0,
         }
-    citation_files: dict[str, set[str]] = {
-        key: {path for path, _line in locations}
-        for key, locations in protected_citations.items()
+    citation_regions: dict[str, list[str]] = {
+        key: [entry["region"]["text"] for entry in entries]
+        for key, entries in protected_citations.items()
     }
-    manuscript_text_cache: dict[str, str] = {}
     covered: set[str] = set()
     for index, support in enumerate(supports):
         if not isinstance(support, dict):
@@ -607,11 +618,10 @@ def _check_citation_support(
             if key in protected_citations:
                 covered.add(key)
                 if claim_text_valid:
-                    if not _claim_appears_in_files(
-                        manuscript,
-                        citation_files.get(key, set()),
-                        _normalise_whitespace(claim_text),
-                        manuscript_text_cache,
+                    needle = _normalise_whitespace(claim_text)
+                    if not any(
+                        needle in region_text
+                        for region_text in citation_regions.get(key, [])
                     ):
                         problems.append(
                             _problem(
@@ -673,7 +683,8 @@ def _check_citation_support(
                 )
     for key, locations in sorted(protected_citations.items()):
         if key not in covered:
-            first_path, first_line = locations[0]
+            first_path = locations[0]["path"]
+            first_line = locations[0]["line"]
             problems.append(
                 _problem(
                     "citation-support-missing",

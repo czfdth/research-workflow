@@ -335,6 +335,42 @@ class ArgumentAuditTests(unittest.TestCase):
 
         self.assertIn("citation-support-claim-not-found", self._codes(problems))
 
+    def test_claim_text_in_non_protected_section_does_not_cover(self):
+        (self.root / "data" / "claims.yaml").write_text(
+            "version: 1\n"
+            "protected_sections:\n"
+            "  - findings\n"
+            "waivers: []\n",
+            encoding="utf-8",
+        )
+        self._write_tex(
+            "\\section{Method}\n"
+            "This sentence lives outside the protected section.\n"
+            "\\section{Findings}\n"
+            "Prior work \\cite{smith2024} shows this.\n"
+        )
+        quote = "Smith et al. show the exact semantic support for this claim."
+        (self.root / "references" / "smith2024.md").write_text(
+            f"# Notes\n\n{quote}\n",
+            encoding="utf-8",
+        )
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:findings\n"
+            "    claim_text: This sentence lives outside the protected section.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: supports\n"
+            f"    support_quote: \"{quote}\"\n"
+            "    source_path: references/smith2024.md\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-claim-not-found", self._codes(problems))
+
     def test_non_string_support_verdict_is_a_problem_not_a_crash(self):
         self._write_tex(
             "\\section{Abstract}\n"
