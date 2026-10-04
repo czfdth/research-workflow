@@ -123,6 +123,7 @@ __pycache__/
 *.pdf
 !submission/**/*.pdf
 !manuscript/figs/**/*.pdf
+!figures/**/*.pdf
 """
 
 PAPER_GITATTRIBUTES = "* text=auto eol=lf\n"

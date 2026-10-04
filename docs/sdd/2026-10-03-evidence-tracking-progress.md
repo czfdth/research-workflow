@@ -1926,3 +1926,26 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **Task 4 `23d9020`**（`Confucius`）：`papers/rag-attack-defense` 已成独立仓库（首提交 `d98340b`）；论文内 run-log 记录 `git_repo=self` + 论文 HEAD；`data/claims.yaml` + `submission/claims-coverage.{json,md}` 生成（protected=8/bound=7/unbound=1，未绑定 `main.tex:58 Coding 43`）；`checks.md` 手写声明改为指向机器报告；新增 `test_evidence_integrity_e2e.py`（6 条）。
   - **控制器发现**：迁移后论文仓库仍是脏的（44 项：报告/checks/被重跑的验证输出；`exports/` 13.9MB 生成物）——已派收尾：论文 `.gitignore` 加 `/exports/`，并把当前真实状态提交为论文仓库第二个 commit（不动模板仓库）。
 - 评审（`Kierkegaard`：Task 4 + 性能两节）与论文仓库收尾（`Confucius`）在飞；随后 evidence-integrity 最终全分支评审（base `fb46fa7` → 最终 HEAD）。
+
+## evidence-integrity 终审与收口（2026-10-04）
+
+- **独立终审**（`codex exec`，`deepseek-v4-pro`，只读，base `fb46fa7`）：`final-review.json` 判 **blocking**，四条 finding：
+  - F1：`cross_review` 的输入哈希按工作树字节计算，CRLF/LF 会改变哈希；`.gitattributes` 未 renormalize，也未进入新论文模板。
+  - F2：旧的 stale cross-review 仍是 `verdict=pass`，`ccfa.yaml` 仍写 `submission_checks.status=passed`，机器状态与 `checks.md` 的 stale/2-problem 声明不一致。
+  - F3：HEAD 上没有真实的全量 927/141 证据；终审只能看到 923 的旧记录。
+  - F4：论文工作树不干净（当时有并行任务产生的未跟踪文件）。
+- **第一轮定向复验**（`focused-review.json`）：F1/F2 主路径已闭合，但发现两条修复细节：`cross-review-check.json` 从脏工作树生成、多报 5 个未变化的 manuscript 输入；NUL 启发式的二进制保真不完整。均已修复。
+- **第二轮定向复验**（`focused-review-2.json`，`deepseek-v4-flash`）：**verdict=pass，findings 为空**；独立复算确认文本后缀哈希、二进制保真、15 条 stale 报告与 clean HEAD 一致。
+
+### 修复与证据
+
+- F1（模板仓库）：`0b79676` 让 `cross_review._sha256` 对文本做 CRLF→LF 归一；`01923a8` 改为**已知文本后缀白名单**，`.bin` 等未知后缀按原始字节哈希；`tests/test_cross_review.py` 增加可区分旧实现的 `.bin` 用例；`tools/newpaper/create.py` 现在写入 `.gitattributes`（`30b8ac1` 已提交论文级规则）；`3ed4dd0` 把 `.gitattributes` 与 `git add --renormalize` 步骤写进迁移文档。判别力：旧 NUL 启发式对 `.bin` CRLF 会算错，新白名单用例失败；新实现复算 `TEXT_CRLF_EQ_LF=True`、`BINARY_BYTES_EXACT=True`。
+- F2（论文仓库）：`226db0f` 用 `state.py rollback` 把示例论文从 `submission-check/package_ready` 回退到 `internal-review/review_cleared`，`void_artifacts=[reviews/cross-review.json]`，并把 `submission_checks.status` 改成 `needs-rerun`；`7e34b52` 增加机器可读的 `reviews/cross-review-check.json`；`6c68cfa` 从 clean HEAD 重生成该报告为 **15 条 `review-stale`**，不再包含未变化的 manuscript 输入。`checks.md` 与 `review-history.md` 均指向该报告并明确 stale；clean clone 复跑 `cross-review check` 得到 `problem_count=15`。
+- 额外发现（clean clone 才暴露）：交付图 `figures/threat-model-lattice.pdf` 被 `*.pdf` 规则误伤、未进论文仓库，clean clone 的 `final-check` 因此报 3 个 problem（多出 `figure-missing`）。修复：模板 `!figures/**/*.pdf` 规则 + `test_create` 判别用例；迁移文档同步；论文仓库 `9d372d2` 纳入该图。clean clone `9d372d2` 复验：`STATUS_LINES=0`、`FIGURE_PRESENT=True`、`final-check=2`（与提交的 `reviews/final-check.json` 一致）、`cross-review check=15`、`run-log check` 退 0。
+
+### 最终验证（当前模板 HEAD）
+
+- `tools`：`Ran 929 tests OK`；`app`（offscreen）：`Ran 141 tests OK`。
+- fresh clone（新建 `tools/.venv` + `pip install -r tools/requirements.txt`）后：`Ran 929 tests OK`。
+- 论文提交树 clean clone（`9d372d2`）：`git status --porcelain` 为空；`run-log check` 退 0（problems=0）；`cross-review check` 退 1（15 条 stale，符合预期）；`final-check` 退 1（2 个 protected-section problem，符合提交报告）。
+- 现状说明：主工作树中的论文仓库仍被另一个并行任务写入未提交的稿件/表格/手工编码文件（`manuscript/`、`tables/`、`ccfa-workfiles/literature/human-coding-v2/` 等）；按"不得为干净丢弃记录"的规则未触碰、未提交这些改动。可复现性以提交树和 clean clone 为准。

@@ -47,6 +47,7 @@ __pycache__/
 *.pdf
 !submission/**/*.pdf
 !manuscript/figs/**/*.pdf
+!figures/**/*.pdf
 ```
 
    同时写入论文级 `.gitattributes`，固定 fresh clone 的文本换行：

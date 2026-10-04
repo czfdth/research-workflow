@@ -595,6 +595,10 @@ class TestCreateProject(unittest.TestCase):
         (root / "manuscript" / "figs" / "plot.pdf").write_bytes(
             b"%PDF-1.4 asset\n"
         )
+        (root / "figures").mkdir(exist_ok=True)
+        (root / "figures" / "delivery.pdf").write_bytes(
+            b"%PDF-1.4 delivery figure\n"
+        )
         (root / "submission" / "final.pdf").write_bytes(
             b"%PDF-1.4 delivery\n"
         )
@@ -609,6 +613,10 @@ class TestCreateProject(unittest.TestCase):
         )
         self.assertNotEqual(
             _git_exit_code(root, "check-ignore", "submission/final.pdf"),
+            0,
+        )
+        self.assertNotEqual(
+            _git_exit_code(root, "check-ignore", "figures/delivery.pdf"),
             0,
         )
 
