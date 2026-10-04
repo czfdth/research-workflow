@@ -742,7 +742,10 @@ def _declared_claims(paper_root: Path) -> set[str] | None:
     for item in raw:
         if not isinstance(item, str) or not item.strip():
             return None
-        claims.add(item.strip())
+        claim_id = item.strip()
+        if claim_id in claims:
+            return None
+        claims.add(claim_id)
     return claims
 
 
