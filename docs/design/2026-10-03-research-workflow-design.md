@@ -171,6 +171,16 @@ claims:
 
 T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产最常见的单一原因。
 
+**执行细节（v6 补记）：** `milestones due` 扫描 `experiments/log/`，T-30 之后开始的
+运行按记录里的 `declared_purpose` 分流：`experiment` 或无声明是 problem
+（`t30-new-experiment`）；声明 `build` 的运行只有同时写了 `purpose_reason`
+（≥20 字符）才算正当豁免，豁免仍只是 advisory（`t30-declared-build-run`，声明不构成
+证据），缺理由的 build 声明是 problem（`t30-unjustified-build-run`）。这条把「一个词
+换一次豁免」改成「一次豁免必须写清是什么构建、为什么不是新实验」——脚本仍然无法证明
+声明为真，但绕过它不再是零成本。同理，`run-log check` 把发生在脏树上的运行报成
+problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里写了 `dirty_waiver`
+（≥20 字符）才降为 advisory（`run-log-dirty-waiver`）。
+
 期刊模式没有硬 deadline，用同样的相对节点由投稿目标日倒推；若暂无投稿目标日，则按"结果冻结 → 3 周写作 → 2 周评审 → 1 周核验"的顺序推进。
 
 ## 5. Agent 执行层

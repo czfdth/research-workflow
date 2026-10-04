@@ -24,6 +24,14 @@ from ccfa import cli
 from ccfa.cli import Problem, ToolEnvironmentError, emit, save_text_atomically, tool_error
 
 VALID_PURPOSES = ("experiment", "build")
+_MIN_EXEMPTION_REASON = 20
+
+
+def _exemption_reason(value: object) -> str:
+    """Return the whitespace-normalised reason, or '' when unusable."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())
 
 
 def _now_iso() -> str:
@@ -201,6 +209,8 @@ def run_command(
     seed: str | None = None,
     notes: str | None = None,
     purpose: str = "experiment",
+    purpose_reason: str | None = None,
+    dirty_waiver: str | None = None,
     policy: dict | None = None,
     runner=None,
 ) -> tuple[str, dict]:
@@ -237,6 +247,8 @@ def run_command(
         "metrics": None,
         "notes": notes,
         "declared_purpose": purpose,
+        "purpose_reason": purpose_reason,
+        "dirty_waiver": dirty_waiver,
         "policy": _json_safe(policy) if policy is not None else None,
         "resource_usage": None,
     }
@@ -465,14 +477,28 @@ def check_runs(
             (not has_repo_field or repo == "self")
             and record.get("git_dirty") is True
         ):
-            advisories.append(
-                Problem(
-                    "run-log-dirty-tree",
-                    str(path),
-                    None,
-                    f"该运行发生在脏树上，无法仅凭 commit 复现: {record.get('run_id')}",
+            waiver = _exemption_reason(record.get("dirty_waiver"))
+            if len(waiver) < _MIN_EXEMPTION_REASON:
+                problems.append(
+                    Problem(
+                        "run-log-dirty-tree",
+                        str(path),
+                        None,
+                        f"该运行发生在脏树上，无法仅凭 commit 复现: "
+                        f"{record.get('run_id')}；如确需保留，请在记录里写明 "
+                        f"dirty_waiver（至少 {_MIN_EXEMPTION_REASON} 字符）",
+                    )
                 )
-            )
+            else:
+                advisories.append(
+                    Problem(
+                        "run-log-dirty-waiver",
+                        str(path),
+                        None,
+                        f"该运行发生在脏树上，已按记录的理由豁免: "
+                        f"{record.get('run_id')}；理由：{waiver}",
+                    )
+                )
     return problems, advisories
 
 
@@ -492,7 +518,22 @@ def main(argv: list[str]) -> int:
         default="experiment",
         help=(
             "experiment 受 T-30 冻结规则约束；build 仅用于图表/编译等构建运行。"
-            "这是调用者的声明，不构成证据"
+            "这是调用者的声明，不构成证据；T-30 后声明 build 必须同时给 "
+            "--purpose-reason"
+        ),
+    )
+    run.add_argument(
+        "--purpose-reason",
+        help=(
+            "为什么这次运行算 build 而不是新实验；T-30 后声明的 build 运行"
+            "缺该理由（至少 20 字符）会被 milestones due 判为 problem"
+        ),
+    )
+    run.add_argument(
+        "--dirty-waiver",
+        help=(
+            "明知工作树有未提交改动仍要记录这次运行的理由；"
+            "缺该理由（至少 20 字符）时 run-log check 会把脏树运行判为 problem"
         ),
     )
     run.add_argument("--propagate-exit", action="store_true")
@@ -538,6 +579,8 @@ def main(argv: list[str]) -> int:
             seed=args.seed,
             notes=args.notes,
             purpose=args.purpose,
+            purpose_reason=args.purpose_reason,
+            dirty_waiver=args.dirty_waiver,
         )
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))

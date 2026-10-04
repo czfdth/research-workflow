@@ -176,6 +176,7 @@ class TestDueReport(MilestoneTests):
                     "run_id": "20270402T120000-01",
                     "started_at": "2027-04-02T12:00:00Z",
                     "declared_purpose": "build",
+                    "purpose_reason": "Re-render Figure 3 from frozen results.",
                 }
             ),
         )
@@ -205,6 +206,7 @@ class TestDueReport(MilestoneTests):
                     "run_id": "20270402T120000-01",
                     "started_at": "2027-04-02T12:00:00Z",
                     "purpose": "build",
+                    "purpose_reason": "Rebuild the camera-ready PDF after edits.",
                 }
             ),
         )
@@ -218,6 +220,85 @@ class TestDueReport(MilestoneTests):
         self.assertIn(
             "t30-declared-build-run",
             {advisory["code"] for advisory in report["advisories"]},
+        )
+
+    def test_t30_unjustified_build_run_is_a_problem(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "declared_purpose": "build",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        problem = next(
+            item
+            for item in report["problems"]
+            if item["code"] == "t30-unjustified-build-run"
+        )
+        self.assertIn("20270402T120000-01", problem["message"])
+        self.assertNotIn(
+            "t30-declared-build-run",
+            {item["code"] for item in report["advisories"]},
+        )
+
+    def test_t30_short_build_reason_is_a_problem(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "declared_purpose": "build",
+                    "purpose_reason": "plot",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertIn(
+            "t30-unjustified-build-run",
+            {item["code"] for item in report["problems"]},
+        )
+
+    def test_t30_justified_build_run_is_an_advisory(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "declared_purpose": "build",
+                    "purpose_reason": "Re-render Figure 3 from frozen results.",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {item["code"] for item in report["problems"]},
+        )
+        self.assertNotIn(
+            "t30-unjustified-build-run",
+            {item["code"] for item in report["problems"]},
+        )
+        self.assertIn(
+            "t30-declared-build-run",
+            {item["code"] for item in report["advisories"]},
         )
 
     def test_t30_declared_experiment_run_is_a_problem(self):
