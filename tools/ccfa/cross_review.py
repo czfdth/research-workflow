@@ -148,6 +148,25 @@ def _longest_quote_length(evidence: str, corpus: str) -> int:
     return match.size
 
 
+def _quote_is_cited(evidence: str, corpus: str) -> bool:
+    """Return True when *evidence* contains a verifiable quoted fragment.
+
+    The common case is the normalized evidence itself appearing in the
+    corpus; that is a cheap substring test. Only when the evidence carries
+    extra text (for example a file prefix) do we pay for the longest common
+    substring search.
+    """
+    if (
+        len(evidence) >= _BLOCKING_QUOTE_MIN_LENGTH
+        and evidence in corpus
+    ):
+        return True
+    return (
+        _longest_quote_length(evidence, corpus)
+        >= _BLOCKING_QUOTE_MIN_LENGTH
+    )
+
+
 def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
     """Build the independent-review prompt."""
     paper_root = Path(paper_root)
@@ -561,10 +580,7 @@ def check_review(
         corpus = _input_corpus(paper_root, hashes)
         for index, item in enumerate(payload["blocking"]):
             evidence = _normalize_whitespace(item["evidence"])
-            if (
-                _longest_quote_length(evidence, corpus)
-                < _BLOCKING_QUOTE_MIN_LENGTH
-            ):
+            if not _quote_is_cited(evidence, corpus):
                 problems.append(
                     Problem(
                         "review-uncited-blocking",

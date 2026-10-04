@@ -9,6 +9,7 @@ from unittest import mock
 
 import yaml
 
+import ccfa.cross_review as cross_review_module
 from ccfa.cross_review import (
     REVIEW_SCHEMA,
     build_prompt,
@@ -382,6 +383,66 @@ class TestCheckReview(CrossReviewTests):
             "review-uncited-blocking",
             [problem.code for problem in problems],
         )
+
+    def test_whole_evidence_substring_short_circuits_the_matcher(self):
+        sentence = (
+            "The baseline comparison omits the strongest published method "
+            "entirely."
+        )
+        self.input_path.write_text(sentence + "\n", encoding="utf-8")
+        blocking = [{"title": "gap", "evidence": sentence}]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+        calls = []
+        real = cross_review_module._longest_quote_length
+
+        def counting(evidence, corpus):
+            calls.append((evidence, corpus))
+            return real(evidence, corpus)
+
+        with mock.patch(
+            "ccfa.cross_review._longest_quote_length",
+            side_effect=counting,
+        ):
+            problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-blocking"],
+        )
+        self.assertEqual(calls, [], "short path must not call the matcher")
+
+    def test_cross_newline_quote_falls_back_to_the_substring_match(self):
+        sentence = (
+            "The baseline comparison omits the strongest published method "
+            "entirely."
+        )
+        self.input_path.write_text(
+            "The baseline comparison omits the strongest\n"
+            "published method entirely.\n",
+            encoding="utf-8",
+        )
+        blocking = [{"title": "gap", "evidence": f'main.tex: "{sentence}"'}]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+        calls = []
+        real = cross_review_module._longest_quote_length
+
+        def counting(evidence, corpus):
+            calls.append((evidence, corpus))
+            return real(evidence, corpus)
+
+        with mock.patch(
+            "ccfa.cross_review._longest_quote_length",
+            side_effect=counting,
+        ):
+            problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-blocking"],
+        )
+        self.assertEqual(len(calls), 1)
 
     def test_uncited_blocking_check_exits_one(self):
         self.input_path.write_text(
