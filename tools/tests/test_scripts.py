@@ -49,6 +49,7 @@ CCFA_WRAPPERS = {
     "meta_optimize": "meta-optimize.ps1",
     "artifact_badge": "artifact-badge.ps1",
     "research_wiki": "research-wiki.ps1",
+    "research_state": "research-state.ps1",
     "dashboard": "dashboard.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"

@@ -744,6 +744,24 @@ Markdown/JSON：
 
 它不是新的科学 gate，只是把已有 gate 结果汇总成可操作的控制台。
 
+### 9.11 源码对齐第一切片：research-state
+
+参考 `Orchestra-Research/AI-Research-SKILLs` 的
+`0-autoresearch-skill/templates/research-state.yaml`，v6.1 新增
+`tools/ccfa/research_state.py` 与 `scripts/research-state.ps1`。它把项目级
+`literature`、`hypotheses`、`experiments.trajectory`、`outer_loop` 与
+`workspace` 变为可校验状态：
+
+- hypothesis id 必须唯一，parent 必须存在；
+- trajectory run_id 必须指向真实 run-log；total_runs 必须等于 trajectory 长度；
+- outer_loop 只允许 deepen / broaden / pivot / conclude；
+- workspace 中的 findings、log、literature、experiments、to_human、paper
+  路径必须真实存在；
+- `next` 选择最高优先级未闭环 hypothesis，输出下一步实验动作。
+
+该文件当前是可选的项目级状态层，不替代 claim-registry、experiment-loop 或
+run-log；它是对齐 two-loop 编排的第一切片，不是 ARA 五层 artifact 的完整复刻。
+
 ## 10. 目录结构
 
 模板库：

@@ -139,6 +139,7 @@ scripts/provenance.ps1 --store "$paper/data/provenance.json" `
 ```powershell
 scripts/statistics.ps1 --paper-root $paper
 scripts/experiment-loop.ps1 check --paper-root $paper
+scripts/research-state.ps1 check --paper-root $paper
 ```
 
 `data/experiment-loop.yaml` 记录 8-12 个候选、pilot 预算与 kill criterion，

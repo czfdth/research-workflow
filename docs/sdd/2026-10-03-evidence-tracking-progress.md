@@ -2446,3 +2446,14 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   blocking 作为 next_action；支持 Markdown/JSON 与不覆盖落盘。
 - 新增 `tools/tests/test_dashboard.py` 3 条覆盖；scripts/docs/test-impact/
   readiness 相关测试同步。
+
+## 源码对齐第一切片：research-state（2026-10-05）
+
+- 按 `Orchestra-Research/AI-Research-SKILLs` 的 `research-state.yaml`
+  对齐项目级 literature / hypotheses / experiments trajectory / outer_loop /
+  workspace 状态。
+- 新增 `tools/ccfa/research_state.py` 与 `scripts/research-state.ps1`。
+- 校验 hypothesis parent、trajectory 的真实 run_id 与 total_runs 一致性、
+  outer-loop 方向枚举、workspace 路径存在性；`next` 选择未闭环 hypothesis。
+- 新增 `tools/tests/test_research_state.py` 7 条覆盖；scripts/docs/test-impact
+  测试同步。
