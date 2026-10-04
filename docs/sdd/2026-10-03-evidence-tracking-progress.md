@@ -1872,3 +1872,14 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **Task 3a `4118590`**（`Confucius`）：`doi_lookup` 读响应体——Crossref `message.DOI`/`title`、DataCite `data.attributes.doi`/`titles`；归一化 DOI 必须等于请求（否则 `doi mismatch`）；`expected_title` 相似度 <0.9 → `title mismatch`（NFKC+casefold、去标点、折叠空白、SequenceMatcher）；成功携带 `LookupEvidence(body_sha256="sha256:<64hex>", retrieved_at, matched_title, source)`；`LookupResult.evidence` 默认 `None` 保持向后兼容。`citation_ledger` 新增 `LedgerEvidence` + 证据校验（缺失/非法不崩、记 `evidence`/`evidence_error`）+ `save_ledger` 原子写；`citation_guard` 对无有效证据的 `verified` 报 `citation-self-asserted`（离线同样，退 1），`--verify-online` 写 evidence 或 failed。判别力：只看 200 → `test_doi_mismatch_is_not_found` 失败；去 evidence 校验 → `citation-self-asserted` 用例失败。工具全量 874（含 Ampere 并行用例）。
   - 评审已派 `Kierkegaard`（review-e709fe8..4118590.diff，干净 worktree）。
 - **插曲（"没有反应"）**：Task 2 评审与 Task 3a 实际都已完成，但完成通知未送达/被截断；控制器通过 `read_thread` 取回了完整结论。流程改进口径：**长时间等待改用 read_thread 主动取证，而不是只等通知**。
+
+## evidence-integrity 执行记录（Task 2 修复 + Task 3a 评审）
+
+- **Task 2 Minor 修复 `331eb88`**（`Confucius` 接手，原实施者线程失效）：未知受保护区名 → problem `claims-policy-unknown-section`（退 1）；waiver 匹配加 `casefold`；真正实现可选 `line` 字段（`(file, line_text, line)` 三者参与匹配），`waived-number` 消息含"命中 N 处"，模板与报告写明用法。判别力：禁用未知节检查 → 两条用例失败（`claims-policy-unknown-section` not found / CLI 0 != 1）。tools 全量 883（含并行未提交改动的用例）。
+- **Task 3a 评审（`Kierkegaard`，干净 worktree `4118590`）**：**Needs fixes**，1 Important + 2 Minor。
+  - **I1（Important）**：bib 无 title + 提供方 200 但无可用标题时，`lookup` 产出 `matched_title=None` 并写进台账，而读侧要求非空 → 工具自己写的台账下次只读必报 `citation-self-asserted`，且重跑不收敛（实测 `verify 0 → read 1 → reverify 0 → read 1`）。
+  - I2（Minor）：`body_sha256` 哈希的是**解码后字符串**而非原始字节，且只存摘要不存响应体 → 摘要离线不可复算（翻转 1 位 hex 检测不到）；建议至少改为原始字节哈希并如实声明边界。
+  - I3（Minor）：缺"真实 lookup → 写账 → 只读检查归零"的往返用例与 0.9 相似度边界用例（评审实测边界行为本身正确：0.8929→mismatch，0.9091→found）。
+  - 其余全部通过：DOI 归一/变体、expected_title=None 语义、坏 JSON 双源、evidence 校验、原子写、只读失败退 2、help 如实、key 哨兵不入台账、二次核验幂等；判别力两条独立复现。
+  - 修复已派 `Confucius`：无可用标题 → `found=False, detail="title missing"`（保证写读收敛）；补真实往返 + 边界用例；证据哈希改原始字节并写清防伪造边界。commit `fix: never write evidence the ledger reader rejects`。
+- **更正：并行未提交改动的归属**。控制器核对 `read_thread`：`Ampere`（01a1015b）是 2026-10-03 run-log Part B 的**旧评审者**（已 completed、只读），并非工作树中 `run_log.py`/`milestones.py`/`cross_review.py` 未提交改动的作者。该批改动来自**另一个未知会话**；Task 1b（run-log git 身份）与 Task 3b（cross-review 引文 / declared_purpose / gate 证据化）在其归属澄清前保持不触碰。
