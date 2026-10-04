@@ -60,6 +60,7 @@ jobs:
             tools/ccfa/research_state.py `
             tools/ccfa/research_wiki.py `
             tools/ccfa/rigor.py `
+            tools/ccfa/run_ledger.py `
             tools/ccfa/test_impact.py
 
       - name: Run impacted tool tests

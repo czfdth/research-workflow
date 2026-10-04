@@ -32,6 +32,7 @@ from ccfa import (
     repro_package,
     repro_env,
     research_ledgers,
+    run_ledger,
     rigor,
     stats_plan,
     trace_claims,
@@ -329,6 +330,8 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
 
     if (paper_root / EVIDENCE_LEDGER_PATHS["post-submission"]).is_file():
         specs["post-submission"] = lambda: post_submission.check(paper_root)
+    if (paper_root / "experiments" / "log" / "run-ledger.jsonl").is_file():
+        specs["run-ledger"] = lambda: run_ledger.check_ledger(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

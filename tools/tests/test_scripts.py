@@ -20,6 +20,7 @@ CCFA_WRAPPERS = {
     "final_check": "final-check.ps1",
     "provenance": "provenance.ps1",
     "run_log": "run-log.ps1",
+    "run_ledger": "run-ledger.ps1",
     "repro_package": "repro-package.ps1",
     "friction_log": "friction-log.ps1",
     "research_version": "research-version.ps1",

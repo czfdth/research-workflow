@@ -94,6 +94,10 @@ _TOOLS_EXACT = {
         "tools.tests.test_ara_compile",
         "tools.tests.test_docs_consistency",
     ),
+    "tools/ccfa/run_ledger.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_run_ledger",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

@@ -2497,3 +2497,15 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   query pack 已加入 gitignore。
 - `tools/tests/test_research_wiki.py` 扩展到 11 条覆盖；README、workflow guide、
   设计文档、CI/test-impact 同步。
+
+## 源码对齐第五切片：hash-chained run ledger（2026-10-05）
+
+- 按 academic-research-skills `run_ledger.schema.json`，新增
+  `tools/ccfa/run_ledger.py` 与 `scripts/run-ledger.ps1`。
+- `sync` 在 `experiments/log/run-ledger.jsonl` 追加 peer ledger；`check`
+  检测 JSON 损坏、seq、prev_hash/hash、缺失、orphan 和 stale record。
+- entry 记录 run record 的 canonical SHA-256；同一 run_id 更新时追加新 entry，
+  旧记录永不覆盖。
+- readiness 在 ledger 存在时执行可选 run-ledger gate。
+- 新增 `tools/tests/test_run_ledger.py` 5 条覆盖；scripts/docs/CI/test-impact
+  同步。

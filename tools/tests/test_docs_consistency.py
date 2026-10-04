@@ -26,6 +26,7 @@ CLI_WRAPPERS = {
     "final_check": "scripts/final-check.ps1",
     "provenance": "scripts/provenance.ps1",
     "run_log": "scripts/run-log.ps1",
+    "run_ledger": "scripts/run-ledger.ps1",
     "repro_package": "scripts/repro-package.ps1",
     "friction_log": "scripts/friction-log.ps1",
     "research_version": "scripts/research-version.ps1",

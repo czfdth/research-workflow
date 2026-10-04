@@ -814,6 +814,24 @@ Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
 
 Markdown 实体和图边是 source of truth；index 与 query pack 是生成物。
 
+### 9.15 源码对齐第五切片：hash-chained run ledger
+
+按 `Imbad0202/academic-research-skills` 的
+`shared/contracts/passport/run_ledger.schema.json`，v6.1 新增
+`tools/ccfa/run_ledger.py` 与 `scripts/run-ledger.ps1`：
+
+- 在 `experiments/log/run-ledger.jsonl` 维护 append-only peer ledger。
+- 每条 entry 包含 seq、kind、at、run_id、record_path、record_sha256、
+  command、status、exit_status、prev_hash 和 hash。
+- hash 是 entry 去掉 hash 字段后的 canonical JSON SHA-256。
+- `sync` 对缺失或变化的 run record 追加新 entry；同一 run_id 的新 entry 覆盖
+  latest 比较，但旧记录永不删除或重写。
+- `check` 检测 JSON 损坏、seq 跳号、prev_hash/hash 不匹配、run record 缺失、
+  ledger orphan，以及 record 已变化但 ledger stale。
+
+该 ledger 不替代 `run_log.py` 的实验记录，只提供防意外损坏的追加式证据链；
+它不是密码学签名，不能抵抗拥有完整写权限的人重写整个文件。
+
 ## 10. 目录结构
 
 模板库：

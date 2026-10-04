@@ -131,6 +131,15 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_ara_compile", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_run_ledger_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/run_ledger.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_run_ledger", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_dashboard_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/dashboard.py"],
