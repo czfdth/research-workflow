@@ -2271,3 +2271,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 定向验证：workflow 8 tests、governance 10 tests、trace-claims 16 tests、
   cross-review 66 tests、readiness 12 tests 均通过；真实 `repro_package verify`
   0 problems。
+
+## 全量测试红灯与 provider 假警报修复（2026-10-05，E89）
+
+- BUG-NEW-1：`cross_review.run_review` 改为强制显式模型后，两个 E2E 仍在旧调用形态，
+  导致全量 1209 tests 中有 2 个 error，而 CI targeted 列表没有覆盖这两个模块。
+  修复：两个 E2E 显式传 `model=deepseek-v4-pro` 和隔离 `codex_config`；CI targeted
+  列表加入 `test_automation_e2e`、`test_evidence_integrity_e2e`，workflow 守护测试
+  固定这两个模块必须存在。
+- BUG-NEW-2：doctor provider probe 只解析 `data[].id`，而本地代理返回
+  `models[].slug`，造成配置模型已存在却报 false negative。修复：新增
+  `_model_ids`，同时解析 `data[].id`、`models[].id`、`models[].slug`。
+- 验证：全量工具测试 `Ran 1211 tests, OK`；真实 doctor 返回
+  `functional provider 配置模型可用`，剩余 advisories 为 Docker daemon、
+  WorkBuddy、Zotero。

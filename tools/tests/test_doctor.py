@@ -374,6 +374,33 @@ class DoctorTests(unittest.TestCase):
         self.assertFalse(result.functional)
         self.assertNotIn("another-model", result.detail)
 
+    def test_provider_probe_accepts_models_slug_shape(self):
+        service = Service(
+            key="provider",
+            url="http://127.0.0.1:15721/v1/models",
+            capability="模型调用",
+            expected_model="deepseek-v4-flash",
+        )
+
+        result = doctor_module._probe_http_service(
+            service,
+            fetch=lambda url, timeout: (
+                200,
+                json.dumps(
+                    {
+                        "models": [
+                            {"slug": "deepseek-v4-flash"},
+                            {"slug": "deepseek-v4-pro"},
+                            {"slug": "deepseek-flash"},
+                        ]
+                    }
+                ).encode(),
+            ),
+        )
+
+        self.assertTrue(result.functional)
+        self.assertEqual(result.detail, "配置模型可用")
+
     def test_discovers_provider_and_local_services_from_codex_config(self):
         config = self.root / "config.toml"
         config.write_text(

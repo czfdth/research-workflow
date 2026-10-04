@@ -249,11 +249,21 @@ class EvidenceIntegrityEndToEnd(unittest.TestCase):
             output.write_text(json.dumps(payload), encoding="utf-8")
             return 0, ""
 
+        codex_config = paper / "config.toml"
+        codex_config.write_text(
+            'model_provider = "deepseek-provider"\n'
+            'model = "deepseek-v4-flash"\n'
+            '[model_providers.deepseek-provider]\n'
+            'base_url = "https://deepseek.example.test/v1"\n',
+            encoding="utf-8",
+        )
         run_review(
             paper,
             stage="internal-review",
             paths=[Path("main.tex")],
             runner=runner,
+            model="deepseek-v4-pro",
+            codex_config=codex_config,
             allow_same_family=True,
             override_reason=(
                 "test fixture: no second-family provider is configured"

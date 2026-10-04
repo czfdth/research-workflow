@@ -140,6 +140,18 @@ class GitHubWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 2)
 
+    def test_ci_covers_cross_review_downstream_e2e_modules(self):
+        workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
+            encoding="utf-8"
+        )
+
+        for module in (
+            "tools.tests.test_automation_e2e",
+            "tools.tests.test_evidence_integrity_e2e",
+        ):
+            with self.subTest(module=module):
+                self.assertIn(module, workflow)
+
     def test_actions_use_current_node24_compatible_majors(self):
         workflow_text = "\n".join(
             path.read_text(encoding="utf-8")

@@ -1,155 +1,160 @@
 # 科研工作流缺口与完善清单
 
-日期：2026-10-05（第四轮修复）
+日期：2026-10-05（第五轮修复）
 
 ## 一句话结论
 
-上一轮的 `readiness` 假绿问题已经修好。本轮逐条复现 CI 命令后，修复了
-workflow↔CLI 参数不一致、governance pending 占位值、repro bundle 陈旧哈希、
-cross-review 隐式默认模型等问题；剩余阻塞集中在真实人工复核、运行时 provider
-配置、跨仓库 CI secret 与容器级复现。
+第四轮发现的 2 个工程 bug 本轮均已修复：两个 E2E 测试已补显式模型与隔离
+Codex config，CI 已覆盖对应模块；doctor 已兼容 provider 的 `models[].slug`
+响应结构。真实 provider 现在为 `functional`，全量工具测试 1211 项通过。剩余阻塞
+集中在人工证明/引用/图表复核、真人双编码、旧 cross-review 记录和容器级复现。
 
-## 第四轮已修复
+## 第五轮已修复
 
-| 问题 | 修复 |
+| 问题 | 修复与证据 |
 | --- | --- |
-| `paper-check` 用 `--paper-root` 调 `citation_guard` / `trace_claims` | workflow 改为真实参数；`trace_claims` 新增 `--manuscript` 便捷入口 |
-| workflow 参数缺少回归测试 | 新增执行 workflow 中 `python -m ccfa.*` 命令的解析测试 |
-| governance 接受 pending 占位值 | `governance-placeholder` 拒绝 pending/TBD/todo/placeholder |
-| cross-review 隐式默认模型 | 删除 `DEFAULT_MODEL` / `DEFAULT_EXECUTION_MODEL`；`--model` 必填 |
-| repro bundle 哈希陈旧、`requirements=null` | 重建 bundle，写入 60 文件哈希与 `requirements.txt` 哈希；readiness 执行 verify |
-| doctor exit 0 容易被误读 | 明确输出 problem/advisory 汇总，并提示投稿前 `--strict` |
-| statistics 机械填充 | 支持 `analysis_type: descriptive` 与 `not-applicable` |
+| BUG-NEW-1 全量测试红、CI 子集看不到 | 两个 E2E 补 `model=deepseek-v4-pro` 与临时 `codex_config`；CI 加入 `test_automation_e2e`、`test_evidence_integrity_e2e` |
+| BUG-NEW-2 doctor provider 假警报 | `_probe_http_service` 同时解析 `data[].id` 与 `models[].id/slug`；真实 doctor 返回 `functional provider 配置模型可用` |
+| 全量测试可信度 | `python -m unittest discover -s tools/tests -t tools` -> `Ran 1211 tests, OK` |
 
-## 一、本轮验证基线
+## 一、本轮已修复
 
-| 检查 | 结果 |
-| --- | --- |
-| 主仓库 `git status` | 干净，与 `origin/master` 同步 |
-| 论文仓库 `git status` | 干净，HEAD `42f3000`，与 `origin/master` 同步 |
-| 工具全量测试 | `1202 tests, OK`（约 100 秒） |
-| app 全量测试 | `187 tests, OK` |
-| `readiness` | `ready=false`，正确聚合 gate，不再假绿 |
-| `repro_env` | `problem_count=0`，上一轮 lockfile 漂移已修复 |
+| 上轮问题 | 状态 | 证据 |
+| --- | --- | --- |
+| BUG-1 CI 参数错配 | 已修复 | 两个 workflow 的 `citation_guard` 与 `trace_claims` 都改成正确参数 |
+| `trace_claims` 不支持目录 | 已修复 | 新增 `--manuscript`，等价于对目录下所有 `.tex` 传 `--doc` |
+| BUG-2 缺少 workflow↔CLI 守护测试 | 已修复 | 新增 `test_main_paper_commands_are_parseable` / `test_paper_repository_commands_are_parseable` |
+| BUG-3 governance 接受 pending 文本 | 已修复 | 现在报 3 个 `governance-placeholder`，exit 1 |
+| BUG-7 复现包不声明依赖 | 已修复 | `MANIFEST.json.requirements` 已回填，lockfile 哈希已对齐 |
+| `repro_env` 哈希漂移 | 已修复 | `problem_count=0`，exit 0 |
 
-## 二、发现的 bug
-
-### BUG-1（P0，已修复）：`paper-check` CI 用错误参数调用两个 CLI
-
-两个 workflow 原先用 `--paper-root` 调用 `citation_guard` 和 `trace_claims`，两个
-CLI 都不接受该参数。现在 workflow 已改为：
-
-- `citation_guard --manuscript ... --bib ... --ledger ...`
-- `trace_claims --manuscript ... --base-dir ...`
-
-`trace_claims` 同时新增 `--manuscript` 入口，扫描目录下全部 `.tex`；原有 `--doc`
-接口保持兼容。
-
-### BUG-2（P1，已修复）：没有测试守护 workflow 与 CLI 参数一致性
-
-`tools/tests/test_github_workflows.py` 现在会执行 workflow 中的每条
-`python -m ccfa.*` 命令，并拒绝 argparse 的 `unrecognized arguments`、
-required-argument 和 invalid-choice 失败。两个 workflow 都已纳入测试。
-
-### BUG-3（P1，已修复）：`governance` gate 接受 pending 占位文本
-
-`data/governance.yaml` 中：
-
-| 字段 | 值 |
-| --- | --- |
-| COI | `pending final author-specific COI disclosure after de-anonymization` |
-| 查重工具 | `manual self-check pending institutional similarity tool before submission` |
-| 披露联系人 | `anonymous-submission-contact-pending` |
-
-`governance.py` 现在对 pending/TBD/todo/placeholder/to-be-determined 做显式拒绝，
-报 `governance-placeholder`。真实论文当前因此正确返回 3 problems；补真实 COI、
-查重工具和披露联系人之前，不应通过 governance gate。
-
-### BUG-4（P1，代码已修复；运行时配置仍漂移）
-
-| 位置 | 值 |
-| --- | --- |
-| `~/.codex/config.toml` | `model = "deepseek-flash"` |
-| provider `/v1/models` | 只列出 `deepseek-v4-pro` |
-| `tools/ccfa/cross_review.py` | 已删除硬编码默认模型；`--model` 现在必填，执行模型/provider 从 Codex config 解析 |
-| 已存 `reviews/cross-review.json` | `provider=null`、`family_judgement=same-family`、`verdict=pass`、`override_reason=null` |
-
-代码侧的隐式模型选择和 provenance fail-closed 已修复。剩余问题是运行环境：
-config 写 `deepseek-flash`，provider 只暴露 `deepseek-v4-pro`；旧评审记录没有
-provider/prompt/config hashes，必须重跑后才能可信。
-
-### BUG-5（P2，已缓解）：`doctor` 退出 0 但环境未就绪
+CI 命令逐条复现结果（论文仓库根目录）：
 
 ```text
-Docker daemon        不可达（本轮回归）
-WorkBuddy  :8787     连接被拒
-Zotero     :23119    连接被拒
-provider            配置模型不在 /v1/models 列表中
--> doctor exit 0（全部按 advisory 处理）
+validate        0
+citation_guard  0
+trace_claims    0
+novelty         0
+stats_plan      0
+governance      1   <- 真实问题：COI / 查重 / 披露联系人仍是 pending
+repro_env       0
+argument_audit  1   <- 真实问题：proof 0/8、citation 0/6、figure 0/1
+latex_check     0
+final_check     0
+run_log         0
 ```
 
-`doctor` 现在总会输出 problem/advisory 汇总，并明确提示投稿前运行
-`scripts/doctor.ps1 --strict`；退出码语义保持不变。
+## 二、本轮新发现的 bug
 
-### BUG-6（P2，已修复）：统计台账有机械填充痕迹
+### BUG-NEW-1（P0，已修复）：全量测试变红但 CI 检测不到
 
-`statistics-plan.yaml` 现在使用 `analysis_type: descriptive`，不适用的
-effect size、power、seeds 与 alpha 明确写 `not-applicable`；推断性设计仍拒绝该值。
+```text
+python -m unittest discover -s tools/tests -t tools
+-> Ran 1209 tests, FAILED (errors=2)
+```
 
-### BUG-7（P2，bundle 已修复；容器隔离仍待补）
+两个 error 同源：`cross_review.run_review` 现在要求显式 `--model`（工作流不再替调用方选模型），但两个 E2E 测试仍在无 `model` 的情况下调用它：
 
-- `submission/repro/MANIFEST.json` 已重建：60 个文件哈希更新，`requirements`
-  指向 `requirements.txt` 并记录 SHA-256；
-- `readiness` 现在会执行 `repro_package verify`，陈旧 bundle 不再假绿；
-- `repro-check` 仍仅供标准的 venv 重跑，不提供容器隔离；
-- 仍缺第二机器或容器 digest 证据。
+```text
+tools/tests/test_automation_e2e.py:378
+  AutomationEndToEndTests.test_cross_review_blocking_record_is_reported_by_check
 
-## 三、仍然缺失的能力
+tools/tests/test_evidence_integrity_e2e.py:252
+  EvidenceIntegrityEndToEnd.test_fabricated_cross_review_quote_is_uncited
 
-### 1. 人工验证（科学核心，全部 pending）
+ValueError: 跨模型评审必须显式提供 --model
+```
+
+更值得注意：`.github/workflows/tests.yml` 的 targeted 列表只包含
+`test_cross_review / test_doctor / test_readiness / test_repro_package /
+test_run_log_e2e / test_docs_consistency / test_github_workflows / test_scripts`，
+**不包含** `test_automation_e2e` 与 `test_evidence_integrity_e2e`。所以 CI 会保持绿色，而本地全量测试是红的。
+
+修复：两个测试显式传 `model=deepseek-v4-pro` 和隔离的 `codex_config`；CI
+targeted 列表加入 `test_automation_e2e`、`test_evidence_integrity_e2e`。
+workflow 守护测试同时要求这两个模块保留在 CI。
+
+### BUG-NEW-2（P1，已修复）：doctor 对本地 provider 的模型列表判断错误
+
+`tools/ccfa/doctor.py::_probe_http_service` 只读 OpenAI 风格的响应结构：
+
+```python
+data = payload.get("data")
+model_ids = {item.get("id") for item in data ...}
+```
+
+但本机 provider（`127.0.0.1:15721`）返回的是另一种结构：
+
+```text
+顶层键: models
+条目字段: slug
+实际列表: deepseek-v4-flash, deepseek-v4-pro, deepseek-flash
+```
+
+配置模型 `deepseek-v4-flash` 确实在列表里，但因为代码只找 `data[].id`，`model_ids` 为空集合，于是误报：
+
+```text
+authenticated provider  配置模型不在模型列表中
+provider: doctor-service-not-functional
+```
+
+这是与上一轮相反方向的缺陷：不是假绿，而是**假警报**。修复后
+`_probe_http_service` 同时兼容 `data[].id` 与 `models[].id/slug`；真实 doctor
+已确认 `functional provider 配置模型可用`。剩余 service advisories 只有 Docker
+daemon、WorkBuddy 和 Zotero。
+
+## 三、仍然阻塞科研结论的问题（不是 bug，是未完成）
 
 | 项 | 状态 |
 | --- | --- |
-| `proof-audit.yaml` | 8 条全部 `Human reviewer pending`，`0/8` 通过 |
-| `citation-support.yaml` | `supports: []`，`0/6` |
-| `figure-support.yaml` | `figures: []`，`0/1` |
+| `proof-audit.yaml` | 8 条全部 pending，人工复核 0/8 |
+| `citation-support.yaml` | `supports: []`，0/6 |
+| `figure-support.yaml` | `figures: []`，0/1 |
 | `human-coding-report.json` | `pending-human-dual-coding` |
 | `scientific-acceptance.yaml` | 不存在，`scientifically-accepted: not-claimed` |
+| `governance.yaml` | COI / 查重 / 披露联系人均为 pending |
+| `reviews/cross-review.json` | `provider=null`、`same-family`、`verdict=pass`，且 `review-stale ×4`、`review-provenance-incomplete`、`review-prompt-unknown` |
 
-`readiness` 当前 blocking 也正是这两组：`argument-audit gate failed`（proof/citation/figure）与 `cross-review gate failed`。
+`readiness` 当前 `ready=false`，blocking 正是：
 
-### 2. CI 运维
+```text
+argument-audit gate failed: proof-review-not-verified ×5
+cross-review gate failed: review-provenance-incomplete, review-stale ×4
+```
 
-- `PAPER_REPOSITORY_TOKEN`、`RESEARCH_WORKFLOW_TOKEN` 未验证（本机无 `gh` CLI）；
-- 跨仓库 workflow 为手动触发，不是每次 push 自动验证论文；
-- 未见 branch protection 证据。
+这说明 readiness 现在能反映真实状态，是可用的。
 
-### 3. 长期归档与身份
+## 四、环境与运维
 
-- Zenodo / OSF：录用后归档并获取 DOI；
-- ORCID：投稿元数据与成果归属。
+| 项 | 状态 |
+| --- | --- |
+| Docker daemon | 不可达 |
+| WorkBuddy `:8787` | 连接被拒 |
+| Zotero `:23119` | 连接被拒 |
+| `doctor` 退出码 | 0（以上均为 advisory；投稿前应用 `--strict`） |
+| `PAPER_REPOSITORY_TOKEN` / `RESEARCH_WORKFLOW_TOKEN` | 未验证（本机无 `gh` CLI） |
+| 跨仓库 workflow 触发方式 | 手动，不是每次 push 自动验证论文 |
+| Zenodo / OSF / ORCID | 未接入 |
 
-## 四、优先行动清单
+## 五、优先行动清单
 
 ### P0
 
 1. 完成 proof（0/8）、citation（0/6）、figure（0/1）人工复核与真人双编码。
-2. 在拥有 repo 权限的凭据下，让两个跨仓库 workflow 真实跑通一次。
 
 ### P1
 
-3. 统一 config 与 provider 的实际模型列表，重跑并替换旧 cross-review 记录。
-4. 补真实 governance COI、查重工具和披露联系人。
-5. 配置并验证 `PAPER_REPOSITORY_TOKEN`、`RESEARCH_WORKFLOW_TOKEN`。
+1. 重新生成 `cross-review.json`，使用显式跨族模型并写入完整 provenance。
+2. 把 `governance.yaml` 的 COI、查重工具、披露联系人换成真实值。
+3. 配置并验证两个 PAT secret，让跨仓库 CI 真正跑一次。
 
 ### P2
 
-6. 启动 Docker、WorkBuddy、Zotero，使 `doctor --strict` 归零。
-7. 给复现包补 Docker/Dockerfile digest 或第二环境实跑证据。
-8. 接入 ORCID，录用后接入 Zenodo/OSF。
+1. 启动 Docker、WorkBuddy、Zotero，使 `doctor --strict` 归零。
+2. 补容器或第二环境复现证据。
+3. 接入 ORCID，录用后接入 Zenodo/OSF。
 
-## 五、当前最短路径
+## 六、当前最短路径
 
-1. 完成人工证明复核与真人双编码，让 `argument-audit` 从 blocking 变 pass。
-2. 修运行时 provider 模型配置，重跑 cross-review 并补齐 provenance。
-3. 配置最小权限 token，让两个跨仓库 CI 在第二环境真实跑通。
+1. 完成人工证明复核与真人双编码，让 argument-audit 从 blocking 转 pass。
+2. 用真实跨族模型重跑 cross-review，让 provenance 完整、评审不再 stale。

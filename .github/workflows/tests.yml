@@ -51,7 +51,9 @@ jobs:
           $env:PYTHONPATH = "tools"
           tools/.venv/Scripts/python.exe -m unittest `
             tools.tests.test_cross_review `
+            tools.tests.test_automation_e2e `
             tools.tests.test_doctor `
+            tools.tests.test_evidence_integrity_e2e `
             tools.tests.test_readiness `
             tools.tests.test_repro_package `
             tools.tests.test_run_log_e2e `

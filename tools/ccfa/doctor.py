@@ -187,6 +187,28 @@ def _default_fetch(url: str, timeout: float) -> tuple[int, bytes]:
         return int(exc.code), exc.read(20_000)
 
 
+def _model_ids(payload: object) -> set[str]:
+    """Accept OpenAI-style data[].id and proxy-style models[].slug."""
+    if not isinstance(payload, dict):
+        return set()
+    model_ids: set[str] = set()
+    data = payload.get("data")
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                model_ids.add(item["id"])
+    models = payload.get("models")
+    if isinstance(models, list):
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            for field in ("id", "slug"):
+                value = item.get(field)
+                if isinstance(value, str):
+                    model_ids.add(value)
+    return model_ids
+
+
 def _probe_http_service(
     service: Service,
     *,
@@ -207,12 +229,7 @@ def _probe_http_service(
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return ServiceResult(True, True, False, "响应不是合法 JSON")
-    data = payload.get("data") if isinstance(payload, dict) else None
-    model_ids = {
-        item.get("id")
-        for item in data
-        if isinstance(item, dict) and isinstance(item.get("id"), str)
-    } if isinstance(data, list) else set()
+    model_ids = _model_ids(payload)
     if service.expected_model not in model_ids:
         return ServiceResult(
             True,
