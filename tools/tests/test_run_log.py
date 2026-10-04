@@ -605,6 +605,48 @@ class TestCheckRuns(BaseCase):
         self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
         self.assertEqual(advisories, [])
 
+    def test_dirty_tree_with_a_whitespace_waiver_is_a_problem(self):
+        self._write_record("a", self._base(git_dirty=True, dirty_waiver="   "))
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
+        self.assertEqual(advisories, [])
+
+    def test_dirty_tree_with_a_non_string_waiver_is_a_problem(self):
+        self._write_record("a", self._base(git_dirty=True, dirty_waiver=123))
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
+        self.assertEqual(advisories, [])
+
+    def test_dirty_tree_waiver_at_the_length_boundary_is_an_advisory(self):
+        self._write_record(
+            "a",
+            self._base(git_dirty=True, dirty_waiver="12345678901234567890"),
+        )
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(problems, [])
+        self.assertEqual(self._codes(advisories), ["run-log-dirty-waiver"])
+
+    def test_running_dirty_record_without_a_waiver_is_a_problem(self):
+        self._write_record(
+            "a",
+            self._base(status="running", metrics=None, git_dirty=True),
+        )
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
+        self.assertEqual(advisories, [])
+
+    def test_dirty_waiver_on_a_clean_tree_is_not_reported(self):
+        self._write_record(
+            "a",
+            self._base(
+                git_dirty=False,
+                dirty_waiver="Baseline re-run on a branch with an unrelated edit.",
+            ),
+        )
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+
     def test_stale_running_record_is_a_problem(self):
         self._write_record("a", self._base(status="running", metrics=None))
         problems, _ = check_runs(

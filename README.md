@@ -66,7 +66,7 @@
 | `grounded` | `scripts/novelty.ps1` | 检查检索范围/日期、至少三个近邻与逐 claim 差异 |
 | `data-ready` | `scripts/provenance.ps1` | 登记数据来源、分类、校验和并检查完整性 |
 | `experiment-design` | `scripts/statistics.ps1` | 检查功效、样本量、多重比较校正、种子、停止规则与缺失数据处理 |
-| `experiment-design`、`experiments-running` | `scripts/run-log.ps1` | 记录运行事实、指标、退出码与失败结果；`check` 对脏树运行报 problem，记录里写了 `--dirty-waiver` 才降为 advisory |
+| `experiment-design`、`experiments-running` | `scripts/run-log.ps1` | 记录运行事实、指标、退出码与失败结果；`check` 对脏树运行报 problem，只有 `--dirty-waiver` 写明 ≥20 字符的理由才降为 advisory |
 | `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
 | `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |

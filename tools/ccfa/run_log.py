@@ -34,6 +34,47 @@ def _exemption_reason(value: object) -> str:
     return " ".join(value.split())
 
 
+def _dirty_tree_findings(
+    record: dict,
+    path: Path,
+) -> tuple[Problem | None, Problem | None]:
+    """Return the (problem, advisory) pair for a record taken on a dirty tree.
+
+    Applies to every record status, including ``running``: a run that started on
+    a dirty tree cannot be reproduced from its commit whether or not it has
+    finished yet.
+    """
+    has_repo_field = "git_repo" in record
+    repo = record.get("git_repo")
+    if not (not has_repo_field or repo == "self"):
+        return None, None
+    if record.get("git_dirty") is not True:
+        return None, None
+    waiver = _exemption_reason(record.get("dirty_waiver"))
+    if len(waiver) < _MIN_EXEMPTION_REASON:
+        return (
+            Problem(
+                "run-log-dirty-tree",
+                str(path),
+                None,
+                f"该运行发生在脏树上，无法仅凭 commit 复现: "
+                f"{record.get('run_id')}；如确需保留，请在记录里写明 "
+                f"dirty_waiver（至少 {_MIN_EXEMPTION_REASON} 字符）",
+            ),
+            None,
+        )
+    return (
+        None,
+        Problem(
+            "run-log-dirty-waiver",
+            str(path),
+            None,
+            f"该运行发生在脏树上，已按记录的理由豁免: "
+            f"{record.get('run_id')}；理由：{waiver}",
+        ),
+    )
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -373,6 +414,11 @@ def check_runs(
                 )
             )
             continue
+        dirty_problem, dirty_advisory = _dirty_tree_findings(record, path)
+        if dirty_problem is not None:
+            problems.append(dirty_problem)
+        if dirty_advisory is not None:
+            advisories.append(dirty_advisory)
         if status == "running":
             if started is None:
                 problems.append(
@@ -473,32 +519,6 @@ def check_runs(
                     f"记录缺少 git commit: {record.get('run_id')}",
                 )
             )
-        if (
-            (not has_repo_field or repo == "self")
-            and record.get("git_dirty") is True
-        ):
-            waiver = _exemption_reason(record.get("dirty_waiver"))
-            if len(waiver) < _MIN_EXEMPTION_REASON:
-                problems.append(
-                    Problem(
-                        "run-log-dirty-tree",
-                        str(path),
-                        None,
-                        f"该运行发生在脏树上，无法仅凭 commit 复现: "
-                        f"{record.get('run_id')}；如确需保留，请在记录里写明 "
-                        f"dirty_waiver（至少 {_MIN_EXEMPTION_REASON} 字符）",
-                    )
-                )
-            else:
-                advisories.append(
-                    Problem(
-                        "run-log-dirty-waiver",
-                        str(path),
-                        None,
-                        f"该运行发生在脏树上，已按记录的理由豁免: "
-                        f"{record.get('run_id')}；理由：{waiver}",
-                    )
-                )
     return problems, advisories
 
 
