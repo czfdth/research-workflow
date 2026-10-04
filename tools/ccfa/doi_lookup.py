@@ -68,6 +68,7 @@ class LookupResult(NamedTuple):
     source: str | None
     detail: str
     evidence: LookupEvidence | None = None
+    http_ok: bool = False
 
 
 def normalize_title(value: str | None) -> str:
@@ -151,7 +152,7 @@ def _default_fetch(url: str, timeout: float) -> tuple[int, bytes]:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
-        return exc.code, ""
+        return exc.code, b""
 
 
 def lookup(
@@ -173,6 +174,7 @@ def lookup(
 
     fetcher = fetch or _default_fetch
     attempts: list[str] = []
+    saw_http_ok = False
     for source, template in _ENDPOINTS:
         url = template.format(doi=urllib.parse.quote(normalized, safe=""))
         try:
@@ -183,6 +185,7 @@ def lookup(
         if status != 200:
             attempts.append(f"{source}: HTTP {status}")
             continue
+        saw_http_ok = True
         if isinstance(body, bytes):
             raw = body
             text = body.decode("utf-8", errors="replace")
@@ -207,6 +210,8 @@ def lookup(
                 False,
                 source,
                 "doi mismatch",
+                None,
+                True,
             )
         if not isinstance(matched_title, str) or not matched_title.strip():
             return LookupResult(
@@ -214,6 +219,8 @@ def lookup(
                 False,
                 source,
                 "title missing",
+                None,
+                True,
             )
         if expected_title:
             similarity = title_similarity(expected_title, matched_title)
@@ -223,6 +230,8 @@ def lookup(
                     False,
                     source,
                     "title mismatch",
+                    None,
+                    True,
                 )
         evidence = LookupEvidence(
             body_sha256=_body_sha256(raw),
@@ -236,6 +245,14 @@ def lookup(
             source,
             f"{source} 返回 200 且 DOI 匹配",
             evidence,
+            True,
         )
 
-    return LookupResult(normalized, False, None, "; ".join(attempts))
+    return LookupResult(
+        normalized,
+        False,
+        None,
+        "; ".join(attempts),
+        None,
+        saw_http_ok,
+    )

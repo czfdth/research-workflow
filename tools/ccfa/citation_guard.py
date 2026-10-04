@@ -63,6 +63,18 @@ def check(
                     evidence_error="",
                 )
             else:
+                if result.http_ok:
+                    code = "doi-lookup-failed"
+                    message = (
+                        f"条目 {key} 的 DOI {entry.doi} 核验失败"
+                        f"（{result.detail}）"
+                    )
+                else:
+                    code = "doi-not-found"
+                    message = (
+                        f"条目 {key} 的 DOI {entry.doi} 无法解析"
+                        f"（{result.detail}）"
+                    )
                 refreshed[key] = LedgerRecord(
                     key=key,
                     doi=normalize_doi(entry.doi),
@@ -74,10 +86,10 @@ def check(
                 )
                 problems.append(
                     Problem(
-                        "doi-not-found",
+                        code,
                         str(bib_path),
                         None,
-                        f"条目 {key} 的 DOI {entry.doi} 无法解析（{result.detail}）",
+                        message,
                     )
                 )
         save_ledger(Path(ledger_path), refreshed)

@@ -385,7 +385,14 @@ class TestVerifyOnline(BaseCase):
             *,
             expected_title=None,
         ):
-            return LookupResult(doi, False, "crossref", "doi mismatch")
+            return LookupResult(
+                doi,
+                False,
+                "crossref",
+                "doi mismatch",
+                None,
+                True,
+            )
 
         original = guard.lookup
         guard.lookup = fake_lookup
@@ -399,7 +406,7 @@ class TestVerifyOnline(BaseCase):
         finally:
             guard.lookup = original
 
-        self.assertIn("doi-not-found", self.codes(problems))
+        self.assertIn("doi-lookup-failed", self.codes(problems))
         record = load_ledger(self.ledger)["good"]
         self.assertEqual(record.status, "failed")
         self.assertIsNone(record.evidence)
@@ -480,7 +487,7 @@ class TestVerifyOnline(BaseCase):
             fetch=fetch,
         )
 
-        self.assertIn("doi-not-found", self.codes(problems))
+        self.assertIn("doi-lookup-failed", self.codes(problems))
         record = load_ledger(self.ledger)["good"]
         self.assertEqual(record.status, "failed")
         self.assertIsNone(record.evidence)
@@ -496,3 +503,71 @@ class TestVerifyOnline(BaseCase):
             self.codes(read_problems),
         )
         self.assertIn("unverified-entry", self.codes(read_problems))
+
+    def test_both_sources_missing_is_doi_not_found(self):
+        self.bib.write_text(
+            "@misc{good, doi = {10.1/missing}}\n",
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {}}),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{good}")
+        from ccfa.citation_ledger import load_ledger
+
+        def fetch(url, timeout):
+            return 404, b""
+
+        problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_online=True,
+            fetch=fetch,
+        )
+
+        self.assertIn("doi-not-found", self.codes(problems))
+        self.assertNotIn("doi-lookup-failed", self.codes(problems))
+        self.assertEqual(load_ledger(self.ledger)["good"].status, "failed")
+
+    def test_provider_doi_mismatch_is_doi_lookup_failed(self):
+        body = json.dumps(
+            {
+                "message": {
+                    "DOI": "10.1/other",
+                    "title": ["A Real Paper"],
+                }
+            }
+        )
+        self.bib.write_text(
+            '@misc{good, doi = {10.1/ok}, title = {A Real Paper}}\n',
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {}}),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{good}")
+        from ccfa.citation_ledger import load_ledger
+
+        def fetch(url, timeout):
+            return 200, body
+
+        problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_online=True,
+            fetch=fetch,
+        )
+
+        self.assertIn("doi-lookup-failed", self.codes(problems))
+        self.assertNotIn("doi-not-found", self.codes(problems))
+        self.assertEqual(load_ledger(self.ledger)["good"].status, "failed")
+        message = next(
+            item.message
+            for item in problems
+            if item.code == "doi-lookup-failed"
+        )
+        self.assertIn("doi mismatch", message)

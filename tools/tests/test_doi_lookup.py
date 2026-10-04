@@ -1,8 +1,10 @@
 import hashlib
 import json
+import urllib.error
 import unittest
+from unittest import mock
 
-from ccfa.doi_lookup import lookup, title_similarity
+from ccfa.doi_lookup import _default_fetch, lookup, title_similarity
 
 
 def _crossref_body(doi="10.1/x", title="Sample Paper"):
@@ -250,6 +252,47 @@ class TestLookup(unittest.TestCase):
         fetch, calls = _fetcher({"crossref.org": (200, _crossref_body())})
         lookup("10.1/x", fetch=fetch)
         self.assertTrue(calls[0].startswith("https://api.crossref.org/works/"))
+
+
+class TestDefaultFetch(unittest.TestCase):
+    def test_http_error_returns_bytes_body(self):
+        error = urllib.error.HTTPError(
+            "https://api.crossref.org/works/10.1%2Fx",
+            404,
+            "Not Found",
+            None,
+            None,
+        )
+
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            status, body = _default_fetch("https://example.test", 1.0)
+
+        self.assertEqual(status, 404)
+        self.assertIsInstance(body, bytes)
+        self.assertEqual(body, b"")
+
+    def test_success_returns_raw_bytes(self):
+        class FakeResponse:
+            status = 200
+
+            def read(self):
+                return b'{"message": {"DOI": "10.1/x"}}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=FakeResponse(),
+        ):
+            status, body = _default_fetch("https://example.test", 1.0)
+
+        self.assertEqual(status, 200)
+        self.assertIsInstance(body, bytes)
+        self.assertEqual(body, b'{"message": {"DOI": "10.1/x"}}')
 
 
 if __name__ == "__main__":
