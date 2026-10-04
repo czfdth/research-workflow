@@ -143,6 +143,41 @@ SEED_FILES = {
         "docs/plans/2026-10-04-figure-support-audit.md。\n"
         "figures: []\n"
     ),
+    "data/claim-registry.yaml": (
+        "version: 1\n"
+        "# claim 是中心对象：把 proof、experiment、figure、citation、\n"
+        "# assumption 与 limitation 链接到同一个 id。\n"
+        "claims: []\n"
+    ),
+    "data/assumptions-limitations.yaml": (
+        "version: 1\n"
+        "assumptions: []\n"
+        "limitations: []\n"
+    ),
+    "data/venue-checklist.yaml": (
+        "version: 1\n"
+        "venue: ''\n"
+        "source: ''\n"
+        "items: []\n"
+    ),
+    "data/artifact-provenance.yaml": (
+        "version: 1\n"
+        "artifacts: []\n"
+    ),
+    "data/exploration-graph.yaml": (
+        "version: 1\n"
+        "entries: []\n"
+    ),
+    "data/cost-ledger.yaml": (
+        "version: 1\n"
+        "currency: ''\n"
+        "paper: ''\n"
+        "entries: []\n"
+    ),
+    "data/risk-register.yaml": (
+        "version: 1\n"
+        "risks: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

@@ -83,7 +83,7 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 
 ### 1. 确定性检查
 
-目前仓库包含 27 个 PowerShell CLI 入口和 44 个工具模块，覆盖状态推进、引用核验、
+目前仓库包含 28 个 PowerShell CLI 入口和 46 个工具模块，覆盖状态推进、引用核验、
 数字溯源、来源登记、运行日志、实验队列、复现打包、LaTeX 检查、终稿检查、版本快照、
 文献库、研究记忆、跨模型评审、人工论证审计、readiness 汇总和平台预检。
 
@@ -118,6 +118,13 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | `data/governance.yaml` | 署名、贡献、COI、伦理、许可、AI 使用、查重和负责任披露 |
 | `data/repro-environment.yaml` | Python、依赖文件、lockfile 哈希、系统工具版本与证据 |
 | `data/human-coding.yaml` | 双人编码的一致率、Cohen's kappa 与 bootstrap 置信区间 |
+| `data/claim-registry.yaml` | claim 到 proof / experiment / figure / citation / assumption / limitation 的统一链接 |
+| `data/assumptions-limitations.yaml` | 假设、假设违反后的影响、局限及正文位置 |
+| `data/venue-checklist.yaml` | venue 方法学条目、完成状态、证据与负责人 |
+| `data/artifact-provenance.yaml` | 主要产物的 human/model/mixed 归属、模型族与 run/hash 绑定 |
+| `data/exploration-graph.yaml` | pivot、dead-end、rejected 与 active 方向及其 claim/run 绑定 |
+| `data/cost-ledger.yaml` | GPU、模型、token 成本与重跑次数 |
+| `data/risk-register.yaml` | 已知风险、严重度、缓解措施、证据与状态 |
 
 这些是**完整性 gate**，不是自动真值判断器。它们能阻止「没人复核却宣称已复核」，
 但不能证明复核者的判断正确。
@@ -246,7 +253,7 @@ cross-review 等检查器。
 | Windows 自用安装包与快捷启动 | 待完成 |
 | 外部签名或不可篡改审计 | 未实现，个人自用暂不作为默认范围 |
 
-当前代码规模约为 27 个 PowerShell CLI、45 个工具模块、1139 个工具侧测试函数和
+当前代码规模约为 28 个 PowerShell CLI、46 个工具模块、1167 个工具侧测试函数和
 187 个工作台测试函数。数字只是维护规模，不代表科学结论的可信度。
 
 ## 八、推荐使用方法

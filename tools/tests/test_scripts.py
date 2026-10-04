@@ -40,6 +40,7 @@ CCFA_WRAPPERS = {
     "revision_ledger": "revision-ledger.ps1",
     "doctor": "doctor.ps1",
     "readiness": "readiness.ps1",
+    "research_ledgers": "research-ledgers.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

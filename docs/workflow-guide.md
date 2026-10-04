@@ -6,6 +6,7 @@
 
 产品能力与边界见 `docs/research-workflow-intro.md`；工具的底层契约见
 `docs/design/2026-10-03-research-workflow-design.md`；本手册只保留日常操作路径。
+自动推进与人工批准的边界见 `docs/autonomy-policy.md`。
 
 ## 1. 心智模型
 
@@ -82,6 +83,15 @@ git -C $paper status --short
 5. 当前 gate 缺的是研究工作、人工判断，还是可机械修复的材料？
 
 `readiness` 会执行当前 profile 对应的 gate。`evidence-present` 只表示文件齐全；`gate-verified` 才表示下游检查器真实通过。人工审计仍是 pending、cross-review provenance 不完整或 lockfile 漂移时，报告必须为 `ready=false`。
+
+新论文模板已经包含 claim registry 与研究循环台账。填完一个 claim 后运行：
+
+```powershell
+scripts/research-ledgers.ps1 --paper-root $paper
+```
+
+它检查 claim→proof/experiment/figure/citation/assumption/limitation 的链接，
+以及 venue checklist、artifact provenance、探索图、成本账本和风险登记册。
 
 ## 5. 阶段操作表
 

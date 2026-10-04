@@ -46,6 +46,7 @@ CLI_WRAPPERS = {
     "revision_ledger": "scripts/revision-ledger.ps1",
     "doctor": "scripts/doctor.ps1",
     "readiness": "scripts/readiness.ps1",
+    "research_ledgers": "scripts/research-ledgers.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

@@ -100,6 +100,13 @@ class TestCreateProject(unittest.TestCase):
             "data/governance.yaml",
             "data/repro-environment.yaml",
             "data/figure-support.yaml",
+            "data/claim-registry.yaml",
+            "data/assumptions-limitations.yaml",
+            "data/venue-checklist.yaml",
+            "data/artifact-provenance.yaml",
+            "data/exploration-graph.yaml",
+            "data/cost-ledger.yaml",
+            "data/risk-register.yaml",
             "experiments/log",
             "experiments/results",
             "figures",
@@ -595,6 +602,13 @@ class TestCreateProject(unittest.TestCase):
         self.assertIn("data/governance.yaml", tracked)
         self.assertIn("data/repro-environment.yaml", tracked)
         self.assertIn("data/figure-support.yaml", tracked)
+        self.assertIn("data/claim-registry.yaml", tracked)
+        self.assertIn("data/assumptions-limitations.yaml", tracked)
+        self.assertIn("data/venue-checklist.yaml", tracked)
+        self.assertIn("data/artifact-provenance.yaml", tracked)
+        self.assertIn("data/exploration-graph.yaml", tracked)
+        self.assertIn("data/cost-ledger.yaml", tracked)
+        self.assertIn("data/risk-register.yaml", tracked)
         self.assertIn("memory/ideas.md", tracked)
         self.assertEqual(_run_git(root, "status", "--porcelain").strip(), "")
 

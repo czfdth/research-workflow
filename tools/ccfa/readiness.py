@@ -27,6 +27,7 @@ from ccfa import (
     novelty,
     repro_package,
     repro_env,
+    research_ledgers,
     stats_plan,
     trace_claims,
 )
@@ -40,6 +41,13 @@ PROFILES = ("minimal", "standard", "high-assurance")
 DEFAULT_PROFILE = "standard"
 
 EVIDENCE_LEDGER_PATHS = {
+    "claim-registry": Path("data/claim-registry.yaml"),
+    "assumptions-limitations": Path("data/assumptions-limitations.yaml"),
+    "venue-checklist": Path("data/venue-checklist.yaml"),
+    "artifact-provenance": Path("data/artifact-provenance.yaml"),
+    "exploration-graph": Path("data/exploration-graph.yaml"),
+    "cost-ledger": Path("data/cost-ledger.yaml"),
+    "risk-register": Path("data/risk-register.yaml"),
     "proof": Path("data/proof-audit.yaml"),
     "citation-support": Path("data/citation-support.yaml"),
     "figure-support": Path("data/figure-support.yaml"),
@@ -53,6 +61,13 @@ EVIDENCE_LEDGER_PATHS = {
 PROFILE_REQUIRED_LEDGERS = {
     "minimal": ("novelty",),
     "standard": (
+        "claim-registry",
+        "assumptions-limitations",
+        "venue-checklist",
+        "artifact-provenance",
+        "exploration-graph",
+        "cost-ledger",
+        "risk-register",
         "citation-support",
         "figure-support",
         "novelty",
@@ -281,6 +296,11 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
 
     if profile == "minimal":
         return list(specs.items())
+
+    specs["research-ledgers"] = lambda: research_ledgers.check(
+        paper_root,
+        require_core=True,
+    )
 
     manuscript = paper_root / "manuscript"
     bib = manuscript / "references.bib"

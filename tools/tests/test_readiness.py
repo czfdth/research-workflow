@@ -116,13 +116,23 @@ class ReadinessTests(unittest.TestCase):
         self.assertFalse(report["ready"])
         self.assertEqual(report["profile"], "standard")
         self.assertEqual(report["dimensions"]["schema-valid"], "pass")
-        self.assertEqual(report["dimensions"]["gate-verified"], "not-run")
+        self.assertEqual(report["dimensions"]["gate-verified"], "problem")
         self.assertEqual(report["dimensions"]["evidence-present"], "problem")
         self.assertEqual(
             report["dimensions"]["scientifically-accepted"],
             "not-claimed",
         )
         self.assertIn("citation-support", report["evidence"]["missing_required"])
+        self.assertIn("claim-registry", report["evidence"]["missing_required"])
+        research = next(
+            item
+            for item in report["gate_results"]
+            if item["name"] == "research-ledgers"
+        )
+        self.assertIn(
+            "research-ledger-missing",
+            [problem["code"] for problem in research["problems"]],
+        )
 
     def test_lockfile_drift_makes_gate_verified_fail(self):
         self._touch_ledgers(

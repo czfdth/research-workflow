@@ -2304,3 +2304,27 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   该限制保留为开放问题。
 - 本地服务：Zotero `127.0.0.1:23119` 已进入 LISTEN，但 API 请求仍报错；Docker
   Desktop 进程已启动但 Linux engine 不可达；WorkBuddy `8787` 仍无监听。
+
+## Claim 中心研究循环升级（2026-10-05，E91）
+
+- 新增 `tools/ccfa/research_ledgers.py` 与 `scripts/research-ledgers.ps1`，把
+  benchmark 中的 P0/P1 结构落成机器可读 gate：
+  `claim-registry`、`assumptions-limitations`、`venue-checklist`、
+  `artifact-provenance`、`exploration-graph`、`cost-ledger`、`risk-register`。
+- claim registry 现在串起 proof、experiment、figure、citation、assumption 与
+  limitation；支持 theoretical/empirical/descriptive 类型，并对 supported
+  theoretical claim 要求 proof、supported empirical claim 要求 experiment。
+- assumptions/limitations 要求双向链接，拒绝重复 id；experiment 只接受日志中的真实
+  `run_id`，不再接受任意 JSON 文件名 stem。
+- artifact provenance 对 model/mixed 产物要求 model_family 与 run_id/source_sha256；
+  探索图要求非空 claim/run 绑定；成本、风险台账检查有限数值和 pending 占位。
+- 新论文模板创建七个新台账；空台账是可解析的“未填写”状态并产生
+  `research-ledger-empty` advisory，不伪造已填写证据。
+- readiness 新增 `research-ledgers` gate，`evidence-present` inventory 也列出全部
+  七个新台账；standard/high-assurance 缺少任一核心台账即报
+  `research-ledger-missing`。
+- 独立 code review 发现并修复：malformed YAML 类型崩溃、只强制两个台账、模板无效、
+  empirical/theoretical 证据错配、单向/重复链接、伪 run id、artifact 自报、
+  探索条目空绑定、claim policy 分叉等 10 项问题。
+- 验证：`tools.tests.test_research_ledgers` 18 tests OK；全量工具测试
+  `Ran 1232 tests, OK`。
