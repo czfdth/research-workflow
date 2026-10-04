@@ -11,9 +11,13 @@ Timeouts retry only when the manifest explicitly sets
 gets a failed run-log record, then the queue raises ValueError and exits 2.
 
 Long-task safety v1 adds an exclusive lock per log directory, an nvidia-smi
-GPU-second budget, a no-output stall watchdog, and an optional policy sandbox.
-``sandbox=policy`` only constrains cwd containment and the child environment;
-it is not filesystem, network, or GPU isolation.
+GPU-second budget, a no-output stall watchdog, and two optional sandbox
+backends. ``sandbox=policy`` only constrains cwd containment and the child
+environment; it is not filesystem, network, or GPU isolation.
+``sandbox=docker`` runs the item in a container with a read-only rootfs,
+read-only queue-root mount, a writable output mount, and network disabled by
+default. The image is trusted input; this is process isolation, not a
+security boundary against a malicious image.
 
 For automation consumption, ``queue run`` stdout 只输出 JSON. Child output
 remains visible without corrupting the machine-readable result. This differs
@@ -25,10 +29,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -48,7 +54,7 @@ from ccfa.cli import tool_error
 from ccfa.run_log import log_metrics, log_resource_usage, run_command
 
 QUEUE_VERSION = 1
-SANDBOX_MODES = ("none", "policy")
+SANDBOX_MODES = ("none", "policy", "docker")
 GPU_UTILIZATION_THRESHOLD = 5
 GPU_SAMPLE_INTERVAL_S = 1.0
 SANDBOX_ENV_ALLOWLIST = frozenset(
@@ -115,6 +121,31 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
         or gpu_budget_s < 0
     ):
         raise ValueError("队列 gpu_budget_s 必须是非负数")
+    docker_image = payload.get("docker_image")
+    if docker_image is not None and (
+        not isinstance(docker_image, str) or not docker_image.strip()
+    ):
+        raise ValueError("队列 docker_image 必须是非空字符串")
+    docker_network = payload.get("docker_network", "none")
+    if not isinstance(docker_network, str) or not docker_network.strip():
+        raise ValueError("队列 docker_network 必须是非空字符串")
+    docker_gpus = payload.get("docker_gpus")
+    if docker_gpus not in (None, "all"):
+        raise ValueError("队列 docker_gpus 目前只支持 null 或 'all'")
+    docker_output = payload.get("docker_output", "runs")
+    if not isinstance(docker_output, str) or not docker_output.strip():
+        raise ValueError("队列 docker_output 必须是非空相对目录")
+    output_parts = Path(docker_output).parts
+    if (
+        Path(docker_output).is_absolute()
+        or Path(docker_output).root
+        or Path(docker_output).drive
+        or ".." in output_parts
+        or not output_parts
+    ):
+        raise ValueError("队列 docker_output 必须是队列根内的相对目录")
+    if sandbox == "docker" and docker_image is None:
+        raise ValueError("sandbox=docker 需要队列 docker_image")
 
     items = None
     for key in ("queue", "items", "runs"):
@@ -188,7 +219,14 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
                 "max_attempts": max_attempts,
             }
         )
-    options = {"sandbox": sandbox, "gpu_budget_s": gpu_budget_s}
+    options = {
+        "sandbox": sandbox,
+        "gpu_budget_s": gpu_budget_s,
+        "docker_image": docker_image,
+        "docker_network": docker_network,
+        "docker_gpus": docker_gpus,
+        "docker_output": docker_output,
+    }
     return normalized, options
 
 
@@ -418,6 +456,119 @@ def _sandbox_env(environ=None) -> dict[str, str]:
     return filtered
 
 
+def _docker_available() -> None:
+    try:
+        completed = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"Docker daemon 不可用: {exc}") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise ValueError(
+            "Docker daemon 不可用: " + (detail or "docker info failed")
+        )
+
+
+def _docker_argv(
+    item: dict,
+    queue_root: Path,
+    *,
+    image: str,
+    network: str,
+    gpus: str | None,
+    output_relative: str,
+    env: dict[str, str],
+    name: str,
+) -> list[str]:
+    root = queue_root.resolve()
+    workdir = _docker_workdir(queue_root, item)
+    output_dir = (root / output_relative).resolve()
+    if output_dir == root:
+        raise ValueError("docker_output 不能是队列根")
+    try:
+        output_dir.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"docker_output 逃出队列根: {output_relative}") from exc
+    if "," in str(root) or "," in str(output_dir):
+        raise ValueError("Docker bind mount 源路径不能包含逗号")
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(f"无法创建 Docker 输出目录 {output_dir}: {exc}") from exc
+    argv = [
+        "docker",
+        "run",
+        "--rm",
+        "--read-only",
+        "--security-opt",
+        "no-new-privileges",
+        "--network",
+        network,
+        "--tmpfs",
+        "/tmp",
+        "--name",
+        name,
+        "--mount",
+        f"type=bind,source={root},target=/workspace,readonly",
+        "--mount",
+        f"type=bind,source={output_dir},target=/outputs",
+        "--workdir",
+        workdir,
+    ]
+    if gpus == "all":
+        argv.extend(["--gpus", "all"])
+    for key, value in sorted(env.items()):
+        argv.extend(["-e", f"{key}={value}"])
+    argv.extend(
+        [
+            "-e",
+            "HOME=/tmp",
+            "-e",
+            "CCFA_WORKSPACE=/workspace",
+            "-e",
+            "CCFA_OUTPUT_DIR=/outputs",
+            image,
+            *item["command"],
+        ]
+    )
+    return argv
+
+
+def _docker_workdir(queue_root: Path, item: dict) -> str:
+    root = queue_root.resolve()
+    cwd = _item_cwd(queue_root, item, sandbox=True)
+    relative = cwd.relative_to(root).as_posix()
+    return "/workspace" if relative == "." else f"/workspace/{relative}"
+
+
+def _docker_container_name(item_name: str, index: int, attempt: int) -> str:
+    base = re.sub(r"[^A-Za-z0-9_.-]+", "-", item_name).strip("-._") or "item"
+    return f"ccfa-{index + 1}-{attempt}-{base[:40]}-{uuid.uuid4().hex[:12]}"
+
+
+def _docker_remove(name: str) -> None:
+    """Best-effort cleanup after a killed Docker CLI left a container."""
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
 def _forward_stream(stream, activity: list[float]) -> None:
     try:
         try:
@@ -552,6 +703,12 @@ def run_queue(
     ``sandbox="policy"`` is a policy layer: the item cwd must stay under the
     queue root and the default runner receives only the environment allowlist.
     It is not filesystem, network, or GPU isolation.
+
+    ``sandbox="docker"`` runs each item through ``docker run`` with a
+    read-only rootfs, a read-only queue-root mount, a writable output mount,
+    and network disabled by default. Docker daemon availability is checked
+    once before the first item; an unavailable daemon is a tool error and is
+    never treated as permission to fall back to the host.
     """
     queue_path = Path(queue_path)
     queue_root = queue_path.parent
@@ -568,6 +725,15 @@ def run_queue(
         gpu_budget_s = options.get("gpu_budget_s")
     if gpu_budget_s is not None and gpu_budget_s < 0:
         raise ValueError("gpu_budget_s 必须是非负数")
+
+    docker_image = options["docker_image"]
+    docker_network = options["docker_network"]
+    docker_gpus = options["docker_gpus"]
+    docker_output = options["docker_output"]
+    if sandbox_mode == "docker":
+        if not docker_image:
+            raise ValueError("sandbox=docker 需要队列 docker_image")
+        _docker_available()
 
     default_runner = runner is None or runner is _default_runner
     if sandbox_mode == "policy" and not default_runner:
@@ -622,9 +788,21 @@ def run_queue(
             cwd = _item_cwd(
                 queue_root,
                 item,
-                sandbox=sandbox_mode == "policy",
+                sandbox=sandbox_mode in ("policy", "docker"),
             )
             sandbox_env = _sandbox_env() if sandbox_mode == "policy" else None
+            policy_record = None
+            if sandbox_mode == "policy":
+                policy_record = {"sandbox": "policy"}
+            elif sandbox_mode == "docker":
+                policy_record = {
+                    "sandbox": "docker",
+                    "image": docker_image,
+                    "network": docker_network,
+                    "gpus": docker_gpus,
+                    "output": docker_output,
+                    "workdir": _docker_workdir(queue_root, item),
+                }
             attempts = 0
             status = "failed"
             gpu_exhausted = False
@@ -640,6 +818,21 @@ def run_queue(
 
                 def attempt_runner(argv, attempt_cwd):
                     nonlocal timed_out, stalled
+                    container_name = None
+                    if sandbox_mode == "docker":
+                        container_name = _docker_container_name(
+                            item["name"], index, attempts
+                        )
+                        argv = _docker_argv(
+                            item,
+                            queue_root,
+                            image=docker_image,
+                            network=docker_network,
+                            gpus=docker_gpus,
+                            output_relative=docker_output,
+                            env={},
+                            name=container_name,
+                        )
                     try:
                         return (
                             invoke(
@@ -657,6 +850,9 @@ def run_queue(
                     except (subprocess.TimeoutExpired, TimeoutError):
                         timed_out = True
                         return 124, ""
+                    finally:
+                        if container_name is not None:
+                            _docker_remove(container_name)
 
                 try:
                     run_id, record = run_command(
@@ -664,11 +860,7 @@ def run_queue(
                         log_dir,
                         cwd,
                         cwd=str(cwd),
-                        policy=(
-                            {"sandbox": "policy"}
-                            if sandbox_mode == "policy"
-                            else None
-                        ),
+                        policy=policy_record,
                         runner=attempt_runner,
                     )
                 finally:
@@ -758,6 +950,8 @@ def build_parser() -> argparse.ArgumentParser:
             "stall_timeout_s 无输出即判卡死；--gpu-budget-seconds 按 "
             "nvidia-smi 利用率累计 GPU 秒数；同一 log-dir 只允许一个队列；"
             "sandbox=policy 只做 cwd 与环境白名单，不是 OS 隔离。"
+            "sandbox=docker 只读挂载队列根、仅 docker_output 可写、"
+            "默认禁网；Docker daemon 不可用退 2，不静默回退。"
             "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
             "stdout 只输出结果 JSON；子进程 stdout/stderr 流式转发到 stderr。"
         )

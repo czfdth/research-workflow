@@ -519,9 +519,22 @@ CREATE VIRTUAL TABLE papers USING fts5(
 `nvidia-smi` 利用率采样的 GPU 秒预算、`stall_timeout_s` 无输出看门狗，以及
 `sandbox: policy`（cwd 必须留在队列根内 + 子进程环境白名单）。这里的
 `policy` **不是 OS 级沙箱**：不保证只读数据、不保证禁网、不隔离 GPU；
-需要这四类隔离时必须另接 Docker、WSL 或专用沙箱。help、计划与账本都按此
-边界陈述，不把策略层写成容器隔离。GPU 预算按设备利用率采样，不按 PID
-归属；它适合本机单卡的单用户队列，不能在共享 GPU 上替代调度器的配额。
+需要更强的隔离时还可启用下面的 Docker 后端，或另接 WSL / 专用沙箱。
+help、计划与账本都按此边界陈述，不把策略层写成容器隔离。GPU 预算按设备
+利用率采样，不按 PID 归属；它适合本机单卡的单用户队列，不能在共享 GPU
+上替代调度器的配额。
+
+**Docker 沙箱后端（v1.1，2026-10-04）：** `sandbox: docker` 使用受信任
+镜像运行队列项：容器根文件系统只读，队列根以只读方式挂载到 `/workspace`，
+仅 `docker_output`（默认 `runs`）以可写方式挂载到 `/outputs`，网络默认
+`none`，只有 `docker_gpus: all` 时才加 `--gpus all`。Docker daemon 不可用
+时直接退 2，不静默回退到宿主机；容器内只注入显式 `CCFA_WORKSPACE` /
+`CCFA_OUTPUT_DIR` 变量，并把 `HOME` 指到 tmpfs（`/tmp`），不继承宿主机环境。
+超时或卡死会 kill Docker CLI
+并在 `finally` 执行 best-effort `docker rm -f`，避免容器继续占 GPU；宿主
+进程被强杀或机器断电后仍可能留下 `ccfa-` 前缀容器，需要用 `docker ps`
+人工清理。镜像本身是受信任输入：只读根、mount 与 network 控制是本机单用户
+流程的隔离边界，不是对恶意镜像或内核漏洞的安全承诺。
 
 ## 10. 目录结构
 

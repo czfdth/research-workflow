@@ -1997,3 +1997,14 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 真实旧记录 CLI：`cross-review check --paper-root papers/rag-attack-defense --out-dir reviews` 只报 `review-same-family`；加 `--allow-same-family` 后 problems 为空。
 - 全量：tools **966 tests OK**，app（offscreen）**141 tests OK**；最终代码 HEAD 为 `3c40c53`（其后仅本账本说明）。
 - 未实现边界：本机仍未配置第二个可用 provider，跨族评审还没有真实双 provider 运行证据；`check` 是本地一致性审计，不防整份 JSON 被重写。论文仓库未按用户要求触碰。
+
+## Docker 沙箱后端 v1.1（2026-10-04，E71）
+
+- 计划：`docs/plans/2026-10-04-long-task-safety.md` 的 Task 5。目标：把 `queue` 从“只有策略沙箱”补到可选的 Docker 后端，让实验根只读、只有输出目录可写、默认禁网；daemon 不可用时必须退 2，不静默回退宿主机。
+- **E71 清单与判定**：新增 `docker_image`（`sandbox: docker` 时必填）、`docker_network`（默认 `none`）、`docker_gpus`（`null|all`）、`docker_output`（默认 `runs`，必须是队列根内相对目录，拒绝 `.`、`..`、绝对路径、盘符路径与前导分隔符）。
+- **运行语义**：`docker run --rm --read-only --security-opt no-new-privileges --network <none|...> --tmpfs /tmp --name <ccfa-...>`；队列根只读挂载到 `/workspace`，`docker_output` 可写挂载到 `/outputs`，`--workdir /workspace/<item cwd>`。`docker_gpus: all` 才加 `--gpus all`。
+- **环境边界**：容器只收到 `HOME=/tmp`、`CCFA_WORKSPACE=/workspace`、`CCFA_OUTPUT_DIR=/outputs` 与显式 `env`；宿主 `QUEUE_TEST_SECRET` 不出现在容器 argv。run-log 的 `policy` 记录镜像、网络、GPU、输出目录与容器内 `workdir`，`command` 仍是原始队列命令。Docker CLI 自身继承宿主环境，这是 CLI 连接 daemon 所需；它不把宿主环境注入容器。
+- **清理**：每个 attempt 生成独立 `ccfa-` 容器名；超时/卡死 kill Docker CLI 后，`finally` 执行 best-effort `docker rm -f`，避免容器继续占 GPU。宿主进程被强杀或断电后仍可能残留容器，需要 `docker ps` 人工清理。
+- **测试**：`tools/tests/test_queue.py` 新增精确 argv（只读根、只读 `/workspace`、可写 `/outputs`、`--network none`、`--workdir`、镜像与命令顺序）、docker_output 逃逸/根目录/逗号路径拒绝、daemon 失败前置、CLI 退 2 且不写 run-log、policy 记录、宿主环境不泄漏、超时清理、Docker cwd containment 等用例。
+- **真实验证**：本机 Docker Desktop 的 `dockerDesktopLinuxEngine` 管道当前不可达。真实 CLI 冒烟按预期输出 `工具错误: Docker daemon 不可用...`，退 2，`LOG_JSON=0`，没有回退执行，也没有伪造 run-log。daemon 可达后的真实容器只读/可写/禁网冒烟留待下一次环境可用时补；当前证据只能证明“不可用时不回退”这条安全性质。
+- 全量：tools **982 tests OK**，app（offscreen）**141 tests OK**。提交后补独立只读评审，评审通过后再更新本节。

@@ -17,7 +17,9 @@ from ccfa.queue import (
     QueueLock,
     QueueLocked,
     QueueStalled,
+    _docker_argv,
     _item_cwd,
+    _load_queue_document,
     _sandbox_env,
     build_parser,
     load_queue,
@@ -106,9 +108,11 @@ class QueueTests(unittest.TestCase):
         self.queue_path = self.root / "queue.json"
         self.log_dir = self.root / "log"
 
-    def _write_queue(self, items, *, version=1, key="queue"):
+    def _write_queue(self, items, *, version=1, key="queue", **extra):
+        payload = {"schema_version": version, key: items}
+        payload.update(extra)
         self.queue_path.write_text(
-            json.dumps({"schema_version": version, key: items}),
+            json.dumps(payload),
             encoding="utf-8",
         )
 
@@ -231,6 +235,70 @@ class TestLoadQueue(QueueTests):
                 self.queue_path.write_text(json.dumps(payload), encoding="utf-8")
                 with self.assertRaises(ValueError):
                     load_queue(self.queue_path)
+
+    def test_load_queue_rejects_invalid_docker_options(self):
+        cases = (
+            {"schema_version": 1, "sandbox": "docker", "queue": []},
+            {
+                "schema_version": 1,
+                "sandbox": "docker",
+                "docker_image": "python:3.12-slim",
+                "docker_output": ".",
+                "queue": [],
+            },
+            {
+                "schema_version": 1,
+                "sandbox": "docker",
+                "docker_image": "python:3.12-slim",
+                "docker_output": "..",
+                "queue": [],
+            },
+            {
+                "schema_version": 1,
+                "sandbox": "docker",
+                "docker_image": "python:3.12-slim",
+                "docker_output": "/tmp/out",
+                "queue": [],
+            },
+            {
+                "schema_version": 1,
+                "sandbox": "docker",
+                "docker_image": "python:3.12-slim",
+                "docker_network": "",
+                "queue": [],
+            },
+            {
+                "schema_version": 1,
+                "sandbox": "docker",
+                "docker_image": "python:3.12-slim",
+                "docker_gpus": "0",
+                "queue": [],
+            },
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                self.queue_path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    load_queue(self.queue_path)
+
+    def test_load_queue_accepts_docker_options(self):
+        self._write_queue(
+            [],
+            sandbox="docker",
+            docker_image="python:3.12-slim",
+            docker_network="none",
+            docker_gpus="all",
+            docker_output="artifacts",
+        )
+
+        items, options = _load_queue_document(self.queue_path)
+
+        self.assertEqual(items, [])
+        self.assertEqual(options["sandbox"], "docker")
+        self.assertEqual(options["docker_image"], "python:3.12-slim")
+        self.assertEqual(options["docker_network"], "none")
+        self.assertEqual(options["docker_gpus"], "all")
+        self.assertEqual(options["docker_output"], "artifacts")
 
 
 class TestRunQueue(QueueTests):
@@ -646,6 +714,269 @@ class TestRunQueue(QueueTests):
         self.assertEqual(env["PYTHONNOUSERSITE"], "1")
 
 
+class TestDockerSandbox(QueueTests):
+    def _docker_queue(self, items=None, **extra):
+        self._write_queue(
+            [self._item()] if items is None else items,
+            sandbox="docker",
+            docker_image="python:3.12-slim",
+            **extra,
+        )
+
+    def test_docker_argv_exact_mounts_and_command_order(self):
+        item = self._item(
+            name="train",
+            command=["python", "train.py"],
+        )
+
+        argv = _docker_argv(
+            item,
+            self.root,
+            image="python:3.12-slim",
+            network="none",
+            gpus="all",
+            output_relative="runs",
+            env={},
+            name="ccfa-test",
+        )
+
+        root = self.root.resolve()
+        output_dir = (root / "runs").resolve()
+        self.assertEqual(
+            argv,
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--read-only",
+                "--security-opt",
+                "no-new-privileges",
+                "--network",
+                "none",
+                "--tmpfs",
+                "/tmp",
+                "--name",
+                "ccfa-test",
+                "--mount",
+                f"type=bind,source={root},target=/workspace,readonly",
+                "--mount",
+                f"type=bind,source={output_dir},target=/outputs",
+                "--workdir",
+                "/workspace",
+                "--gpus",
+                "all",
+                "-e",
+                "HOME=/tmp",
+                "-e",
+                "CCFA_WORKSPACE=/workspace",
+                "-e",
+                "CCFA_OUTPUT_DIR=/outputs",
+                "python:3.12-slim",
+                "python",
+                "train.py",
+            ],
+        )
+
+    def test_docker_argv_workdir_tracks_item_cwd(self):
+        (self.root / "sub").mkdir()
+        item = self._item(cwd="sub", command=["python", "train.py"])
+
+        argv = _docker_argv(
+            item,
+            self.root,
+            image="img",
+            network="none",
+            gpus=None,
+            output_relative="runs",
+            env={},
+            name="ccfa-test",
+        )
+
+        self.assertEqual(argv[argv.index("--workdir") + 1], "/workspace/sub")
+        self.assertNotIn("--gpus", argv)
+
+    def test_docker_argv_rejects_output_escape(self):
+        with self.assertRaisesRegex(ValueError, "逃出"):
+            _docker_argv(
+                self._item(),
+                self.root,
+                image="img",
+                network="none",
+                gpus=None,
+                output_relative="../escape",
+                env={},
+                name="ccfa-test",
+            )
+
+    def test_docker_argv_rejects_root_output(self):
+        with self.assertRaisesRegex(ValueError, "队列根"):
+            _docker_argv(
+                self._item(),
+                self.root,
+                image="img",
+                network="none",
+                gpus=None,
+                output_relative=".",
+                env={},
+                name="ccfa-test",
+            )
+
+    def test_docker_argv_rejects_comma_in_mount_source(self):
+        root = self.root / "has,comma"
+        root.mkdir()
+
+        with self.assertRaisesRegex(ValueError, "逗号"):
+            _docker_argv(
+                self._item(),
+                root,
+                image="img",
+                network="none",
+                gpus=None,
+                output_relative="runs",
+                env={},
+                name="ccfa-test",
+            )
+
+    def test_docker_unavailable_fails_before_execution(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        with mock.patch(
+            "ccfa.queue._docker_available",
+            side_effect=ValueError("Docker daemon 不可用"),
+        ):
+            with self.assertRaisesRegex(ValueError, "Docker daemon"):
+                self._run(runner, sandbox="docker")
+
+        self.assertEqual(runner.calls, [])
+
+    def test_docker_available_maps_info_failure_to_tool_error(self):
+        from ccfa.queue import _docker_available
+
+        completed = mock.Mock(returncode=1, stdout="", stderr="daemon down")
+        with mock.patch(
+            "ccfa.queue.subprocess.run", return_value=completed
+        ):
+            with self.assertRaisesRegex(ValueError, "daemon down"):
+                _docker_available()
+
+    def test_docker_available_accepts_a_running_daemon(self):
+        from ccfa.queue import _docker_available
+
+        completed = mock.Mock(returncode=0, stdout="27.0.0", stderr="")
+        with mock.patch(
+            "ccfa.queue.subprocess.run", return_value=completed
+        ) as run:
+            _docker_available()
+
+        self.assertEqual(run.call_args.args[0][:2], ["docker", "info"])
+
+    def test_docker_mode_rejects_cwd_escape(self):
+        self._docker_queue([self._item(cwd="..")])
+        runner = RecordingRunner([0])
+
+        with mock.patch("ccfa.queue._docker_available"):
+            with self.assertRaisesRegex(ValueError, "沙箱策略"):
+                self._run(runner, sandbox="docker")
+
+        self.assertEqual(runner.calls, [])
+
+    def test_main_docker_unavailable_exits_two_without_a_record(self):
+        self._docker_queue()
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with mock.patch(
+            "ccfa.queue._docker_available",
+            side_effect=ValueError("Docker daemon 不可用"),
+        ):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = main(
+                    [
+                        "queue",
+                        "run",
+                        "--queue",
+                        str(self.queue_path),
+                        "--log-dir",
+                        str(self.log_dir),
+                    ]
+                )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("Docker daemon", stderr.getvalue())
+        self.assertEqual(
+            list(self.log_dir.glob("*.json")) if self.log_dir.exists() else [],
+            [],
+        )
+
+    def test_docker_mode_records_policy_and_original_command(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        with mock.patch("ccfa.queue._docker_available"), mock.patch(
+            "ccfa.queue._docker_remove"
+        ):
+            result = self._run(runner, sandbox="docker")
+
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertEqual(len(runner.calls), 1)
+        docker_argv = runner.calls[0]["argv"]
+        self.assertEqual(docker_argv[:3], ["docker", "run", "--rm"])
+        record = self._records()[0]
+        self.assertEqual(record["command"], ["python", "-c", "print('ok')"])
+        self.assertEqual(
+            record["policy"],
+            {
+                "sandbox": "docker",
+                "image": "python:3.12-slim",
+                "network": "none",
+                "gpus": None,
+                "output": "runs",
+                "workdir": "/workspace",
+            },
+        )
+        self.assertIsNone(record["metrics"])
+
+    def test_docker_mode_does_not_forward_host_env_into_the_container(self):
+        self._docker_queue()
+        runner = RecordingRunner([0])
+
+        with mock.patch.dict(
+            os.environ, {"QUEUE_TEST_SECRET": "SHOULD_NOT_LEAK"}
+        ), mock.patch("ccfa.queue._docker_available"), mock.patch(
+            "ccfa.queue._docker_remove"
+        ):
+            self._run(runner, sandbox="docker")
+
+        docker_argv = runner.calls[0]["argv"]
+        self.assertFalse(
+            any(part.startswith("QUEUE_TEST_SECRET=") for part in docker_argv)
+        )
+        self.assertNotIn("SHOULD_NOT_LEAK", docker_argv)
+
+    def test_docker_timeout_cleans_up_the_container(self):
+        self._docker_queue([self._item(timeout_s=5)])
+        runner = RecordingRunner([subprocess.TimeoutExpired(["python"], 5)])
+
+        with mock.patch("ccfa.queue._docker_available"), mock.patch(
+            "ccfa.queue._docker_remove"
+        ) as remove:
+            result = self._run(runner, sandbox="docker")
+
+        self.assertEqual(result["runs"][0]["status"], "timeout")
+        self.assertEqual(remove.call_count, 1)
+        name = remove.call_args.args[0]
+        self.assertTrue(name.startswith("ccfa-"))
+        self.assertIn(name, runner.calls[0]["argv"])
+
+    def test_cli_docker_override_requires_manifest_image(self):
+        self._write_queue([self._item()])
+
+        with self.assertRaisesRegex(ValueError, "docker_image"):
+            self._run(RecordingRunner([0]), sandbox="docker")
+
+
 class TestDefaultRunner(QueueTests):
     def test_default_runner_uses_shell_false(self):
         process = FakeProcess(returncode=0)
@@ -882,6 +1213,14 @@ class TestMain(QueueTests):
         self.assertIn("--gpu-budget", build_parser().format_help())
         self.assertIn("stall_timeout_s", build_parser().format_help())
         self.assertIn("不是 OS 隔离", build_parser().format_help())
+        self.assertIn("sandbox=docker", build_parser().format_help())
+        self.assertIn("docker_output", build_parser().format_help())
+        self.assertIn("Docker daemon", build_parser().format_help())
+        self.assertIn("sandbox=docker", queue_module.__doc__)
+        self.assertIn(
+            "security boundary against a malicious image",
+            queue_module.__doc__,
+        )
 
     def test_main_passes_long_task_safety_options(self):
         self._write_queue([self._item()])
