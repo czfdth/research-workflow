@@ -2072,3 +2072,27 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 全量：tools **1115 tests OK**，app（offscreen）**141 tests OK**；Docker 后端与跨族评审相关模块未触碰。
 - 最终代码 HEAD 为 `6be4bb1`（其后仅本账本与文档提交）。
 - 未实现边界：本 gate 只证明「有人做过图表语义判断」，不证明判断正确，也不看图；图-结论一致性的最终判断仍靠外部专家。
+
+## 自证豁免必须写理由（2026-10-04，E80）
+
+- 目标：处理审计缺点表里的 #10「冻结规则靠自报」与 #16「工作流自身纪律不总保持」。两处共同的缺陷是：一次自我声明就能换到豁免，而且只留一条 advisory，等于零成本绕过。
+- **T-30 build 豁免**：`milestones due` 扫描 T-30 之后开始的运行。`declared_purpose: build`（或 legacy `purpose: build`）只在记录同时写了 `purpose_reason`（空白归一化后 >=20 字符）时才算正当豁免，仍是 advisory `t30-declared-build-run`（消息里带理由）；缺理由或理由过短改为 problem `t30-unjustified-build-run`。`experiment` 或无声明仍是 problem `t30-new-experiment`，给了理由也不豁免。
+- **脏树运行**：`run-log check` 把论文仓库自身的脏树运行从 advisory 升为 problem `run-log-dirty-tree`；记录里写了 `dirty_waiver`（>=20 字符）才降为 advisory `run-log-dirty-waiver`（消息里带理由）。该规则对**所有 status** 生效（含 `running`）——运行还没结束，也不代表它可复现；`git_dirty` 不是布尔也不是 null 时报 `run-log-malformed`（判定不出是否可复现时不放行）。
+- **写入口**：`run-log run` 新增 `--purpose-reason` 与 `--dirty-waiver`，随记录落盘；旧记录缺字段按「无理由」处理。
+- 边界：声明仍然可能不实。脚本无法证明这次运行真的是 build，也无法判断脏树为什么可接受；改变的是绕过的成本——从一个词变成一条具体、可复核、会写进报告的理由。
+- **测试策略（用户裁定，2026-10-04）**：此后每轮只跑受改动影响的测试模块，不再每轮全量。
+
+### 实现与评审
+
+- `7ba80ac fix: require a reason to waive the T-30 and dirty-tree rules`：首版实现 + 判别测试；改动前 5 条新用例全部失败（`t30-unjustified-build-run` 不存在、`run-log-dirty-tree` 仍只是 advisory）。
+- 第一轮独立只读评审（`freeze-exemptions-review.json`）判 **fail**，3 条：`status == "running"` 的脏树记录在脏树判定之前就 `continue`，可零退出遁过（important）；README 说 `--dirty-waiver` 即降级、没写 >=20 字符条件（minor）；边界用例缺失（minor）。
+- 修复 `c890ec8 fix: check dirty trees on running records too`：把脏树判定抽成 `_dirty_tree_findings`，在 status 分支之前对所有记录生效；README 补上 >=20 字符；补 7 条边界用例（空白理由、非字符串、恰好 20 字符、experiment+理由、干净树+waiver、running 脏树）。判别力：`running` 脏树用例对 `7ba80ac` 失败。
+- 第二轮定向复核（`freeze-exemptions-review-2.json`）判 **needs-fixes**，2 条 minor：truthy 非布尔 `git_dirty`（`1`、`"true"`）仍绕过规则；缺 `git_repo`/外来仓库的脏树组合无测试。
+- 修复 `e17f18e fix: reject non-boolean git_dirty and cover dirty repo combinations`：`git_dirty` 非 bool 且非 null 报 `run-log-malformed`，在 repo 判定之前拦截；补 3 条用例（畸形布尔值、legacy 无 repo 字段、外来仓库脏树不冒充论文树）。
+- 第三轮定向复核（`freeze-exemptions-review-3.json`，HEAD `e17f18e`）判 **pass，findings 为空**：逐值枚举 `git_dirty` 的 `true/false/null/缺失/0/1/"true"/"false"/[]/{}`，确认没有值能在「暗示脏树」的同时零退出；畸形分支对所有 status 与缺/外来 repo 都生效；T-30 侧未回归（19 字符不豁免、20 字符豁免、experiment+理由仍报 `t30-new-experiment`）。
+
+### 验证
+
+- 按用户裁定只跑受影响模块：`test_milestones`、`test_run_log`、`test_queue`、`test_docs_consistency`、`test_evidence_integrity_e2e`，共 **201 tests OK**（约 35 秒；全量 1115 条约 150 秒）。未跑全量，也未跑 app 侧（本轮未触碰 app 代码）。
+- 最终代码 HEAD 为 `e17f18e`（其后仅本账本提交）。
+- 未实现边界：声明仍可能不实；脚本不判断运行真的是 build，也不判断脏树为什么可接受。

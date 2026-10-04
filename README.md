@@ -191,6 +191,18 @@ $env:PYTHONPATH = (Resolve-Path tools).Path
 
 ## 跑测试
 
+日常按改动范围跑**受影响的测试模块**，不要每次全量（全量 `tools` 约 1115 条、
+约 150 秒；改动通常只碰其中几个模块）：
+
+```powershell
+cd <仓库根>
+$env:PYTHONPATH = (Resolve-Path tools).Path
+& tools/.venv/Scripts/python.exe -m unittest tools.tests.test_run_log tools.tests.test_milestones
+```
+
+先 `rg -ln "<改动的符号|错误码>" tools/tests app/tests` 找出受影响的模块；
+只有跨模块契约或发布前才跑全量：
+
 ```powershell
 cd <仓库根>
 $env:PYTHONPATH = (Resolve-Path tools).Path
