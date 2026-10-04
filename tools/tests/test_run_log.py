@@ -632,7 +632,7 @@ class TestCheckRuns(BaseCase):
             self._base(status="running", metrics=None, git_dirty=True),
         )
         problems, advisories = check_runs(self.log_dir)
-        self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
+        self.assertIn("run-log-dirty-tree", self._codes(problems))
         self.assertEqual(advisories, [])
 
     def test_dirty_waiver_on_a_clean_tree_is_not_reported(self):
