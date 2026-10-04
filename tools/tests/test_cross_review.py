@@ -492,6 +492,29 @@ class TestCheckReview(CrossReviewTests):
             [],
         )
 
+    def test_foreign_execution_model_is_not_complete_provenance(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["execution_model"] = "gpt-5.6"
+        record["family_judgement"] = "cross-family"
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-same-family"],
+        )
+        self.assertEqual(
+            check_review(self.paper_root, allow_same_family=True),
+            [],
+        )
+
     def test_blocking_record_is_review_blocking(self):
         quote = (
             "The baseline comparison omits the strongest published method "

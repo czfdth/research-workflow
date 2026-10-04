@@ -597,8 +597,7 @@ def check_review(
     provenance_complete = (
         isinstance(stored_family, str)
         and stored_family in {"same-family", "cross-family", "unknown"}
-        and isinstance(record.get("execution_model"), str)
-        and bool(record.get("execution_model").strip())
+        and record.get("execution_model") == DEFAULT_EXECUTION_MODEL
         and isinstance(record.get("family_override"), bool)
         and "provider" in record
     )
