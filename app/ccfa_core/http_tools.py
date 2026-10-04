@@ -34,6 +34,7 @@ SCHEMA_VERSION = 1
 MAX_TIMEOUT_S = 120.0
 MAX_RESPONSE_CHARS = 20_000
 _MAX_RESPONSE_BYTES = 200_000
+_CHUNK_SIZE = 8_192
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
@@ -327,12 +328,14 @@ def _parse_tool(
     }
     for header, value in headers.items():
         if value.startswith(_SECRET_PREFIX):
-            if _PLACEHOLDER.search(value):
+            key_name = value[len(_SECRET_PREFIX) :].strip()
+            if not key_name or _PLACEHOLDER.search(value):
                 issues.append(
                     _issue(
                         "registry-invalid-field",
                         path,
-                        f"工具 {name or index} 的 {header} secret 引用不能含占位符",
+                        f"工具 {name or index} 的 {header} 必须写成 "
+                        "secret:<key_name>，且不能含占位符",
                     )
                 )
             continue
@@ -537,10 +540,12 @@ class HttpToolRegistry:
                 if status >= 400:
                     raise HttpToolError("http-status", f"HTTP {status}")
                 body = bytearray()
-                for chunk in response.iter_bytes():
-                    body.extend(chunk)
+                for chunk in response.iter_bytes(chunk_size=_CHUNK_SIZE):
+                    remaining = _MAX_RESPONSE_BYTES - len(body)
+                    if remaining <= 0:
+                        break
+                    body.extend(chunk[:remaining])
                     if len(body) >= _MAX_RESPONSE_BYTES:
-                        del body[_MAX_RESPONSE_BYTES:]
                         break
                 return _read_response(status, bytes(body))
 

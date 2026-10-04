@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import httpx
 
@@ -170,6 +171,28 @@ class RegistryTests(unittest.TestCase):
 
         self.assertIn("registry-invalid-field", self._codes(issues))
 
+    def test_secret_reference_requires_a_key_name(self):
+        text = VALID.replace(
+            "    query:\n",
+            '    headers:\n      Authorization: "secret:   "\n'
+            "    query:\n",
+        )
+
+        _specs, issues = self._load(text)
+
+        self.assertEqual(self._codes(issues), ["registry-invalid-field"])
+
+    def test_secret_reference_with_an_empty_key_name_is_rejected(self):
+        text = VALID.replace(
+            "    query:\n",
+            '    headers:\n      Authorization: "secret:"\n'
+            "    query:\n",
+        )
+
+        _specs, issues = self._load(text)
+
+        self.assertEqual(self._codes(issues), ["registry-invalid-field"])
+
     def test_non_finite_timeout_is_rejected(self):
         text = VALID.replace("timeout_s: 20", "timeout_s: .nan")
 
@@ -316,6 +339,53 @@ class RegistryExecutionTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertLess(len(json.dumps(result)), 100_000)
+
+    def test_response_stream_uses_a_bounded_chunk_size(self):
+        class FakeResponse:
+            status_code = 200
+
+            def __init__(self):
+                self.chunk_size = None
+
+            def iter_bytes(self, chunk_size=None):
+                self.chunk_size = chunk_size
+                yield b"x" * 300_000
+
+        class FakeStream:
+            def __init__(self, response):
+                self._response = response
+
+            def __enter__(self):
+                return self._response
+
+            def __exit__(self, *exc):
+                return False
+
+        class FakeClient:
+            def __init__(self, response):
+                self._response = response
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def stream(self, method, url, **kwargs):
+                return FakeStream(self._response)
+
+        response = FakeResponse()
+        registry = HttpToolRegistry(self.specs, transport=None)
+
+        with mock.patch.object(
+            httpx, "Client", lambda **kwargs: FakeClient(response)
+        ):
+            result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertTrue(result["ok"])
+        self.assertIsNotNone(response.chunk_size)
+        self.assertLessEqual(response.chunk_size, 65536)
+        self.assertLess(len(json.dumps(result)), 300_000)
 
     def test_missing_secret_is_an_error_and_is_not_echoed(self):
         path = self.root / "with-secret.yaml"
