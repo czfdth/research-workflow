@@ -16,6 +16,8 @@ import yaml
 from ccfa import cli
 from ccfa.cli import Problem, ToolEnvironmentError, emit, save_text_atomically, tool_error
 
+VALID_PURPOSES = ("experiment", "build")
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -135,11 +137,16 @@ def run_command(
     config: Path | None = None,
     seed: str | None = None,
     notes: str | None = None,
+    purpose: str = "experiment",
     runner=None,
 ) -> tuple[str, dict]:
     argv = list(argv)
     if not argv:
         raise ValueError("运行命令不能为空")
+    if purpose not in VALID_PURPOSES:
+        raise ValueError(
+            f"purpose 非法: {purpose!r}，应为 {' / '.join(VALID_PURPOSES)}"
+        )
     log_dir = Path(log_dir)
     paper_root = Path(paper_root)
     runner = runner or _subprocess_runner
@@ -164,6 +171,7 @@ def run_command(
         "status": "running",
         "metrics": None,
         "notes": notes,
+        "purpose": purpose,
     }
     _save_record(record_path, record)
 
@@ -343,6 +351,12 @@ def main(argv: list[str]) -> int:
     run.add_argument("--config")
     run.add_argument("--seed")
     run.add_argument("--notes")
+    run.add_argument(
+        "--purpose",
+        choices=VALID_PURPOSES,
+        default="experiment",
+        help="experiment 受 T-30 冻结规则约束；build 仅用于图表/编译等构建运行",
+    )
     run.add_argument("--propagate-exit", action="store_true")
     run.add_argument("command", nargs=argparse.REMAINDER)
 
@@ -385,6 +399,7 @@ def main(argv: list[str]) -> int:
             config=Path(args.config) if args.config else None,
             seed=args.seed,
             notes=args.notes,
+            purpose=args.purpose,
         )
     except (ValueError, ToolEnvironmentError) as exc:
         return tool_error(str(exc))

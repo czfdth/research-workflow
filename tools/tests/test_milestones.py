@@ -166,6 +166,27 @@ class TestDueReport(MilestoneTests):
         self.assertIn("20270402T120000-01", problem["message"])
         self.assertIn("2027-04-02", problem["message"])
 
+    def test_t30_build_run_is_not_an_experiment(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "purpose": "build",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+
     def test_t30_older_run_has_no_problem(self):
         self._write_state(deadline="2027-05-01", stage="results-ready")
         self._write_run("20270331T120000-01", "2027-03-31T12:00:00Z")

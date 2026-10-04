@@ -98,7 +98,11 @@ def _scan_t30_runs(
     paper_root: Path,
     t30: date,
 ) -> tuple[list[dict], list[dict]]:
-    """Find runs started after T-30 without letting one bad record stop the scan."""
+    """Find experiment runs started after T-30.
+
+    Records with ``purpose: build`` describe figure rendering or compilation
+    and are not experiments, so they do not trigger the T-30 freeze.
+    """
     log_dir = paper_root / "experiments" / "log"
     problems: list[dict] = []
     advisories: list[dict] = []
@@ -125,6 +129,9 @@ def _scan_t30_runs(
                     "运行记录不是对象，已跳过",
                 )
             )
+            continue
+
+        if record.get("purpose") == "build":
             continue
 
         started = _parse_run_date(record.get("started_at"))

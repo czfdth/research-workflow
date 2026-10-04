@@ -95,7 +95,30 @@ class TestRunCommand(BaseCase):
         self.assertEqual(record["seed"], "42")
         self.assertIsNone(record["metrics"])
         self.assertIsNotNone(record["finished_at"])
+        self.assertEqual(record["purpose"], "experiment")
         self.assertEqual(self._record(run_id)["run_id"], run_id)
+
+    def test_records_a_build_purpose(self):
+        run, _ = self.runner(exit_code=0)
+        _, record = run_command(
+            ["python", "render.py"],
+            self.log_dir,
+            self.root,
+            purpose="build",
+            runner=run,
+        )
+        self.assertEqual(record["purpose"], "build")
+
+    def test_invalid_purpose_is_rejected(self):
+        run, _ = self.runner(exit_code=0)
+        with self.assertRaises(ValueError):
+            run_command(
+                ["python", "render.py"],
+                self.log_dir,
+                self.root,
+                purpose="other",
+                runner=run,
+            )
 
     def test_records_a_failed_run_without_raising(self):
         run, _ = self.runner(exit_code=3)
