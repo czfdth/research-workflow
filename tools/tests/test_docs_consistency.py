@@ -56,6 +56,7 @@ CLI_WRAPPERS = {
     "artifact_badge": "scripts/artifact-badge.ps1",
     "research_wiki": "scripts/research-wiki.ps1",
     "research_state": "scripts/research-state.ps1",
+    "ara_compile": "scripts/ara-compile.ps1",
     "dashboard": "scripts/dashboard.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"

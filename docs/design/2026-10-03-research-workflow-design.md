@@ -762,6 +762,27 @@ Markdown/JSON：
 该文件当前是可选的项目级状态层，不替代 claim-registry、experiment-loop 或
 run-log；它是对齐 two-loop 编排的第一切片，不是 ARA 五层 artifact 的完整复刻。
 
+### 9.12 源码对齐第二切片：ARA draft compiler
+
+按 `AI-Research-SKILLs/22-agent-native-research-artifact/compiler` 的目录结构和
+Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
+`scripts/ara-compile.ps1`：
+
+- `compile` 生成 `PAPER.md`、`logic/`、`src/`、`trace/`、`evidence/`
+  的 mandatory 文件骨架。
+- claim registry 会映射为 C01+；run/experiment 会映射为 E01+，并建立
+  claim↔experiment 的交叉引用。
+- exploration graph 会转换为嵌套 YAML research DAG；dead-end、rejected 和
+  pivot 分别映射到 ARA 的 dead_end / pivot 节点。
+- 无法从结构化台账恢复的语义层会明确写成 draft gap，`compile-report.json`
+  列出 `concepts>=5`、`experiments>=3`、`src/execution/*.py`、
+  `trace_decision` 等未满足项。
+- `validate` 按 Seal Level 1 的目录、mandatory file、计数、trace 字段和
+  cross-layer 条件报告 problem。
+
+该 compiler 不会把 draft 误报为 Seal Level 1 通过，也不会为通过结构校验而
+编造 concepts、heuristics 或 code stubs。
+
 ## 10. 目录结构
 
 模板库：

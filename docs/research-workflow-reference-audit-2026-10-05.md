@@ -21,9 +21,9 @@
 路径差异：报告里的 `wanshuiyin/ARIS` 当前不存在。实际对应项目名是
 `wanshuiyin/Auto-claude-code-research-in-sleep`。
 
-本轮状态：AI-Research-SKILLs 的 `research-state.yaml` 已完成第一切片对齐，
-新增 `tools/ccfa/research_state.py`、`scripts/research-state.ps1` 和 7 条测试。
-其余来源仍按下表分级。
+本轮状态：AI-Research-SKILLs 的 `research-state.yaml` 已完成第一切片；
+ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片，
+并明确报告未满足的 Seal Level 1 条件。其余来源仍按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -43,12 +43,14 @@
 - `experiment-loop.yaml` 已覆盖 pilot、inner loop、outer loop 和 next action。
 - `research-state.yaml` 已对齐 project/literature/hypotheses/experiments/
   outer_loop/workspace，并把 trajectory 的 run_id 与真实 run-log 绑定。
-- 没有 ARA compiler 的 `logic/`、`src/`、`evidence/`、`trace/` 五层机器可读结构。
+- 已有 `ara_compile.py` 生成 `logic/`、`src/`、`evidence/`、`trace/` draft；
+  但受限于结构化输入，concepts、heuristics、solution、code stub 等语义层仍为
+  draft gap，不被误报为 Seal Level 1 通过。
 - 没有把 claim 直接映射到可运行 code stub 的字段。
 - 没有强制 `/loop` 或 heartbeat 式 wall-clock continuation。
 
 结论：**two-loop 概念已吸收，项目级 research-state 已完成第一切片；
-ARA 编译器和 code stub 尚未复刻。**
+ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取尚未复刻。**
 
 ## 2. ARIS
 
@@ -209,7 +211,7 @@ replay、`.science` package 尚未实现。**
 
 | 来源 | 是否参考过源码 | 我们对齐的程度 |
 | --- | --- | --- |
-| AI-Research-SKILLs | 本轮补查 | two-loop 概念对齐；research-state 第一切片已完成；ARA 编译器仍缺 |
+| AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft compiler 已对齐；完整语义提取和 code stub 仍缺 |
 | ARIS | 本轮补查 | proof campaign/meta/wiki/post-submission 概念对齐；run-dir、proof gates、multi-round review、graph wiki 未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、run ledger、risk/governance 概念对齐；hash-chain、data-flow、calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
@@ -226,8 +228,9 @@ replay、`.science` package 尚未实现。**
 
 下一步若继续升级，优先级最高的仍是：
 
-1. 继续把 AI-Research-SKILLs 的 ARA `logic/src/evidence/trace` 映射到现有
-   claim/exploration/run 体系；`research-state.yaml` 已完成。
+1. 继续补齐 AI-Research-SKILLs 的 ARA 语义层，尤其是 concepts、solution、
+   heuristics、code stub 与 source-grounded evidence；目录 contract 和
+   research-state 已完成。
 2. 把 ARIS 的 proof run directory 与 notation/derivation gate 补进
    `proof_orchestrator`。
 3. 把 academic-research-skills 的 hash-chained run ledger、risk capability

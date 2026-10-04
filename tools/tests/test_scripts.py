@@ -50,6 +50,7 @@ CCFA_WRAPPERS = {
     "artifact_badge": "artifact-badge.ps1",
     "research_wiki": "research-wiki.ps1",
     "research_state": "research-state.ps1",
+    "ara_compile": "ara-compile.ps1",
     "dashboard": "dashboard.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"

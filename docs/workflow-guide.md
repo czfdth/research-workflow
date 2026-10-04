@@ -355,6 +355,16 @@ scripts/research-wiki.ps1 index --dir library/wiki --out library/wiki/index.json
 scripts/research-wiki.ps1 search --index library/wiki/index.json --query "artifact"
 ```
 
+从已有 claim、exploration、figure 和 run 台账生成 ARA draft：
+
+```powershell
+scripts/ara-compile.ps1 compile --paper-root $paper --out "$paper/ara"
+scripts/ara-compile.ps1 validate --dir "$paper/ara"
+```
+
+这里的 `compile` 是诚实 draft 编译器：语义内容不足时写出 mandatory 文件骨架，
+并在 `compile-report.json` 里列出未满足的 Seal Level 1 条件，不宣称 ARA 完整。
+
 不要把测试生成物、临时复现输出或某篇论文的工作文件提交到模板仓库。
 
 ## 11. 每日收工

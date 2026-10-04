@@ -2457,3 +2457,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   outer-loop 方向枚举、workspace 路径存在性；`next` 选择未闭环 hypothesis。
 - 新增 `tools/tests/test_research_state.py` 7 条覆盖；scripts/docs/test-impact
   测试同步。
+
+## 源码对齐第二切片：ARA draft compiler（2026-10-05）
+
+- 按 `AI-Research-SKILLs` 的 ARA compiler / ara-schema / Seal Level 1
+  validation checklist，新增 `tools/ccfa/ara_compile.py` 与
+  `scripts/ara-compile.ps1`。
+- `compile` 生成 PAPER.md、logic/、src/、trace/、evidence/ mandatory 文件；
+  claim registry 映射为 C01+，run 映射为 E01+，exploration graph 映射为
+  nested YAML DAG。
+- 无法从结构化输入获得的 concepts、solution、heuristics、code stub 保持
+  draft gap，并写入 `compile-report.json`；`seal_level1_ready` 不会伪造为 true。
+- `validate` 检查目录、mandatory file、计数、trace 节点与 cross-layer 条件。
+- 新增 `tools/tests/test_ara_compile.py` 4 条覆盖；README、workflow guide、
+  设计文档、CI 与 test-impact 映射同步。
