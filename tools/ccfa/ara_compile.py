@@ -65,6 +65,10 @@ def _load_yaml(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _semantic_input(paper_root: Path, name: str) -> dict:
+    return _load_yaml(paper_root / "ara-input" / name)
+
+
 def _claim_map(paper_root: Path) -> dict[str, str]:
     payload = _load_yaml(paper_root / CLAIM_REGISTRY)
     claims = payload.get("claims")
@@ -145,6 +149,198 @@ def _project_info(paper_root: Path) -> dict:
         "venue": venue.get("name") or "Not specified in provided input",
         "year": venue.get("year") or "Not specified in provided input",
     }
+
+
+def _render_problem(paper_root: Path) -> str:
+    payload = _semantic_input(paper_root, "problem.yaml")
+    if not payload:
+        return _placeholder(
+            "Problem Specification",
+            "No observations or gaps were extracted from structured ledgers.",
+        )
+    lines = ["# Problem Specification", "", "## Observations", ""]
+    for item in payload.get("observations", []):
+        if not isinstance(item, dict):
+            continue
+        lines.extend(
+            [
+                f"### {item.get('id', 'O?')}: {item.get('title', '')}",
+                f"- **Statement**: {item.get('statement', 'Not specified')}",
+                f"- **Evidence**: {item.get('evidence', 'Not specified')}",
+                f"- **Implication**: {item.get('implication', 'Not specified')}",
+                "",
+            ]
+        )
+    lines.extend(["## Gaps", ""])
+    for item in payload.get("gaps", []):
+        if not isinstance(item, dict):
+            continue
+        lines.extend(
+            [
+                f"### {item.get('id', 'G?')}: {item.get('title', '')}",
+                f"- **Statement**: {item.get('statement', 'Not specified')}",
+                "- **Caused by**: "
+                + ", ".join(str(value) for value in item.get("caused_by", [])),
+                f"- **Existing attempts**: {item.get('existing_attempts', 'Not specified')}",
+                f"- **Why they fail**: {item.get('why_they_fail', 'Not specified')}",
+                "",
+            ]
+        )
+    insight = payload.get("key_insight")
+    if isinstance(insight, dict):
+        lines.extend(
+            [
+                "## Key Insight",
+                f"- **Insight**: {insight.get('insight', 'Not specified')}",
+                "- **Derived from**: "
+                + ", ".join(str(value) for value in insight.get("derived_from", [])),
+                f"- **Enables**: {insight.get('enables', 'Not specified')}",
+                "",
+            ]
+        )
+    assumptions = payload.get("assumptions")
+    if isinstance(assumptions, list):
+        lines.extend(["## Assumptions", ""])
+        lines.extend(f"- {value}" for value in assumptions)
+    return "\n".join(lines) + "\n"
+
+
+def _render_concepts(paper_root: Path) -> str:
+    payload = _semantic_input(paper_root, "concepts.yaml")
+    concepts = payload.get("concepts")
+    if not isinstance(concepts, list) or not concepts:
+        return _placeholder("Concepts", "No concept extraction source was provided.")
+    lines = ["# Concepts", ""]
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        lines.extend(
+            [
+                f"## {concept.get('term', 'Unnamed concept')}",
+                f"- **Notation**: {concept.get('notation', 'Not specified')}",
+                f"- **Definition**: {concept.get('definition', 'Not specified')}",
+                f"- **Boundary conditions**: {concept.get('boundary_conditions', 'Not specified')}",
+                "- **Related concepts**: "
+                + ", ".join(
+                    str(value) for value in concept.get("related", [])
+                ),
+                "",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _render_related_work(paper_root: Path) -> str:
+    payload = _semantic_input(paper_root, "related_work.yaml")
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        return _placeholder(
+            "Related Work",
+            "No typed related-work extraction was provided.",
+        )
+    lines = ["# Related Work", ""]
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        delta = entry.get("delta") if isinstance(entry.get("delta"), dict) else {}
+        lines.extend(
+            [
+                f"## {entry.get('id', 'RW?')}: {entry.get('citation', 'Unknown citation')}",
+                f"- **DOI**: {entry.get('doi', 'Not specified')}",
+                f"- **Type**: {entry.get('type', 'Not specified')}",
+                f"- **Delta**: What changed: {delta.get('what_changed', 'Not specified')}; Why: {delta.get('why', 'Not specified')}",
+                "- **Claims affected**: "
+                + ", ".join(str(value) for value in entry.get("claims_affected", [])),
+                "- **Adopted elements**: "
+                + ", ".join(str(value) for value in entry.get("adopted_elements", [])),
+                "",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _render_solution(paper_root: Path) -> dict[str, str]:
+    payload = _semantic_input(paper_root, "solution.yaml")
+    if not payload:
+        return {
+            name: _placeholder(name.title(), "No semantic source was provided for this layer.")
+            for name in ("architecture", "algorithm", "constraints", "heuristics")
+        }
+    architecture_lines = ["# Architecture", ""]
+    for item in payload.get("architecture", []):
+        if not isinstance(item, dict):
+            continue
+        architecture_lines.extend(
+            [
+                f"## {item.get('name', 'Component')}",
+                f"- **Purpose**: {item.get('purpose', '')}",
+                f"- **Inputs**: {item.get('inputs', [])}",
+                f"- **Outputs**: {item.get('outputs', [])}",
+                f"- **Interactions**: {item.get('interactions', '')}",
+                f"- **Design choices**: {item.get('design_choices', '')}",
+                "",
+            ]
+        )
+    algorithm = payload.get("algorithm") if isinstance(payload.get("algorithm"), dict) else {}
+    algorithm_lines = [
+        "# Algorithm",
+        f"- **Math**: {algorithm.get('math', 'Not specified')}",
+        f"- **Pseudocode**: {algorithm.get('pseudocode', 'Not specified')}",
+        f"- **Complexity**: {algorithm.get('complexity', 'Not specified')}",
+    ]
+    constraints_lines = ["# Constraints", ""]
+    constraints_lines.extend(
+        f"- {value}" for value in payload.get("constraints", [])
+    )
+    heuristics_lines = ["# Heuristics", ""]
+    for item in payload.get("heuristics", []):
+        if not isinstance(item, dict):
+            continue
+        heuristics_lines.extend(
+            [
+                f"## {item.get('id', 'H?')}: {item.get('description', '')}",
+                f"- **Rationale**: {item.get('rationale', '')}",
+                f"- **Sensitivity**: {item.get('sensitivity', '')}",
+                f"- **Bounds**: {item.get('bounds', '')}",
+                f"- **Code ref**: {item.get('code_ref', '')}",
+                f"- **Source**: {item.get('source', '')}",
+                "",
+            ]
+        )
+    return {
+        "architecture": "\n".join(architecture_lines) + "\n",
+        "algorithm": "\n".join(algorithm_lines) + "\n",
+        "constraints": "\n".join(constraints_lines) + "\n",
+        "heuristics": "\n".join(heuristics_lines) + "\n",
+    }
+
+
+def _render_configs(paper_root: Path) -> dict[str, str]:
+    payload = _semantic_input(paper_root, "configs.yaml")
+    if not payload:
+        return {
+            name: _placeholder(name.title(), "No configuration source was provided.")
+            for name in ("training", "model")
+        }
+    result = {}
+    for name in ("training", "model"):
+        lines = [f"# {name.title()} Config", ""]
+        for item in payload.get(name, []):
+            if not isinstance(item, dict):
+                continue
+            lines.extend(
+                [
+                    f"## {item.get('name', 'parameter')}",
+                    f"- **Value**: {item.get('value', '')}",
+                    f"- **Rationale**: {item.get('rationale', '')}",
+                    f"- **Search range**: {item.get('search_range', '')}",
+                    f"- **Sensitivity**: {item.get('sensitivity', '')}",
+                    f"- **Source**: {item.get('source', '')}",
+                    "",
+                ]
+            )
+        result[name] = "\n".join(lines) + "\n"
+    return result
 
 
 def _render_paper(paper_root: Path) -> str:
@@ -270,6 +466,47 @@ def _render_claims(paper_root: Path) -> str:
 
 
 def _render_experiments(paper_root: Path) -> str:
+    semantic = _semantic_input(paper_root, "experiments.yaml")
+    semantic_experiments = semantic.get("experiments")
+    if isinstance(semantic_experiments, list) and semantic_experiments:
+        lines = ["# Experiments", ""]
+        for item in semantic_experiments:
+            if not isinstance(item, dict):
+                continue
+            lines.extend(
+                [
+                    f"## {item.get('id', 'E?')}: {item.get('title', '')}",
+                    "- **Verifies**: ["
+                    + ", ".join(str(value) for value in item.get("verifies", []))
+                    + "]",
+                    "- **Setup**:",
+                ]
+            )
+            setup = item.get("setup", {})
+            if isinstance(setup, dict):
+                for key, value in setup.items():
+                    lines.append(f"  - {key}: {value}")
+            lines.extend(
+                [
+                    "- **Procedure**:",
+                    *[
+                        f"  {index}. {step}"
+                        for index, step in enumerate(
+                            item.get("procedure", []),
+                            start=1,
+                        )
+                    ],
+                    f"- **Metrics**: {item.get('metrics', 'Not specified')}",
+                    f"- **Expected outcome**: {item.get('expected_outcome', 'Not specified')}",
+                    "- **Baselines**: "
+                    + ", ".join(
+                        str(value) for value in item.get("baselines", [])
+                    ),
+                    f"- **Dependencies**: {item.get('dependencies', 'none')}",
+                    "",
+                ]
+            )
+        return "\n".join(lines)
     claim_map = _claim_map(paper_root)
     links = _run_claim_links(paper_root)
     experiment_map = _experiment_map(paper_root)
@@ -306,6 +543,13 @@ def _mapped_claim_id(value: object, claim_map: dict[str, str]) -> str | None:
 
 
 def _render_tree(paper_root: Path) -> str:
+    semantic = _semantic_input(paper_root, "trace.yaml")
+    if isinstance(semantic.get("tree"), list):
+        return yaml.safe_dump(
+            {"tree": semantic["tree"]},
+            sort_keys=False,
+            allow_unicode=True,
+        )
     graph = _load_yaml(paper_root / EXPLORATION_GRAPH)
     entries = graph.get("entries")
     entries = entries if isinstance(entries, list) else []
@@ -373,6 +617,29 @@ def _render_tree(paper_root: Path) -> str:
 
 
 def _render_evidence_index(paper_root: Path) -> str:
+    semantic = _semantic_input(paper_root, "evidence.yaml")
+    semantic_tables = semantic.get("tables")
+    semantic_figures = semantic.get("figures")
+    if isinstance(semantic_tables, list) or isinstance(semantic_figures, list):
+        lines = [
+            "# Evidence Index",
+            "",
+            "| Evidence | Type | Source |",
+            "| --- | --- | --- |",
+        ]
+        for item in semantic_tables or []:
+            if isinstance(item, dict):
+                lines.append(
+                    f"| {item.get('filename', 'table')} | table | "
+                    f"{item.get('source', 'Not specified')} |"
+                )
+        for item in semantic_figures or []:
+            if isinstance(item, dict):
+                lines.append(
+                    f"| {item.get('filename', 'figure')} | figure | "
+                    f"{item.get('source', 'Not specified')} |"
+                )
+        return "\n".join(lines) + "\n"
     manifest = _load_yaml(paper_root / FIGURE_MANIFEST)
     figures = manifest.get("figures")
     figures = figures if isinstance(figures, list) else []
@@ -392,6 +659,34 @@ def _render_evidence_index(paper_root: Path) -> str:
     else:
         lines.append("| none | none | No evidence available from provided input |")
     return "\n".join(lines) + "\n"
+
+
+def _semantic_evidence_files(paper_root: Path) -> list[tuple[str, str]]:
+    payload = _semantic_input(paper_root, "evidence.yaml")
+    result: list[tuple[str, str]] = []
+    for kind, folder in (("tables", "tables"), ("figures", "figures")):
+        for item in payload.get(kind, []):
+            if not isinstance(item, dict):
+                continue
+            filename = item.get("filename")
+            rows = item.get("rows")
+            if not isinstance(filename, str) or not isinstance(rows, list):
+                continue
+            lines = [
+                f"# {item.get('source', 'Evidence')} - {item.get('caption', '')}",
+                "",
+                f"**Source**: {item.get('source', 'Not specified')}",
+                f"**Caption**: {item.get('caption', '')}",
+                f"**Extraction type**: {item.get('extraction_type', 'raw_table')}",
+                "",
+            ]
+            if rows:
+                lines.append("| " + " | ".join(str(value) for value in rows[0]) + " |")
+                lines.append("| " + " | ".join("---" for _ in rows[0]) + " |")
+                for row in rows[1:]:
+                    lines.append("| " + " | ".join(str(value) for value in row) + " |")
+            result.append((f"evidence/{folder}/{filename}", "\n".join(lines) + "\n"))
+    return result
 
 
 def _render_environment(paper_root: Path) -> str:
@@ -441,7 +736,7 @@ def _unmet_requirements(out_dir: Path) -> list[str]:
         unmet.append("concepts>=5")
     experiments = out_dir / "logic" / "experiments.md"
     experiment_text = experiments.read_text(encoding="utf-8") if experiments.is_file() else ""
-    if len(re.findall(r"^## E\\d+", experiment_text, flags=re.MULTILINE)) < 3:
+    if len(re.findall(r"^## E\d+", experiment_text, flags=re.MULTILINE)) < 3:
         unmet.append("experiments>=3")
     if not list((out_dir / "src" / "execution").glob("*.py")):
         unmet.append("src/execution/*.py>=1")
@@ -483,43 +778,43 @@ def compile_ara(
     _write_out(out_dir / "PAPER.md", _render_paper(paper_root))
     _write_out(
         out_dir / "logic" / "problem.md",
-        _placeholder("Problem Specification", "No observations or gaps were extracted from structured ledgers."),
+        _render_problem(paper_root),
     )
     _write_out(out_dir / "logic" / "claims.md", _render_claims(paper_root))
-    _write_out(
-        out_dir / "logic" / "concepts.md",
-        _placeholder("Concepts", "No concept extraction source was provided."),
-    )
+    _write_out(out_dir / "logic" / "concepts.md", _render_concepts(paper_root))
     _write_out(out_dir / "logic" / "experiments.md", _render_experiments(paper_root))
-    for name in ("architecture", "algorithm", "constraints", "heuristics"):
+    solution = _render_solution(paper_root)
+    for name, text in solution.items():
         _write_out(
             out_dir / "logic" / "solution" / f"{name}.md",
-            _placeholder(name.title(), "No semantic source was provided for this layer."),
+            text,
         )
-    _write_out(
-        out_dir / "logic" / "related_work.md",
-        _placeholder("Related Work", "No typed related-work extraction was provided."),
-    )
-    _write_out(
-        out_dir / "src" / "configs" / "training.md",
-        _placeholder("Training Config", "No training configuration was provided."),
-    )
-    _write_out(
-        out_dir / "src" / "configs" / "model.md",
-        _placeholder("Model Config", "No model configuration was provided."),
-    )
+    _write_out(out_dir / "logic" / "related_work.md", _render_related_work(paper_root))
+    configs = _render_configs(paper_root)
+    _write_out(out_dir / "src" / "configs" / "training.md", configs["training"])
+    _write_out(out_dir / "src" / "configs" / "model.md", configs["model"])
     _write_out(out_dir / "src" / "environment.md", _render_environment(paper_root))
     _write_out(out_dir / "trace" / "exploration_tree.yaml", _render_tree(paper_root))
     _write_out(out_dir / "evidence" / "README.md", _render_evidence_index(paper_root))
-    for figure in _load_yaml(paper_root / FIGURE_MANIFEST).get("figures", []):
-        if not isinstance(figure, dict):
-            continue
-        figure_id = figure.get("id") or figure.get("name")
-        if not figure_id:
-            continue
-        _write_out(
-            out_dir / "evidence" / "figures" / f"{figure_id}.md",
-            f"""# Figure {figure_id}
+    for relative, content in _semantic_evidence_files(paper_root):
+        _write_out(out_dir / relative, content)
+    semantic_code = paper_root / "ara-input" / "src" / "execution"
+    if semantic_code.is_dir():
+        for source in sorted(semantic_code.glob("*.py")):
+            _write_out(
+                out_dir / "src" / "execution" / source.name,
+                source.read_text(encoding="utf-8"),
+            )
+    else:
+        for figure in _load_yaml(paper_root / FIGURE_MANIFEST).get("figures", []):
+            if not isinstance(figure, dict):
+                continue
+            figure_id = figure.get("id") or figure.get("name")
+            if not figure_id:
+                continue
+            _write_out(
+                out_dir / "evidence" / "figures" / f"{figure_id}.md",
+                f"""# Figure {figure_id}
 
 **Source**: figures/manifest.yaml
 **Extraction type**: derived_subset
@@ -530,7 +825,7 @@ def compile_ara(
 | sha256 | {figure.get('sha256', '')} |
 | source | {figure.get('source', '')} |
 """,
-        )
+            )
 
     unmet = _unmet_requirements(out_dir)
     report = {

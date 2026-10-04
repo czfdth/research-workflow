@@ -777,6 +777,9 @@ Seal Level 1 checklist，v6.1 新增 `tools/ccfa/ara_compile.py` 与
 - 无法从结构化台账恢复的语义层会明确写成 draft gap，`compile-report.json`
   列出 `concepts>=5`、`experiments>=3`、`src/execution/*.py`、
   `trace_decision` 等未满足项。
+- 如果 `ara-input/` 提供 problem、concepts、solution、related_work、
+  experiments、configs、trace、evidence 和 code stubs，compiler 会生成完整
+  ARA 并可真正通过 Seal Level 1；没有语义输入时仍保持 draft gap。
 - `validate` 按 Seal Level 1 的目录、mandatory file、计数、trace 字段和
   cross-layer 条件报告 problem。
 
@@ -887,6 +890,31 @@ portable package 概念，v6.1 新增 `tools/ccfa/artifact_store.py` 与
 
 该层是内容不可变与可追踪契约，不宣称能科学上复现结果，也不替代 repro
 package 的执行验证。
+
+### 9.19 源码对齐第九切片：resubmit 与 talk pipeline
+
+按 ARIS `docs/RESUBMIT_AND_TALK.md`，v6.1 新增：
+
+- `tools/ccfa/resubmit_pipeline.py` / `scripts/resubmit-pipeline.ps1`
+- `tools/ccfa/talk_pipeline.py` / `scripts/talk-pipeline.ps1`
+
+resubmit guardrails：
+
+- source 与 target 必须物理隔离；
+- target bib hash 必须等于 frozen hash；
+- target 不得出现 frozen run_ids 之外的 experiment run；
+- forbidden path 的内容必须与 source 一致；
+- target 文本不得出现 plan 中的 anonymity patterns。
+
+talk contract：
+
+- slide 必须有 title、claim_ids、figure_ids、talking_points、speaker_notes；
+- claim/figure id 必须解析到 claim registry 与 figure manifest；
+- conference-ready 必须有 speaker notes 和 Q&A；
+- `render` 输出可直接供 `/paper-slides` 或汇报准备的 outline。
+
+这些 pipeline 做确定性 guardrail，不替代真正的文本润色、视觉 polish 或
+adversarial review。
 
 ## 10. 目录结构
 

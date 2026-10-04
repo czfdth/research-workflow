@@ -28,7 +28,8 @@ ARIS typed graph wiki 已完成第四切片；academic-research-skills 的
 hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已完成
 第六切片；academic-research-skills risk capability matrix 与 data flows 已完成
 第七切片；open-science immutable artifact store 与 `.science` package 已完成
-第八切片。其余来源仍按下表分级。
+第八切片；ARIS resubmit/talk pipeline guardrails 已完成第九切片。其余来源仍
+按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -49,9 +50,10 @@ hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已�
 - `research-state.yaml` 已对齐 project/literature/hypotheses/experiments/
   outer_loop/workspace，并把 trajectory 的 run_id 与真实 run-log 绑定。
 - 已有 `ara_compile.py` 生成 `logic/`、`src/`、`evidence/`、`trace/` draft；
-  但受限于结构化输入，concepts、heuristics、solution、code stub 等语义层仍为
-  draft gap，不被误报为 Seal Level 1 通过。
-- 没有把 claim 直接映射到可运行 code stub 的字段。
+  `ara-input/` 可提供 problem、concepts、solution、related_work、
+  experiments、configs、trace、evidence 与 code stubs，从而生成完整 ARA 并
+  通过 Seal Level 1；没有输入时仍为 draft gap。
+- 仍没有自动从 PDF/仓库抽取这些语义层的 compiler 前端。
 - 没有强制 `/loop` 或 heartbeat 式 wall-clock continuation。
 
 结论：**two-loop 概念已吸收，项目级 research-state 已完成第一切片；
@@ -95,8 +97,8 @@ ARA 目录 contract 已完成 draft compiler，code stub 和完整语义提取�
   匿名清点、edit whitelist 和 adversarial gate。
 
 结论：**proof/next action、meta-optimize、post-submission 已吸收；
-proof run-directory 和 typed graph wiki 已部分对齐；multi-round review 和
-resubmit orchestrator 仍未对齐。**
+proof run-directory、typed graph wiki、review loop state 和 resubmit/talk
+guardrails 已对齐；自动 fix/re-review 仍未对齐。**
 
 ## 3. academic-research-skills
 
@@ -215,8 +217,8 @@ governance 的概念已吸收；完整 passport ledger 和 citation calibration 
 
 | 来源 | 是否参考过源码 | 我们对齐的程度 |
 | --- | --- | --- |
-| AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft compiler 已对齐；完整语义提取和 code stub 仍缺 |
-| ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state 已对齐；resubmit orchestrator 和自动 fix/re-review 仍未对齐 |
+| AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft/full compiler contract 已对齐；自动语义提取前端仍缺 |
+| ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state、resubmit/talk guardrails 已对齐；自动 fix/re-review 仍未对齐 |
 | academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk capability matrix、data-flow map 已对齐；完整 passport/calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package 已对齐；完整 execution graph 与 session replay 未实现 |
@@ -232,12 +234,11 @@ governance 的概念已吸收；完整 passport ledger 和 citation calibration 
 
 下一步若继续升级，优先级最高的仍是：
 
-1. 继续补齐 AI-Research-SKILLs 的 ARA 语义层，尤其是 concepts、solution、
-   heuristics、code stub 与 source-grounded evidence；目录 contract 和
-   research-state 已完成。
-2. 继续对齐 ARIS 的自动 fix/re-review 与 resubmit/talk pipeline；
-   review loop state、proof run directory、notation/derivation gate 和
-   typed graph wiki 已完成。
+1. 继续补齐 AI-Research-SKILLs 的自动 ARA 语义提取前端；本地
+   `ara-input/` 到完整 Seal-valid ARA 的 compiler contract 已完成。
+2. 继续对齐 ARIS 的自动 fix/re-review；review loop state、proof run
+   directory、notation/derivation gate、typed graph wiki、resubmit/talk
+   guardrails 已完成。
 3. 继续把 academic-research-skills 的完整 passport run ledger 与 citation
    calibration 纳入治理层；risk matrix、data flows、hash-chain 已完成。
 4. 继续把 open-science 的 execution history graph 与 session replay 接入

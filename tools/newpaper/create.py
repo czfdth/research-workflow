@@ -65,6 +65,7 @@ PAPER_DIRS = [
     "ccfa-workfiles/literature",
     "ccfa-workfiles/figures",
     "ccfa-workfiles/writing",
+    "ara-input/src/execution",
 ]
 
 SEED_FILES = {
@@ -275,6 +276,21 @@ SEED_FILES = {
         "    evidence: []\n"
         "    rationale: ''\n"
         "    reuse_context: ''\n"
+    ),
+    "ara-input/README.md": (
+        "# ARA semantic input\n"
+        "\n"
+        "Provide source-grounded semantic layers for `ara-compile`:\n"
+        "\n"
+        "- problem.yaml\n"
+        "- concepts.yaml\n"
+        "- solution.yaml\n"
+        "- related_work.yaml\n"
+        "- experiments.yaml\n"
+        "- configs.yaml\n"
+        "- trace.yaml\n"
+        "- evidence.yaml\n"
+        "- src/execution/*.py\n"
     ),
 }
 

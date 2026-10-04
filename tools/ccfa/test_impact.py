@@ -106,6 +106,14 @@ _TOOLS_EXACT = {
         "tools.tests.test_artifact_store",
         "tools.tests.test_docs_consistency",
     ),
+    "tools/ccfa/resubmit_pipeline.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_resubmit_pipeline",
+    ),
+    "tools/ccfa/talk_pipeline.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_talk_pipeline",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

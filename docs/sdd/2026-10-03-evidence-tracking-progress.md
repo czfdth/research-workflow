@@ -2471,6 +2471,9 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - `validate` 检查目录、mandatory file、计数、trace 节点与 cross-layer 条件。
 - 新增 `tools/tests/test_ara_compile.py` 4 条覆盖；README、workflow guide、
   设计文档、CI 与 test-impact 映射同步。
+- 后续补 `ara-input/` 语义输入通道（problem、concepts、solution、
+  related_work、experiments、configs、trace、evidence、code stubs），使
+  compiler 可在不编造内容的前提下真正达到 Seal Level 1。
 
 ## 源码对齐第三切片：ARIS proof run directory（2026-10-05）
 
@@ -2546,3 +2549,14 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness 在 manifest 存在时执行可选 artifact-store gate。
 - 新增 `tools/tests/test_artifact_store.py` 6 条覆盖；scripts/docs/CI/
   test-impact 同步。
+
+## 源码对齐第九切片：resubmit 与 talk pipeline（2026-10-05）
+
+- 按 ARIS `RESUBMIT_AND_TALK.md`，新增 `resubmit_pipeline.py` 与
+  `talk_pipeline.py` 及对应 PowerShell 入口。
+- resubmit 校验 source/target 隔离、frozen bib hash、无新增 run、
+  forbidden path 未变化和 anonymity leak。
+- talk 校验 slide→claim/figure 解析、talking points、speaker notes、Q&A，
+  并可 render 汇报 outline。
+- readiness 在对应 plan 存在时执行可选 resubmit/talk gate。
+- 新增 resubmit 5 条、talk 4 条测试；scripts/docs/CI/test-impact 同步。

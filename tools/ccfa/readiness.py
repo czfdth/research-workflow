@@ -34,10 +34,12 @@ from ccfa import (
     repro_package,
     repro_env,
     research_ledgers,
+    resubmit_pipeline,
     review_loop,
     run_ledger,
     rigor,
     stats_plan,
+    talk_pipeline,
     trace_claims,
 )
 from ccfa.cli import Problem, ToolEnvironmentError, save_text_atomically, tool_error
@@ -349,6 +351,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         / "manifest.json"
     ).is_file():
         specs["artifact-store"] = lambda: artifact_store.verify_store(paper_root)
+    if (paper_root / "data" / "resubmit-plan.yaml").is_file():
+        specs["resubmit-pipeline"] = lambda: resubmit_pipeline.check(paper_root)
+    if (paper_root / "data" / "talk-plan.yaml").is_file():
+        specs["talk-pipeline"] = lambda: talk_pipeline.check(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

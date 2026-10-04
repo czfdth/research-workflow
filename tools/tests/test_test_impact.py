@@ -167,6 +167,24 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_artifact_store", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_resubmit_pipeline_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/resubmit_pipeline.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_resubmit_pipeline", selection.tests)
+        self.assertFalse(selection.full)
+
+    def test_talk_pipeline_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/talk_pipeline.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_talk_pipeline", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_dashboard_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/dashboard.py"],
