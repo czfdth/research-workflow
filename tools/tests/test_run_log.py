@@ -140,7 +140,8 @@ class TestRunCommand(BaseCase):
         self.assertEqual(record["seed"], "42")
         self.assertIsNone(record["metrics"])
         self.assertIsNotNone(record["finished_at"])
-        self.assertEqual(record["purpose"], "experiment")
+        self.assertEqual(record["declared_purpose"], "experiment")
+        self.assertNotIn("purpose", record)
         self.assertEqual(self._record(run_id)["run_id"], run_id)
 
     def test_records_a_build_purpose(self):
@@ -152,7 +153,20 @@ class TestRunCommand(BaseCase):
             purpose="build",
             runner=run,
         )
-        self.assertEqual(record["purpose"], "build")
+        self.assertEqual(record["declared_purpose"], "build")
+        self.assertNotIn("purpose", record)
+
+    def test_help_marks_purpose_as_a_declaration_not_evidence(self):
+        stdout = StringIO()
+
+        with redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as raised:
+                main(["run_log.py", "run", "--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        text = stdout.getvalue()
+        self.assertIn("声明", text)
+        self.assertIn("不构成证据", text)
 
     def test_record_carries_git_repo_identity(self):
         self.init_repo(self.root)

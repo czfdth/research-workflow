@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import re
@@ -45,6 +46,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STDERR_LIMIT = 4000
 _RAW_LAST_MESSAGE_LIMIT = 10000
 _STDERR_TRUNCATION_MARKER = "...[truncated]"
+_BLOCKING_QUOTE_MIN_LENGTH = 20
 
 
 def _now_iso() -> str:
@@ -111,6 +113,39 @@ def _input_hashes(paper_root: Path, paths: list[Path]) -> dict[str, str]:
         resolved, relative = _relative_input(paper_root, Path(path))
         hashes[relative] = _sha256(resolved)
     return hashes
+
+
+def _normalize_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _input_corpus(paper_root: Path, hashes: object) -> str:
+    """Return the whitespace-normalized text of the recorded review inputs."""
+    if not isinstance(hashes, dict):
+        return ""
+    texts: list[str] = []
+    for relative in sorted(key for key in hashes if isinstance(key, str)):
+        try:
+            resolved, _relative = _relative_input(paper_root, Path(relative))
+            raw = resolved.read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+        texts.append(_normalize_whitespace(raw))
+    return "\n\n".join(texts)
+
+
+def _longest_quote_length(evidence: str, corpus: str) -> int:
+    """Length of the longest substring of *evidence* found in *corpus*."""
+    if not evidence or not corpus:
+        return 0
+    matcher = difflib.SequenceMatcher(
+        None,
+        evidence,
+        corpus,
+        autojunk=False,
+    )
+    match = matcher.find_longest_match(0, len(evidence), 0, len(corpus))
+    return match.size
 
 
 def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
@@ -523,6 +558,23 @@ def check_review(
                 payload["summary"] or "评审报告包含 blocking 项",
             )
         )
+        corpus = _input_corpus(paper_root, hashes)
+        for index, item in enumerate(payload["blocking"]):
+            evidence = _normalize_whitespace(item["evidence"])
+            if (
+                _longest_quote_length(evidence, corpus)
+                < _BLOCKING_QUOTE_MIN_LENGTH
+            ):
+                problems.append(
+                    Problem(
+                        "review-uncited-blocking",
+                        str(path),
+                        None,
+                        f"blocking[{index}] {item['title']!r} 的 evidence "
+                        f"没有 ≥{_BLOCKING_QUOTE_MIN_LENGTH} 字符的引文"
+                        "逐字出现在评审输入文件中",
+                    )
+                )
     return problems
 
 

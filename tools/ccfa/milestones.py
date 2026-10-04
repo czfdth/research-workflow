@@ -100,8 +100,10 @@ def _scan_t30_runs(
 ) -> tuple[list[dict], list[dict]]:
     """Find experiment runs started after T-30.
 
-    Records with ``purpose: build`` describe figure rendering or compilation
-    and are not experiments, so they do not trigger the T-30 freeze.
+    Records that *declare* ``build`` (new ``declared_purpose`` or legacy
+    ``purpose``) describe figure rendering or compilation, so they do not
+    trigger the T-30 freeze; the exemption is reported as an advisory because
+    the declaration itself is not evidence.
     """
     log_dir = paper_root / "experiments" / "log"
     problems: list[dict] = []
@@ -131,9 +133,6 @@ def _scan_t30_runs(
             )
             continue
 
-        if record.get("purpose") == "build":
-            continue
-
         started = _parse_run_date(record.get("started_at"))
         if started is None:
             advisories.append(
@@ -158,14 +157,28 @@ def _scan_t30_runs(
             continue
 
         if started > t30:
-            problems.append(
-                _problem(
-                    "t30-new-experiment",
-                    path,
-                    f"T-30 ({t30.isoformat()}) 后出现新实验记录 "
-                    f"{run_id}，开始于 {started.isoformat()}",
+            declared = record.get("declared_purpose")
+            if declared is None:
+                declared = record.get("purpose")
+            if declared == "build":
+                advisories.append(
+                    _problem(
+                        "t30-declared-build-run",
+                        path,
+                        f"T-30 ({t30.isoformat()}) 后出现声明为 build 的运行 "
+                        f"{run_id}，开始于 {started.isoformat()}；"
+                        "已按调用者声明豁免，该声明不构成证据",
+                    )
                 )
-            )
+            else:
+                problems.append(
+                    _problem(
+                        "t30-new-experiment",
+                        path,
+                        f"T-30 ({t30.isoformat()}) 后出现新实验记录 "
+                        f"{run_id}，开始于 {started.isoformat()}",
+                    )
+                )
     return problems, advisories
 
 

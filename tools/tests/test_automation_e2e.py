@@ -350,10 +350,23 @@ class AutomationEndToEndTests(unittest.TestCase):
     def test_cross_review_blocking_record_is_reported_by_check(self):
         self._write_state(stage="internal-review", deadline=None)
         input_path = self.paper_root / "main.tex"
-        input_path.write_text("\\documentclass{article}\n", encoding="utf-8")
+        input_path.write_text(
+            "\\documentclass{article}\n"
+            "The baseline comparison omits the strongest published method "
+            "entirely.\n",
+            encoding="utf-8",
+        )
         payload = {
             "verdict": "blocking",
-            "blocking": [{"title": "Missing evidence", "evidence": "main.tex"}],
+            "blocking": [
+                {
+                    "title": "Missing evidence",
+                    "evidence": (
+                        'main.tex: "The baseline comparison omits the '
+                        'strongest published method entirely."'
+                    ),
+                }
+            ],
             "summary": "blocking",
         }
 

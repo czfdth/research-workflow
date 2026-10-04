@@ -1,4 +1,10 @@
-"""Write one durable record for each computational run."""
+"""Write one durable record for each computational run.
+
+``declared_purpose`` is the caller's own statement. It is recorded so that
+consumers can see *why* an exemption was claimed; it is not evidence that the
+run really was a build. Legacy records with a ``purpose`` field remain
+readable by consumers.
+"""
 
 from __future__ import annotations
 
@@ -206,7 +212,7 @@ def run_command(
         "status": "running",
         "metrics": None,
         "notes": notes,
-        "purpose": purpose,
+        "declared_purpose": purpose,
     }
     _save_record(record_path, record)
 
@@ -428,7 +434,10 @@ def main(argv: list[str]) -> int:
         "--purpose",
         choices=VALID_PURPOSES,
         default="experiment",
-        help="experiment 受 T-30 冻结规则约束；build 仅用于图表/编译等构建运行",
+        help=(
+            "experiment 受 T-30 冻结规则约束；build 仅用于图表/编译等构建运行。"
+            "这是调用者的声明，不构成证据"
+        ),
     )
     run.add_argument("--propagate-exit", action="store_true")
     run.add_argument("command", nargs=argparse.REMAINDER)

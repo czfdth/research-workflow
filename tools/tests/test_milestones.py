@@ -166,7 +166,36 @@ class TestDueReport(MilestoneTests):
         self.assertIn("20270402T120000-01", problem["message"])
         self.assertIn("2027-04-02", problem["message"])
 
-    def test_t30_build_run_is_not_an_experiment(self):
+    def test_t30_declared_build_run_is_visible_as_advisory(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "declared_purpose": "build",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+        advisory = next(
+            item
+            for item in report["advisories"]
+            if item["code"] == "t30-declared-build-run"
+        )
+        self.assertIn("20270402T120000-01", advisory["message"])
+        self.assertIn("2027-04-02", advisory["message"])
+        self.assertIn("不构成证据", advisory["message"])
+
+    def test_t30_legacy_purpose_build_still_qualifies_for_the_advisory(self):
         self._write_state(deadline="2027-05-01", stage="results-ready")
         self._write_run(
             "20270402T120000-01",
@@ -183,6 +212,31 @@ class TestDueReport(MilestoneTests):
         report = due_report(self.paper_root, date(2027, 4, 2))
 
         self.assertNotIn(
+            "t30-new-experiment",
+            {problem["code"] for problem in report["problems"]},
+        )
+        self.assertIn(
+            "t30-declared-build-run",
+            {advisory["code"] for advisory in report["advisories"]},
+        )
+
+    def test_t30_declared_experiment_run_is_a_problem(self):
+        self._write_state(deadline="2027-05-01", stage="results-ready")
+        self._write_run(
+            "20270402T120000-01",
+            "2027-04-02T12:00:00Z",
+            raw=json.dumps(
+                {
+                    "run_id": "20270402T120000-01",
+                    "started_at": "2027-04-02T12:00:00Z",
+                    "declared_purpose": "experiment",
+                }
+            ),
+        )
+
+        report = due_report(self.paper_root, date(2027, 4, 2))
+
+        self.assertIn(
             "t30-new-experiment",
             {problem["code"] for problem in report["problems"]},
         )

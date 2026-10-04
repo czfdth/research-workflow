@@ -319,13 +319,103 @@ class TestCheckReview(CrossReviewTests):
         self.assertEqual([problem.code for problem in problems], ["review-stale"])
 
     def test_blocking_record_is_review_blocking(self):
-        blocking = [{"title": "gap", "evidence": "missing"}]
+        quote = (
+            "The baseline comparison omits the strongest published method "
+            "entirely."
+        )
+        self.input_path.write_text(
+            "\\documentclass{article}\n"
+            "The baseline comparison omits the strongest\n"
+            "published method entirely.\n",
+            encoding="utf-8",
+        )
+        blocking = [{"title": "gap", "evidence": f'main.tex: "{quote}"'}]
         runner = self._runner(payload=self._payload("blocking", blocking))
         self._run(runner)
 
         problems = check_review(self.paper_root)
 
         self.assertEqual([problem.code for problem in problems], ["review-blocking"])
+
+    def test_fabricated_blocking_quote_is_uncited(self):
+        self.input_path.write_text(
+            "\\documentclass{article}\n"
+            "The paper reports a small controlled study.\n",
+            encoding="utf-8",
+        )
+        blocking = [
+            {
+                "title": "gap",
+                "evidence": (
+                    'main.tex: "The baseline comparison omits the strongest '
+                    'published method entirely."'
+                ),
+            }
+        ]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-blocking", "review-uncited-blocking"],
+        )
+        uncited = next(
+            problem
+            for problem in problems
+            if problem.code == "review-uncited-blocking"
+        )
+        self.assertIn("gap", uncited.message)
+
+    def test_quote_shorter_than_twenty_characters_is_uncited(self):
+        self.input_path.write_text("short quote here\n", encoding="utf-8")
+        blocking = [
+            {"title": "short", "evidence": 'main.tex: "short quote here"'}
+        ]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+
+        problems = check_review(self.paper_root)
+
+        self.assertIn(
+            "review-uncited-blocking",
+            [problem.code for problem in problems],
+        )
+
+    def test_uncited_blocking_check_exits_one(self):
+        self.input_path.write_text(
+            "\\documentclass{article}\n",
+            encoding="utf-8",
+        )
+        blocking = [
+            {
+                "title": "gap",
+                "evidence": (
+                    'main.tex: "This sentence was never in the manuscript '
+                    'at all, honestly."'
+                ),
+            }
+        ]
+        runner = self._runner(payload=self._payload("blocking", blocking))
+        self._run(runner)
+
+        code, stdout, stderr = self._run_main(
+            [
+                "cross-review",
+                "check",
+                "--paper-root",
+                str(self.paper_root),
+            ]
+        )
+
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout)
+        self.assertIn(
+            "review-uncited-blocking",
+            [problem["code"] for problem in payload["problems"]],
+        )
+        self.assertIn("review-uncited-blocking", stderr)
 
     def test_malformed_record_is_review_malformed(self):
         path = self._record_path()
