@@ -33,6 +33,47 @@ tools:
 """
 
 
+class _FakeResponse:
+    def __init__(self, *, status=200, headers=None, chunks=(b'{"ok": true}',)):
+        self.status_code = status
+        self.headers = headers or {}
+        self._chunks = chunks
+        self.chunk_size = None
+        self.iterated = False
+
+    def iter_bytes(self, chunk_size=None):
+        self.iterated = True
+        self.chunk_size = chunk_size
+        for chunk in self._chunks:
+            yield chunk
+
+
+class _FakeStream:
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self._response
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeClient:
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def stream(self, method, url, **kwargs):
+        self.request = (method, url, kwargs)
+        return _FakeStream(self._response)
+
+
 class RegistryTests(unittest.TestCase):
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory()
@@ -181,6 +222,35 @@ class RegistryTests(unittest.TestCase):
         _specs, issues = self._load(text)
 
         self.assertEqual(self._codes(issues), ["registry-invalid-field"])
+
+    def test_common_credential_header_names_require_a_secret(self):
+        for header in ("X-Api-Token", "Token", "apikey", "X-Access-Token"):
+            with self.subTest(header=header):
+                text = VALID.replace(
+                    "    query:\n",
+                    f'    headers:\n      "{header}": "literal-value"\n'
+                    "    query:\n",
+                )
+
+                _specs, issues = self._load(text)
+
+                self.assertEqual(
+                    self._codes(issues), ["registry-literal-secret"]
+                )
+
+    def test_non_credential_header_may_hold_a_literal(self):
+        text = VALID.replace(
+            "    query:\n",
+            '    headers:\n      Accept: "application/json"\n'
+            "    query:\n",
+        )
+
+        specs, issues = self._load(text)
+
+        self.assertEqual(issues, [])
+        self.assertEqual(
+            specs[0].headers["Accept"], "application/json"
+        )
 
     def test_secret_reference_with_an_empty_key_name_is_rejected(self):
         text = VALID.replace(
@@ -341,44 +411,11 @@ class RegistryExecutionTests(unittest.TestCase):
         self.assertLess(len(json.dumps(result)), 100_000)
 
     def test_response_stream_uses_a_bounded_chunk_size(self):
-        class FakeResponse:
-            status_code = 200
-
-            def __init__(self):
-                self.chunk_size = None
-
-            def iter_bytes(self, chunk_size=None):
-                self.chunk_size = chunk_size
-                yield b"x" * 300_000
-
-        class FakeStream:
-            def __init__(self, response):
-                self._response = response
-
-            def __enter__(self):
-                return self._response
-
-            def __exit__(self, *exc):
-                return False
-
-        class FakeClient:
-            def __init__(self, response):
-                self._response = response
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-            def stream(self, method, url, **kwargs):
-                return FakeStream(self._response)
-
-        response = FakeResponse()
+        response = _FakeResponse(chunks=(b"x" * 300_000,))
         registry = HttpToolRegistry(self.specs, transport=None)
 
         with mock.patch.object(
-            httpx, "Client", lambda **kwargs: FakeClient(response)
+            httpx, "Client", lambda **kwargs: _FakeClient(response)
         ):
             result = registry.execute("arxiv_search", {"search_query": "rag"})
 
@@ -386,6 +423,80 @@ class RegistryExecutionTests(unittest.TestCase):
         self.assertIsNotNone(response.chunk_size)
         self.assertLessEqual(response.chunk_size, 65536)
         self.assertLess(len(json.dumps(result)), 300_000)
+
+    def test_compressed_response_is_refused_by_default(self):
+        response = _FakeResponse(headers={"content-encoding": "gzip"})
+        registry = HttpToolRegistry(self.specs, transport=None)
+
+        with mock.patch.object(
+            httpx, "Client", lambda **kwargs: _FakeClient(response)
+        ):
+            result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "http-encoding")
+        self.assertFalse(response.iterated)
+
+    def test_compressed_response_allowed_with_opt_in(self):
+        path = self.root / "compressed.yaml"
+        path.write_text(
+            VALID.replace("risk: read", "risk: read\n    allow_compressed: true"),
+            encoding="utf-8",
+        )
+        specs, issues = load_registry(path)
+        assert issues == []
+        response = _FakeResponse(headers={"content-encoding": "gzip"})
+        registry = HttpToolRegistry(specs, transport=None)
+
+        with mock.patch.object(
+            httpx, "Client", lambda **kwargs: _FakeClient(response)
+        ):
+            result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(response.iterated)
+
+    def test_requests_ask_for_an_uncompressed_body(self):
+        response = _FakeResponse()
+        client = _FakeClient(response)
+        registry = HttpToolRegistry(self.specs, transport=None)
+
+        with mock.patch.object(httpx, "Client", lambda **kwargs: client):
+            registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertEqual(
+            client.request[2]["headers"]["Accept-Encoding"], "identity"
+        )
+
+    def test_resolver_exception_is_sanitised(self):
+        path = self.root / "with-secret.yaml"
+        path.write_text(
+            VALID.replace(
+                "    query:\n",
+                "    headers:\n      Authorization: \"secret:arxiv-key\"\n"
+                "    query:\n",
+            ),
+            encoding="utf-8",
+        )
+        specs, issues = load_registry(path)
+        assert issues == []
+
+        def resolve_secret(name):
+            raise RuntimeError("keyring exploded with sk-SECRET-VALUE")
+
+        registry = HttpToolRegistry(
+            specs,
+            resolve_secret=resolve_secret,
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, json={})
+            ),
+        )
+
+        result = registry.execute("arxiv_search", {"search_query": "rag"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "http-error")
+        self.assertNotIn("sk-SECRET-VALUE", json.dumps(result))
 
     def test_missing_secret_is_an_error_and_is_not_echoed(self):
         path = self.root / "with-secret.yaml"

@@ -201,8 +201,9 @@ tools:
 
 - v1 只支持 HTTP，不支持任意 Python handler——那样会拿到应用自身权限，且无法校验。
 - `http://` 明文默认拒绝，必须显式写 `allow_http: true`。
-- 敏感头（`Authorization`、`X-Api-Key`、`Cookie` 等）只能写 `secret:<key_name>`，由 keyring 取值；写明文凭据直接是加载错误，密钥永不落到注册表文件里。
+- 凭据头只能写 `secret:<key_name>`，由 keyring 取值。判定按名字：`Authorization`/`Proxy-Authorization`/`Cookie`/`Set-Cookie`，以及任何名字含 `token`/`key`/`auth`/`secret`/`credential`/`password` 的头（如 `X-Api-Token`、`apikey`）。写明文凭据是加载错误，`secret:` 必须给出非空 key 名且不能含占位符。
 - url / query / json / headers 里的 `{占位符}` 必须在 `parameters` 中声明；GET 不许带 json body。
+- 响应默认按未压缩读取（请求带 `Accept-Encoding: identity`）；服务端仍返回压缩体时拒绝（`http-encoding`），因为解压会在限流前吃掉内存——确需压缩响应的工具要显式写 `allow_compressed: true`。
 - **任一工具非法，整个注册表不加载**（fail-closed），不会留下「一半工具悄悄生效」的状态。
 
 接入方式：`ToolBridge(project_root, http_tools=HttpToolRegistry(specs, resolve_secret=...))`；注册的工具与内置工具走同一套参数校验、风险分级、写操作确认与审计日志（只记参数摘要）。

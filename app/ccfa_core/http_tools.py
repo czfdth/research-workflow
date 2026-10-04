@@ -53,6 +53,7 @@ _FIELDS = frozenset(
         "query",
         "json",
         "allow_http",
+        "allow_compressed",
     }
 )
 _SENSITIVE_HEADERS = frozenset(
@@ -66,7 +67,29 @@ _SENSITIVE_HEADERS = frozenset(
         "x-auth-token",
     }
 )
+_SENSITIVE_HEADER_HINTS = (
+    "token",
+    "key",
+    "auth",
+    "secret",
+    "credential",
+    "password",
+)
 _SECRET_PREFIX = "secret:"
+
+
+def _is_sensitive_header(name: str) -> bool:
+    """Credential headers, matched by an explicit set plus name patterns.
+
+    A fixed allowlist always misses the next invented header name, so any name
+    containing token/key/auth/secret/credential/password is treated as
+    credential-bearing too. The rule can be conservative; a false positive only
+    forces the value through the keyring.
+    """
+    folded = name.casefold()
+    return folded in _SENSITIVE_HEADERS or any(
+        hint in folded for hint in _SENSITIVE_HEADER_HINTS
+    )
 
 
 class RegistryIssue(NamedTuple):
@@ -95,6 +118,7 @@ class HttpToolSpec:
     timeout_s: float = 30.0
     query: dict[str, str] = field(default_factory=dict)
     body: dict[str, str] = field(default_factory=dict)
+    allow_compressed: bool = False
 
 
 def _issue(code: str, path: Path, message: str) -> RegistryIssue:
@@ -300,6 +324,16 @@ def _parse_tool(
             )
         )
         allow_http = False
+    allow_compressed = item.get("allow_compressed", False)
+    if not isinstance(allow_compressed, bool):
+        issues.append(
+            _issue(
+                "registry-invalid-field",
+                path,
+                f"tools[{index}].allow_compressed 必须是布尔值",
+            )
+        )
+        allow_compressed = False
     url = item.get("url")
     if not _is_text(url) or not url.startswith(("https://", "http://")):
         issues.append(
@@ -339,7 +373,7 @@ def _parse_tool(
                     )
                 )
             continue
-        if header.casefold() in _SENSITIVE_HEADERS:
+        if _is_sensitive_header(header):
             issues.append(
                 _issue(
                     "registry-literal-secret",
@@ -400,6 +434,7 @@ def _parse_tool(
             timeout_s=float(timeout),
             query=query,
             body=body,
+            allow_compressed=allow_compressed,
         ),
         issues,
     )
@@ -510,21 +545,28 @@ class HttpToolRegistry:
         spec = self._specs.get(name)
         if spec is None:
             raise HttpToolError("unknown-tool", f"未知 HTTP 工具: {name!r}")
-        request = self._build_request(spec, arguments or {})
         try:
+            request = self._build_request(spec, arguments or {})
             return self._send(spec, request)
         except HttpToolError:
             raise
         except Exception as exc:
             # httpx.InvalidURL is not an HTTPError and its message can contain
-            # the interpolated URL, so only the exception type is reported.
+            # the interpolated URL; a raising secret resolver can carry the key.
+            # Only the exception type is ever reported.
             raise HttpToolError(
                 "http-error",
                 f"请求失败: {type(exc).__name__}",
             ) from None
 
     def _send(self, spec: HttpToolSpec, request: dict) -> dict:
-        kwargs: dict[str, Any] = {"headers": request["headers"]}
+        headers = dict(request["headers"])
+        # Ask compliant servers for an uncompressed body so the byte cap below
+        # bounds real memory; a response that is compressed anyway is refused
+        # unless the tool opted in, because httpx decompresses each raw chunk
+        # before the cap can be applied.
+        headers.setdefault("Accept-Encoding", "identity")
+        kwargs: dict[str, Any] = {"headers": headers}
         if "params" in request:
             kwargs["params"] = request["params"]
         if "json" in request:
@@ -539,6 +581,17 @@ class HttpToolRegistry:
                 status = response.status_code
                 if status >= 400:
                     raise HttpToolError("http-status", f"HTTP {status}")
+                encoding = response.headers.get("content-encoding", "").strip()
+                if (
+                    encoding
+                    and encoding.casefold() != "identity"
+                    and not spec.allow_compressed
+                ):
+                    raise HttpToolError(
+                        "http-encoding",
+                        f"拒绝压缩响应 ({encoding})：解压会在限流前吃掉内存；"
+                        "如确需，请写 allow_compressed: true",
+                    )
                 body = bytearray()
                 for chunk in response.iter_bytes(chunk_size=_CHUNK_SIZE):
                     remaining = _MAX_RESPONSE_BYTES - len(body)
