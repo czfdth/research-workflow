@@ -2118,3 +2118,24 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 按用户裁定只跑受影响模块：`test_cross_review`、`test_docs_consistency`、`test_scripts`、`test_automation_e2e`、`test_evidence_integrity_e2e`，共 **147 tests OK**（约 42 秒）。未跑全量，也未跑 app 侧（本轮未触碰 app 代码）。
 - 最终代码 HEAD 为 `0df6f05`（其后仅本账本与文档提交）。
 - 未实现边界：证明「评审在什么指令下产生」，不证明评审结论正确；LLM 采样仍不可复现；整份 JSON 被重写仍可伪造。
+
+## 平台依赖预检 doctor（2026-10-04，E82）
+
+- 目标：处理审计缺点表里的 #17「平台耦合」。工作流绑死在 git、LaTeX 工具链、codex、Docker、nvidia-smi 与两个 venv 上，缺哪个都只会在某个不相关的步骤里炸成一个看不懂的错。新增只读预检 `doctor`：点名缺什么，以及缺它禁用了哪个能力。
+- **判定**：`git` 缺失是 problem；`pdflatex`/`bibtex`/`xelatex`/`codex`/`docker`/`nvidia-smi` 与 `tools/.venv`、`app/.venv` 缺失默认是 advisory，`--strict` 一律升为 problem。`docker` 除了二进制还会执行 `docker info` 探测 daemon，daemon 不可达报 `doctor-daemon-down`（默认 advisory / strict 下 problem）——因为「有 docker 二进制但 daemon 没起」是本工作流实际踩到的失效，只报二进制等于假装通过。
+- **诚实边界**：`found` 只表示命令在 PATH 上、venv 解释器是非空文件；除 Docker daemon 外不执行任何命令，所以 `found` 不等于该命令跑得通。venv 默认检查要求非空普通文件（空文件/目录/断链都算缺失）。
+- **契约**：只读、不安装、不写文件；stdout JSON，stderr 逐行状态；退出码 0/1/2 与其它工具一致。新增 `scripts/doctor.ps1`，两份 CLI 清单（`test_scripts.py`、`test_docs_consistency.py`）与 README 工具表/阶段速查同步。
+
+### 实现与评审
+
+- `bfa3d03 feat: add a platform dependency preflight`：首版实现（含 daemon 探测与 15s 超时）+ 16 条用例；真机冒烟 `scripts/doctor.ps1` 输出 9 项 `found`、退 0。
+- 第一轮独立只读评审（`doctor-review.json`）判 **needs-fixes**，3 条：注入的 daemon runner 抛非 `OSError` 异常会带 traceback 逃出预检（important）；非 daemon 命令只查 PATH 就报 `ok`，与「报告能实际用什么」的 docstring 矛盾（important）；venv 检查信任空文件（minor）。
+- 修复 `357fbed fix: keep doctor honest about what it verified`：探测加宽为 `except Exception`；状态标签 `ok` 改为 `found`，并在 docstring/README/设计里写清「found=在 PATH 上、只有 Docker 会执行、venv 只确认非空解释器文件」；默认 venv 检查改为非空普通文件。补 4 条用例（注入异常、空解释器、非空解释器、标签措辞），三条行为用例对 `bfa3d03` 判别失败。
+- 第二轮定向复核（`doctor-review-2.json`，HEAD `357fbed`）判 **pass，findings 为空**。
+
+### 验证
+
+- 按用户裁定只跑受影响模块：`test_doctor`、`test_scripts`、`test_docs_consistency`，共 **91 tests OK**（约 40 秒）。`test_scripts` 会对新包装器实跑 `--help` 与非法参数两条真 PowerShell 用例。未跑全量，也未跑 app 侧。
+- 真机冒烟（`357fbed`）：`scripts/doctor.ps1` 退 0，9 项 `found`（git/pdflatex/bibtex/xelatex/codex/docker/nvidia-smi/tools venv/app venv），daemon 探测通过。
+- 最终代码 HEAD 为 `357fbed`（其后仅本账本提交）。
+- 未实现边界：`found` 不证明命令可执行成功（PATH 上的坏 shim 仍会显示 found）；不安装或修复任何依赖；不检查 daemon 之外的运行时状态。
