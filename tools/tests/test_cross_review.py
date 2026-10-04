@@ -1,4 +1,5 @@
 import hashlib
+import hashlib
 import json
 import tempfile
 import unittest
@@ -333,6 +334,16 @@ class TestRunReview(CrossReviewTests):
         )
         self.assertTrue(result["input_hashes"]["manuscript/main.tex"].startswith("sha256:"))
 
+    def test_prompt_hash_is_recorded_and_matches_the_prompt_sent(self):
+        runner = self._runner(payload=self._payload())
+
+        result = self._run(runner)
+
+        digest = hashlib.sha256(
+            runner.calls[0]["prompt"].encode("utf-8")
+        ).hexdigest()
+        self.assertEqual(result["prompt_sha256"], f"sha256:{digest}")
+
     def test_long_stderr_is_bounded_in_complete_record(self):
         runner = self._runner(
             payload=self._payload(),
@@ -643,6 +654,77 @@ class TestCheckReview(CrossReviewTests):
                 )
             ],
             ["review-family-mismatch"],
+        )
+
+    def test_matching_prompt_hash_is_not_reported(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(problems, [])
+
+    def test_record_without_prompt_hash_is_review_prompt_unknown(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("prompt_sha256", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-unknown"],
+        )
+
+    def test_stale_prompt_hash_is_review_prompt_drift(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["prompt_sha256"] = "sha256:" + "0" * 64
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-drift"],
+        )
+
+    def test_changed_gate_criterion_is_review_prompt_drift(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        original = cross_review_module.gate_for
+
+        def rewritten(mode, stage):
+            gate = original(mode, stage)
+            return gate._replace(criterion=gate.criterion + "（改写）")
+
+        with mock.patch.object(cross_review_module, "gate_for", rewritten):
+            problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-drift"],
+        )
+
+    def test_unbuildable_prompt_is_review_prompt_unknown(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        state = {
+            "target_venue": {"name": "NeurIPS", "mode": "not-a-mode"},
+            "stage": {"current": "internal-review"},
+        }
+        (self.paper_root / "ccfa.yaml").write_text(
+            yaml.safe_dump(state, sort_keys=False), encoding="utf-8"
+        )
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-prompt-unknown"],
         )
 
     def test_blocking_record_is_review_blocking(self):

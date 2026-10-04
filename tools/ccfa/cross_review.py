@@ -223,18 +223,22 @@ def _quote_is_cited(evidence: str, corpus: str) -> bool:
     )
 
 
-def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
-    """Build the independent-review prompt."""
-    paper_root = Path(paper_root)
-    mode = _load_mode(paper_root)
+def _sha256_text(text: str) -> str:
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
+    """Render the review prompt from already-resolved relative paths.
+
+    The file list is sorted so the prompt -- and therefore its digest -- does
+    not depend on the order the caller passed ``--path``. ``check_review``
+    rebuilds the same text from the stored record, so any change to the gate
+    criterion or the instruction block shows up as ``review-prompt-drift``.
+    """
     try:
         gate = gate_for(mode, stage)
     except (KeyError, ValueError) as exc:
         raise ValueError(f"未知 stage: {stage!r}") from exc
-    relative_paths = [
-        _relative_input(paper_root, Path(path))[1]
-        for path in paths
-    ]
     lines = [
         "你是独立评审模型，只评审 gate 是否满足，不替作者改稿。",
         f"目标模式: {mode}",
@@ -244,7 +248,7 @@ def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
         "",
         "待评审文件:",
     ]
-    lines.extend(f"- {path}" for path in relative_paths)
+    lines.extend(f"- {path}" for path in sorted(relative_paths))
     if stage == "internal-review":
         lines.extend(
             [
@@ -266,6 +270,26 @@ def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
+    """Build the independent-review prompt for the given input files."""
+    paper_root = Path(paper_root)
+    mode = _load_mode(paper_root)
+    relative_paths = [
+        _relative_input(paper_root, Path(path))[1]
+        for path in paths
+    ]
+    return _render_prompt(mode, stage, relative_paths)
+
+
+def _rebuild_prompt(
+    paper_root: Path,
+    stage: str,
+    relative_paths: list[str],
+) -> str:
+    """Rebuild a stored review's prompt without requiring the inputs to exist."""
+    return _render_prompt(_load_mode(Path(paper_root)), stage, relative_paths)
 
 
 def _schema_text() -> str:
@@ -429,6 +453,7 @@ def run_review(
 
     input_hashes = _input_hashes(paper_root, paths)
     prompt = build_prompt(paper_root, stage, paths)
+    prompt_sha256 = _sha256_text(prompt)
     schema_path.parent.mkdir(parents=True, exist_ok=True)
     save_text_atomically(
         schema_path,
@@ -476,6 +501,7 @@ def run_review(
             "blocking": [],
             "summary": "codex exec failed",
             "input_hashes": input_hashes,
+            "prompt_sha256": prompt_sha256,
             "started_at": started_at,
             "duration_s": duration_s,
             "stage": stage,
@@ -511,6 +537,7 @@ def run_review(
             "blocking": [],
             "summary": "review output missing or malformed",
             "input_hashes": input_hashes,
+            "prompt_sha256": prompt_sha256,
             "started_at": started_at,
             "duration_s": duration_s,
             "stage": stage,
@@ -536,6 +563,7 @@ def run_review(
         "blocking": normalized["blocking"],
         "summary": normalized["summary"],
         "input_hashes": input_hashes,
+        "prompt_sha256": prompt_sha256,
         "started_at": started_at,
         "duration_s": duration_s,
         "stage": stage,
@@ -679,6 +707,7 @@ def check_review(
             )
         )
     hashes = record.get("input_hashes")
+    hashes_usable = isinstance(hashes, dict)
     if not isinstance(hashes, dict):
         problems.append(
             Problem(
@@ -691,6 +720,7 @@ def check_review(
     else:
         for relative, expected in hashes.items():
             if not isinstance(relative, str) or not relative:
+                hashes_usable = False
                 problems.append(
                     Problem(
                         "review-record-invalid",
@@ -705,6 +735,7 @@ def check_review(
             try:
                 input_path.relative_to(root)
             except ValueError:
+                hashes_usable = False
                 problems.append(
                     Problem(
                         "review-record-invalid",
@@ -735,6 +766,60 @@ def check_review(
                         f"评审输入已变化: {relative}",
                     )
                 )
+    stage = record.get("stage")
+    expected_prompt_hash = record.get("prompt_sha256")
+    if hashes_usable:
+        if not isinstance(stage, str) or not stage.strip():
+            problems.append(
+                Problem(
+                    "review-prompt-unknown",
+                    str(path),
+                    None,
+                    "评审记录缺少 stage，无法重建评审指令来核对 prompt_sha256",
+                )
+            )
+        else:
+            try:
+                rebuilt = _rebuild_prompt(
+                    paper_root,
+                    stage,
+                    [key for key in hashes if isinstance(key, str)],
+                )
+            except (OSError, ValueError) as exc:
+                problems.append(
+                    Problem(
+                        "review-prompt-unknown",
+                        str(path),
+                        None,
+                        f"无法重建该评审的指令以核对 prompt_sha256: {exc}",
+                    )
+                )
+            else:
+                actual_prompt_hash = _sha256_text(rebuilt)
+                if (
+                    not isinstance(expected_prompt_hash, str)
+                    or not expected_prompt_hash.strip()
+                ):
+                    problems.append(
+                        Problem(
+                            "review-prompt-unknown",
+                            str(path),
+                            None,
+                            "评审记录缺少 prompt_sha256：无法证明它是在"
+                            "当前评审指令（gate 判据与 stage 提示）下产生的",
+                        )
+                    )
+                elif expected_prompt_hash != actual_prompt_hash:
+                    problems.append(
+                        Problem(
+                            "review-prompt-drift",
+                            str(path),
+                            None,
+                            "评审指令已变化"
+                            f"（记录 {expected_prompt_hash}，"
+                            f"当前 {actual_prompt_hash}）；必须重跑评审",
+                        )
+                    )
     if payload["verdict"] == "blocking":
         problems.append(
             Problem(

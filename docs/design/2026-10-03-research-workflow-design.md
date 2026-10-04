@@ -215,6 +215,8 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 
 **必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。信任边界：`check` 检测记录内部不一致，不是密码学签名；能改写整份 JSON 的人仍可同时伪造 `model` 与 `family_judgement`，本机防的是默认同族与无意错写，不是防本机恶意篡改。
 
+**评审指令漂移（v6 补记，E81）：** 只绑定输入文件哈希不足以说明评审仍然有效——`build_prompt` 里嵌着 gate 判据与 stage 提示，这些文本来自 `stages.py`，改了它们，旧评审就是在另一套指令下产生的。因此 `cross-review run` 把发送给评审模型的 prompt 的 sha256 写进记录（`prompt_sha256`），`check` 用记录里的 `stage` 与输入清单重建同一段 prompt 并比对：缺字段报 `review-prompt-unknown`，不一致报 `review-prompt-drift`，两者都是 problem，处置方式是重跑评审。prompt 里的文件清单做排序，所以 `--path` 的传入顺序不影响摘要；重建不需要输入文件仍然存在（输入没了由 `review-stale` 负责）。边界：这证明「评审是在当前指令下产生的」，不证明评审结论正确。
+
 触发约束：跨模型评审只在 gate 关键节点触发（T-14、内部审稿），不逐轮触发。
 
 ## 6. Skills 工具层
