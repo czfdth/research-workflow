@@ -447,6 +447,27 @@ class TestCheckReview(CrossReviewTests):
             [],
         )
 
+    def test_legacy_record_with_family_but_no_execution_model_is_only_same_family(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("execution_model", None)
+        record.pop("provider", None)
+        record.pop("family_override", None)
+        record["family_judgement"] = "same-family"
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-same-family"],
+        )
+        self.assertEqual(
+            check_review(self.paper_root, allow_same_family=True),
+            [],
+        )
+
     def test_blocking_record_is_review_blocking(self):
         quote = (
             "The baseline comparison omits the strongest published method "
@@ -679,6 +700,7 @@ class TestMainAndHelp(CrossReviewTests):
         text = stdout.getvalue()
         self.assertIn("同族不同规模", text)
         self.assertIn("非跨族", text)
+        self.assertNotIn("--execution-model", text)
 
     def test_main_run_pass_zero_blocking_one_and_oserror_two(self):
         pass_runner = self._runner(payload=self._payload("pass"))

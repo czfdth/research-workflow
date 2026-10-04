@@ -389,7 +389,6 @@ def run_review(
     *,
     model: str = DEFAULT_MODEL,
     provider: str | None = None,
-    execution_model: str = DEFAULT_EXECUTION_MODEL,
     allow_same_family: bool = False,
     stage: str,
     paths: list[Path],
@@ -400,6 +399,7 @@ def run_review(
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root)
+    execution_model = DEFAULT_EXECUTION_MODEL
     family = _family_judgement(model, execution_model)
     if family != "cross-family" and not allow_same_family:
         raise ValueError(
@@ -588,10 +588,9 @@ def check_review(
 
     problems: list[Problem] = []
     model = record.get("model")
-    execution_model = record.get("execution_model")
     computed_family = (
-        _family_judgement(model, execution_model)
-        if isinstance(model, str) and isinstance(execution_model, str)
+        _family_judgement(model, DEFAULT_EXECUTION_MODEL)
+        if isinstance(model, str)
         else "unknown"
     )
     stored_family = record.get("family_judgement")
@@ -719,10 +718,6 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--path", action="append", required=True)
     run.add_argument("--model", default=DEFAULT_MODEL)
     run.add_argument("--provider")
-    run.add_argument(
-        "--execution-model",
-        default=DEFAULT_EXECUTION_MODEL,
-    )
     run.add_argument("--allow-same-family", action="store_true")
     run.add_argument("--timeout", type=float, default=600)
     run.add_argument("--out-dir")
@@ -750,7 +745,6 @@ def main(argv: list[str]) -> int:
             Path(args.paper_root),
             model=args.model,
             provider=args.provider,
-            execution_model=args.execution_model,
             allow_same_family=args.allow_same_family,
             stage=args.stage,
             paths=[Path(item) for item in args.path],

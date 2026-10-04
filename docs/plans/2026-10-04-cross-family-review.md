@@ -4,7 +4,7 @@
 
 **裁定：**
 
-- **E68 记录真实组成。** 评审记录新增 `provider`、`execution_model`、`family_judgement`、`family_override`；`family_judgement` 由评审模型家族与执行模型家族计算，未知族记为 `unknown`。
+- **E68 记录真实组成。** 评审记录新增 `provider`、`execution_model`、`family_judgement`、`family_override`；`family_judgement` 由评审模型家族与执行模型家族计算，未知族记为 `unknown`。v1 的执行模型固定为工作流常量 `deepseek-v4-flash`，不作为 `run` 的 CLI 覆盖；跨族只能通过选择不同 family 的评审模型实现，不能用自报的 `--execution-model` 改变 gate。
 - **E69 默认拒绝同族/未知族。** `cross-review run` 只有在 `family_judgement=="cross-family"` 时才允许写 pass；同族/未知族默认退 2，除非显式传 `--allow-same-family`。override 只是诚实例外，不等于跨族。
 - **E70 `check` 强制同一口径。** 旧记录或缺字段记录默认报 problem `review-same-family`；只有记录内 `family_override: true` 或调用方显式 `check --allow-same-family` 才豁免。`--provider` 作为 `codex exec -c model_provider=<provider>` 传入并进记录。
 
