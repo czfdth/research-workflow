@@ -2042,4 +2042,5 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 独立评审（`governance-stats-novelty-review.json`）判 **fail**：novelty 可用重复数据库/重复 claim/未声明 claim_id 蒙过；stats_plan 接受 `.nan/.inf` 作为 `effect_size`；另有混合 ISO 日期、宽松 version、未 seed 台账、文档计数等低风险问题。
 - 修复：novelty 增加数据库/claim/近邻标题去重、近邻 id 必须存在于 `manuscript/references.bib`、claim_id 必须属于声明 claims；stats_plan 用有限数检查拒绝 `.nan/.inf` 和超大整数 effect_size；`is_iso_date` 只接受 `YYYY-MM-DD`；ledger version 要求严格 int；new-paper seed 三份空台账；更新设计文档与账本。
 - 修复后全量：tools **1056 tests OK**，app（offscreen）**141 tests OK**。
+- 第二轮复核（`governance-stats-novelty-review-2.json`）判 **pass**，无 blocking/important finding；保留两条低风险观察：缺 `references.bib` 时 novelty 退 2 而非结构化 problem，未跟踪的 weaknesses 文档仍保留旧治理缺口表述。
 - 边界：三道 gate 只强制结构化声明与覆盖，不保证新颖性、统计正确性或治理真实性。
