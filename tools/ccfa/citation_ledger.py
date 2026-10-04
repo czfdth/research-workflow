@@ -42,6 +42,7 @@ class LedgerRecord(NamedTuple):
     source: str
     evidence: LedgerEvidence | None = None
     evidence_error: str = ""
+    detail: str = ""
 
 
 def _parse_evidence(value: object) -> LedgerEvidence:
@@ -117,6 +118,11 @@ def load_ledger(path: Path) -> dict[str, LedgerRecord]:
             source=str(value.get("source", "")),
             evidence=evidence,
             evidence_error=evidence_error,
+            detail=(
+                value.get("detail")
+                if isinstance(value.get("detail"), str)
+                else ""
+            ),
         )
     return records
 
@@ -134,6 +140,8 @@ def save_ledger(path: Path, records: dict[str, LedgerRecord]) -> None:
         }
         if record.evidence is not None:
             entry["evidence"] = dict(record.evidence._asdict())
+        if record.detail:
+            entry["detail"] = record.detail
         entries[key] = entry
     text = json.dumps(
         {"version": 1, "entries": entries},

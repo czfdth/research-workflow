@@ -410,6 +410,7 @@ class TestVerifyOnline(BaseCase):
         record = load_ledger(self.ledger)["good"]
         self.assertEqual(record.status, "failed")
         self.assertIsNone(record.evidence)
+        self.assertEqual(record.detail, "doi mismatch")
 
     def test_real_lookup_round_trips_through_the_ledger(self):
         body = json.dumps(
@@ -491,6 +492,7 @@ class TestVerifyOnline(BaseCase):
         record = load_ledger(self.ledger)["good"]
         self.assertEqual(record.status, "failed")
         self.assertIsNone(record.evidence)
+        self.assertEqual(record.detail, "title missing")
 
         read_problems, _ = check(
             self.root / "manuscript",
@@ -529,7 +531,9 @@ class TestVerifyOnline(BaseCase):
 
         self.assertIn("doi-not-found", self.codes(problems))
         self.assertNotIn("doi-lookup-failed", self.codes(problems))
-        self.assertEqual(load_ledger(self.ledger)["good"].status, "failed")
+        record = load_ledger(self.ledger)["good"]
+        self.assertEqual(record.status, "failed")
+        self.assertIn("HTTP 404", record.detail)
 
     def test_provider_doi_mismatch_is_doi_lookup_failed(self):
         body = json.dumps(

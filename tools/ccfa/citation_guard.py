@@ -83,6 +83,7 @@ def check(
                     source=result.source or "",
                     evidence=None,
                     evidence_error="",
+                    detail=result.detail,
                 )
                 problems.append(
                     Problem(

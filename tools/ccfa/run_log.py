@@ -361,8 +361,9 @@ def check_runs(
                         f"运行指标为空对象: {record.get('run_id')}",
                     )
                 )
+        has_repo_field = "git_repo" in record
         repo = record.get("git_repo")
-        if "git_repo" not in record:
+        if not has_repo_field:
             advisories.append(
                 Problem(
                     "run-log-git-repo-unknown",
@@ -399,7 +400,10 @@ def check_runs(
                 )
             )
 
-        if repo in (None, "self") and not record.get("git_commit"):
+        if (
+            (not has_repo_field or repo == "self")
+            and not record.get("git_commit")
+        ):
             problems.append(
                 Problem(
                     "run-log-missing-commit",
@@ -408,7 +412,10 @@ def check_runs(
                     f"记录缺少 git commit: {record.get('run_id')}",
                 )
             )
-        if repo in (None, "self") and record.get("git_dirty") is True:
+        if (
+            (not has_repo_field or repo == "self")
+            and record.get("git_dirty") is True
+        ):
             advisories.append(
                 Problem(
                     "run-log-dirty-tree",

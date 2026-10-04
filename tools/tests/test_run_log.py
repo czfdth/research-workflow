@@ -102,6 +102,16 @@ class TestGitState(BaseCase):
         self.assertIsNone(state.git_commit)
         self.assertIsNone(state.git_dirty)
 
+    def test_non_ascii_repository_path_is_self_not_foreign(self):
+        non_ascii = self.root / "论文"
+        self.init_repo(non_ascii)
+
+        state = git_state(non_ascii)
+
+        self.assertEqual(state.git_repo, "self")
+        self.assertTrue(state.git_commit)
+        self.assertFalse(state.git_dirty)
+
 
 class TestReadConfig(BaseCase):
     def test_records_path_hash_and_parsed_content(self):
@@ -383,6 +393,49 @@ class TestCheckRuns(BaseCase):
             self._codes(advisories),
             ["run-log-git-repo-unknown"],
         )
+
+    def test_legacy_record_without_git_repo_still_reports_missing_commit(self):
+        record = self._base(git_commit=None, git_dirty=None)
+        del record["git_repo"]
+        self._write_record("a", record)
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(self._codes(problems), ["run-log-missing-commit"])
+        self.assertEqual(
+            self._codes(advisories),
+            ["run-log-git-repo-unknown"],
+        )
+
+    def test_explicit_null_git_repo_is_malformed_without_commit_noise(self):
+        self._write_record(
+            "a",
+            self._base(
+                git_repo=None,
+                git_commit=None,
+                git_dirty=None,
+            ),
+        )
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+        self.assertEqual(advisories, [])
+
+    def test_non_string_git_repo_is_malformed_without_commit_noise(self):
+        self._write_record(
+            "a",
+            self._base(
+                git_repo=7,
+                git_commit=None,
+                git_dirty=None,
+            ),
+        )
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+        self.assertEqual(advisories, [])
 
     def test_foreign_repo_is_a_problem_without_commit_noise(self):
         self._write_record(

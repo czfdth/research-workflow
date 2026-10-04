@@ -186,3 +186,33 @@ class TestLoadLedger(unittest.TestCase):
             reloaded["k"].evidence.body_sha256,
             "sha256:" + "b" * 64,
         )
+
+    def test_failed_record_round_trips_detail(self):
+        path = _ledger({"version": 1, "entries": {}})
+        records = {
+            "k": LedgerRecord(
+                key="k",
+                doi="10.1/x",
+                status="failed",
+                verified_at="",
+                source="crossref",
+                detail="doi mismatch",
+            )
+        }
+
+        save_ledger(path, records)
+
+        self.assertEqual(load_ledger(path)["k"].detail, "doi mismatch")
+
+    def test_legacy_failed_record_without_detail_is_compatible(self):
+        payload = {"version": 1, "entries": {"k": {"status": "failed"}}}
+
+        self.assertEqual(load_ledger(_ledger(payload))["k"].detail, "")
+
+    def test_non_string_detail_is_ignored(self):
+        payload = {
+            "version": 1,
+            "entries": {"k": {"status": "failed", "detail": 7}},
+        }
+
+        self.assertEqual(load_ledger(_ledger(payload))["k"].detail, "")
