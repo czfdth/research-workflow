@@ -204,7 +204,8 @@ scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
 ```
 
 人工复核应由真实的人完成。模型名字不能冒充 reviewer。跨族 provider 不可用时，
-同族 override 只能作为异常记录，不能当作独立评审。
+同族 override 只能作为异常记录，不能当作独立评审；即使模型返回 pass，
+effective verdict 也会被检查器重算为 blocking。
 
 ### `submission-check`：冻结投稿包
 

@@ -2326,5 +2326,10 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 独立 code review 发现并修复：malformed YAML 类型崩溃、只强制两个台账、模板无效、
   empirical/theoretical 证据错配、单向/重复链接、伪 run id、artifact 自报、
   探索条目空绑定、claim policy 分叉等 10 项问题。
+- cross-review 实行 `can drive, never acquit`：同族模型返回 pass 时，记录保留
+  `model_verdict=pass`，但 effective `verdict=blocking`，因此 override 不能开释。
+- 独立复审发现并修复两个 fail-open：`codex_config_path` 从 provenance 中删除会跳过
+  配置漂移核验；`model_verdict` 与 effective `verdict` 不一致时不报错。现在前者报
+  `review-provenance-incomplete`，后者报 `review-record-invalid`。
 - 验证：`tools.tests.test_research_ledgers` 18 tests OK；全量工具测试
-  `Ran 1232 tests, OK`。
+  `Ran 1236 tests, OK`。

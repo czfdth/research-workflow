@@ -213,7 +213,7 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 | 正文写作 | config 中的执行模型 | 显式指定的独立评审模型 |
 | 终稿检查 | 脚本（确定性） | 不需要模型 |
 
-**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。E86 之后，执行模型、执行 provider、评审 provider、endpoint 哈希和 provider 配置哈希从 Codex `config.toml` 解析，记录不再接受调用方自称 execution model；`check --codex-config` 或记录中的 `codex_config_path` 会把配置变化报为 `review-provider-config-drift`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。信任边界：`check` 检测记录内部不一致与配置漂移，不是密码学签名；能改写整份 JSON 与配置文件的人仍可伪造整条链路，本机防的是默认同族、无意错写和配置变化后旧评审继续冒充有效。
+**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。E86 之后，执行模型、执行 provider、评审 provider、endpoint 哈希和 provider 配置哈希从 Codex `config.toml` 解析，记录不再接受调用方自称 execution model；`check --codex-config` 或记录中的 `codex_config_path` 会把配置变化报为 `review-provider-config-drift`，而 `codex_config_path` 本身是必需 provenance，删除它会报 `review-provenance-incomplete`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。当前 provenance 也不能证明 provider 实际按 `-m` 服务的模型身份；provider alias 或忽略 `-m` 只能由 provider 自身的 `/models` 响应与运行日志继续核查。信任边界：`check` 检测记录内部不一致与配置漂移，不是密码学签名；能改写整份 JSON 与配置文件的人仍可伪造整条链路，局部改写 `model`、`execution_model`、`family_judgement`、`verdict`、`blocking` 等字段并保持组合自洽也无法被本地审计识别。本机防的是默认同族、无意错写和配置变化后旧评审继续冒充有效，不是防本机恶意伪造。
 
 **评审指令漂移（v6 补记，E81）：** 只绑定输入文件哈希不足以说明评审仍然有效——`build_prompt` 里嵌着 gate 判据与 stage 提示，这些文本来自 `stages.py`，改了它们，旧评审就是在另一套指令下产生的。因此 `cross-review run` 把发送给评审模型的 prompt 的 sha256 写进记录（`prompt_sha256`），`check` 用记录里的 `stage` 与输入清单重建同一段 prompt 并比对：缺字段报 `review-prompt-unknown`，不一致报 `review-prompt-drift`，两者都是 problem，处置方式是重跑评审。prompt 里的文件清单排序并去重，所以 `--path` 的传入顺序与重复都不影响摘要；重建不需要输入文件仍然存在（输入没了由 `review-stale` 负责）。评审输入为空不是合法评审：`run` 传空 `--path` 直接退 2，`check` 遇到空 `input_hashes` 报 `review-malformed`。边界：这证明「评审是在当前指令下产生的」，不证明评审结论正确，也不防整份 JSON 被重写。
 
@@ -317,6 +317,14 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 或 requirements 陈旧时不再假绿。`trace-claims` 增加 `--manuscript`，CI 不再需要自行
 枚举全部 `.tex`。`cross-review run --model` 改为必填，不再隐式选择评审模型。
 `governance` 对 pending/TBD/placeholder 文本报 `governance-placeholder`。
+
+同族评审新增 `can drive, never acquit` 约束：记录保留模型的原始
+`model_verdict`，但 effective `verdict` 只能是 `blocking`。同族 override 只解释
+为什么允许记录这次评审，不能把模型返回的 `pass` 变成 gate pass。真正跨族评审仍需
+不同 family provider。`check` 也会重新计算该约束，因此只改 effective `verdict`
+不能把同族记录变成通过；但记录本身仍不是密码学签名，完整改写自洽字段不属于本机
+审计能防的范围。`codex_config_path` 现在是必需的 provenance 字段，缺失时报
+`review-provenance-incomplete`，防止删掉该字段来跳过配置漂移核验。
 
 ### 6.2 终稿确定性检查项
 

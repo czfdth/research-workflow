@@ -85,17 +85,26 @@ class CrossReviewTests(unittest.TestCase):
 
     def _run(self, runner, **overrides):
         values = {
-            "model": "deepseek-v4-pro",
-            "allow_same_family": True,
-            "override_reason": (
-                "test migration: no second-family provider is configured"
-            ),
+            "model": "gpt-5.6",
+            "allow_same_family": False,
+            "override_reason": None,
             "stage": "internal-review",
             "paths": [Path("manuscript/main.tex")],
             "codex_config": self.codex_config,
         }
         values.update(overrides)
         return run_review(self.paper_root, runner=runner, **values)
+
+    def _run_same_family(self, runner, **overrides):
+        values = {
+            "model": "deepseek-v4-pro",
+            "allow_same_family": True,
+            "override_reason": (
+                "test migration: no second-family provider is configured"
+            ),
+        }
+        values.update(overrides)
+        return self._run(runner, **values)
 
     def _record_path(self):
         return self.paper_root / "reviews" / "cross-review.json"
@@ -132,7 +141,7 @@ class TestPromptAndArgv(CrossReviewTests):
         argv = runner.calls[0]["argv"]
         self.assertEqual(argv[:2], ["codex", "exec"])
         self.assertIn("-m", argv)
-        self.assertEqual(argv[argv.index("-m") + 1], "deepseek-v4-pro")
+        self.assertEqual(argv[argv.index("-m") + 1], "gpt-5.6")
         self.assertIn("-s", argv)
         self.assertEqual(argv[argv.index("-s") + 1], "read-only")
         self.assertIn("--ephemeral", argv)
@@ -194,17 +203,35 @@ class TestRunReview(CrossReviewTests):
     def test_pass_writes_json_and_markdown_records(self):
         runner = self._runner(payload=self._payload("pass"))
 
-        result = self._run(runner)
+        result = self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+            override_reason=None,
+        )
 
         self.assertEqual(result["verdict"], "pass")
-        self.assertEqual(result["family_judgement"], "same-family")
+        self.assertEqual(result["family_judgement"], "cross-family")
         self.assertTrue(self._record_path().is_file())
         self.assertTrue((self.paper_root / "reviews" / "cross-review.md").is_file())
-        self.assertEqual(result["model"], "deepseek-v4-pro")
+        self.assertEqual(result["model"], "gpt-5.6")
         self.assertEqual(result["execution_model"], "deepseek-v4-flash")
         self.assertEqual(result["execution_provider"], "deepseek-provider")
         self.assertRegex(result["provider_endpoint_sha256"], r"^sha256:[0-9a-f]{64}$")
         self.assertNotIn("deepseek.example.test", json.dumps(result))
+
+    def test_same_family_pass_is_downgraded_to_blocking(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run_same_family(runner)
+
+        self.assertEqual(result["model_verdict"], "pass")
+        self.assertEqual(result["verdict"], "blocking")
+        self.assertIn("never acquit", result["summary"])
+        self.assertEqual(
+            [problem.code for problem in check_review(self.paper_root, allow_same_family=True)],
+            ["review-blocking"],
+        )
 
     def test_missing_codex_config_fails_closed_before_running(self):
         runner = self._runner(payload=self._payload("pass"))
@@ -232,7 +259,11 @@ class TestRunReview(CrossReviewTests):
         runner = self._runner(payload=self._payload("pass"))
 
         with self.assertRaisesRegex(ValueError, "allow-same-family"):
-            self._run(runner, allow_same_family=False)
+            self._run(
+                runner,
+                model="deepseek-v4-pro",
+                allow_same_family=False,
+            )
 
         self.assertEqual(runner.calls, [])
         self.assertFalse(self._record_path().exists())
@@ -243,6 +274,7 @@ class TestRunReview(CrossReviewTests):
         with self.assertRaisesRegex(ValueError, "override-reason"):
             self._run(
                 runner,
+                model="deepseek-v4-pro",
                 allow_same_family=True,
                 override_reason=None,
             )
@@ -253,7 +285,14 @@ class TestRunReview(CrossReviewTests):
     def test_same_family_override_reason_is_recorded(self):
         runner = self._runner(payload=self._payload("pass"))
 
-        result = self._run(runner)
+        result = self._run(
+            runner,
+            model="deepseek-v4-pro",
+            allow_same_family=True,
+            override_reason=(
+                "test migration: no second-family provider is configured"
+            ),
+        )
 
         self.assertTrue(result["family_override"])
         self.assertIn("no second-family provider", result["family_override_reason"])
@@ -525,7 +564,7 @@ class TestCheckReview(CrossReviewTests):
 
     def test_same_family_record_is_a_problem_without_override(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record["family_override"] = False
         self._record_path().write_text(json.dumps(record), encoding="utf-8")
@@ -534,7 +573,7 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-same-family"],
+            ["review-same-family", "review-blocking"],
         )
         self.assertEqual(
             [
@@ -544,12 +583,12 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            [],
+            ["review-blocking"],
         )
 
     def test_same_family_override_without_reason_is_a_problem(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record.pop("family_override_reason", None)
         self._record_path().write_text(json.dumps(record), encoding="utf-8")
@@ -561,12 +600,12 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-override-reason-missing"],
+            ["review-override-reason-missing", "review-blocking"],
         )
 
     def test_strict_cross_family_reports_override(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
 
         problems = check_review(
             self.paper_root,
@@ -576,12 +615,12 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-family-override"],
+            ["review-family-override", "review-blocking"],
         )
 
     def test_edited_family_judgement_cannot_bypass_recomputation(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record["family_override"] = False
         record["family_judgement"] = "cross-family"
@@ -591,19 +630,23 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-family-mismatch", "review-same-family"],
+            [
+                "review-family-mismatch",
+                "review-same-family",
+                "review-blocking",
+            ],
         )
         self.assertEqual(
             [problem.code for problem in check_review(
                 self.paper_root,
                 allow_same_family=True,
             )],
-            ["review-family-mismatch"],
+            ["review-family-mismatch", "review-blocking"],
         )
 
     def test_legacy_record_without_family_fields_requires_explicit_migration(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record.pop("family_judgement", None)
         record.pop("family_override", None)
@@ -613,7 +656,11 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-provenance-incomplete", "review-same-family"],
+            [
+                "review-provenance-incomplete",
+                "review-same-family",
+                "review-blocking",
+            ],
         )
         self.assertEqual(
             [
@@ -623,12 +670,12 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-provenance-incomplete"],
+            ["review-provenance-incomplete", "review-blocking"],
         )
 
     def test_legacy_record_with_family_but_no_execution_model_is_only_same_family(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record.pop("execution_model", None)
         record.pop("provider", None)
@@ -640,7 +687,11 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-provenance-incomplete", "review-same-family"],
+            [
+                "review-provenance-incomplete",
+                "review-same-family",
+                "review-blocking",
+            ],
         )
         self.assertEqual(
             [
@@ -650,7 +701,7 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-provenance-incomplete"],
+            ["review-provenance-incomplete", "review-blocking"],
         )
 
     def test_missing_provenance_is_flagged_even_for_a_cross_family_looking_model(self):
@@ -670,7 +721,11 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-provenance-incomplete", "review-same-family"],
+            [
+                "review-provenance-incomplete",
+                "review-same-family",
+                "review-blocking",
+            ],
         )
         self.assertEqual(
             [
@@ -680,7 +735,7 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-provenance-incomplete"],
+            ["review-provenance-incomplete", "review-blocking"],
         )
 
     def test_edited_execution_model_recomputes_family_and_detects_drift(self):
@@ -703,6 +758,7 @@ class TestCheckReview(CrossReviewTests):
                 "review-provider-config-drift",
                 "review-family-mismatch",
                 "review-same-family",
+                "review-blocking",
             ],
         )
         self.assertEqual(
@@ -713,7 +769,11 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-provider-config-drift", "review-family-mismatch"],
+            [
+                "review-provider-config-drift",
+                "review-family-mismatch",
+                "review-blocking",
+            ],
         )
 
     def test_missing_endpoint_hash_makes_provenance_incomplete(self):
@@ -744,6 +804,44 @@ class TestCheckReview(CrossReviewTests):
             ["review-provenance-incomplete"],
         )
 
+    def test_missing_codex_config_path_is_provenance_incomplete(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("codex_config_path", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-provenance-incomplete"],
+        )
+
+    def test_inconsistent_model_verdict_is_rejected(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["model_verdict"] = "blocking"
+        record["verdict"] = "pass"
+        record["blocking"] = []
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-record-invalid"],
+        )
+
     def test_config_change_invalidates_complete_review(self):
         runner = self._runner(payload=self._payload())
         self._run(
@@ -770,7 +868,7 @@ class TestCheckReview(CrossReviewTests):
 
     def test_mismatch_survives_incomplete_provenance_and_allow_flag(self):
         runner = self._runner(payload=self._payload())
-        self._run(runner)
+        self._run_same_family(runner)
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record["family_override"] = False
         record["family_judgement"] = "cross-family"
@@ -785,6 +883,7 @@ class TestCheckReview(CrossReviewTests):
                 "review-provenance-incomplete",
                 "review-family-mismatch",
                 "review-same-family",
+                "review-blocking",
             ],
         )
         self.assertEqual(
@@ -795,16 +894,16 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-provenance-incomplete", "review-family-mismatch"],
+            [
+                "review-provenance-incomplete",
+                "review-family-mismatch",
+                "review-blocking",
+            ],
         )
 
     def test_unknown_family_mismatch_survives_allow_flag(self):
         runner = self._runner(payload=self._payload())
-        self._run(
-            runner,
-            model="mystery-v1",
-            allow_same_family=True,
-        )
+        self._run_same_family(runner, model="mystery-v1")
         record = json.loads(self._record_path().read_text(encoding="utf-8"))
         record["family_override"] = False
         record["family_judgement"] = "same-family"
@@ -814,7 +913,11 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-family-mismatch", "review-same-family"],
+            [
+                "review-family-mismatch",
+                "review-same-family",
+                "review-blocking",
+            ],
         )
         self.assertEqual(
             [
@@ -824,7 +927,24 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-family-mismatch"],
+            ["review-family-mismatch", "review-blocking"],
+        )
+
+    def test_same_family_record_with_pass_verdict_is_blocked(self):
+        runner = self._runner(payload=self._payload())
+        self._run_same_family(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["model_verdict"] = "pass"
+        record["verdict"] = "pass"
+        record.pop("blocking", None)
+        record["blocking"] = []
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-blocking"],
         )
 
     def test_matching_prompt_hash_is_not_reported(self):

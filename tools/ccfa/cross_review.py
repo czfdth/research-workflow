@@ -48,6 +48,7 @@ _REQUIRED_PROVENANCE_FIELDS = (
     "provider_endpoint_sha256",
     "execution_endpoint_sha256",
     "provider_config_sha256",
+    "codex_config_path",
 )
 _MODEL_FAMILIES = (
     ("deepseek-", "deepseek"),
@@ -402,6 +403,7 @@ def _render_markdown(record: dict) -> str:
         "# 跨模型评审记录",
         "",
         f"- model: {record['model']}",
+        f"- model_verdict: {record.get('model_verdict', record['verdict'])}",
         f"- family_judgement: {record['family_judgement']}",
         f"- verdict: {record['verdict']}",
         f"- started_at: {record['started_at']}",
@@ -626,18 +628,36 @@ def run_review(
         _write_records(malformed, json_path, markdown_path)
         return malformed
 
+    model_verdict = normalized["verdict"]
+    effective_verdict = model_verdict
+    effective_summary = normalized["summary"]
+    if family != "cross-family":
+        if model_verdict == "pass":
+            effective_verdict = "blocking"
+            effective_summary = (
+                "同族评审不能开释（can drive, never acquit）。"
+                "模型返回 pass，但当前评审记录不能作为 gate pass。 "
+                + normalized["summary"]
+            )
+        else:
+            effective_summary = (
+                "同族评审不能开释（can drive, never acquit）。 "
+                + normalized["summary"]
+            )
+
     record = {
         "status": "complete",
         "model": model,
+        "model_verdict": model_verdict,
         "provider": provider,
         **provenance,
         "execution_model": execution_model,
         "family_judgement": family,
         "family_override": allow_same_family,
         "family_override_reason": override_reason,
-        "verdict": normalized["verdict"],
+        "verdict": effective_verdict,
         "blocking": normalized["blocking"],
-        "summary": normalized["summary"],
+        "summary": effective_summary,
         "input_hashes": input_hashes,
         "prompt_sha256": prompt_sha256,
         "started_at": started_at,
@@ -718,6 +738,25 @@ def check_review(
         else "unknown"
     )
     stored_family = record.get("family_judgement")
+    model_verdict = record.get("model_verdict")
+    if model_verdict is not None:
+        verdict_is_consistent = model_verdict == payload["verdict"] or (
+            model_verdict == "pass"
+            and payload["verdict"] == "blocking"
+            and computed_family != "cross-family"
+        )
+        if model_verdict not in ("pass", "blocking") or not verdict_is_consistent:
+            problems.append(
+                Problem(
+                    "review-record-invalid",
+                    str(path),
+                    None,
+                    "评审记录 model_verdict="
+                    f"{model_verdict!r} 与 effective verdict="
+                    f"{payload['verdict']!r} 不一致；"
+                    "只有同族/未知族的 pass→blocking 降级是允许的",
+                )
+            )
     provenance_complete = (
         isinstance(stored_family, str)
         and stored_family in {"same-family", "cross-family", "unknown"}
@@ -738,7 +777,7 @@ def check_review(
                 None,
                 "评审记录缺少完整 provider provenance"
                 "（provider/execution_model/execution_provider/endpoint hashes/"
-                "provider_config_sha256/family_override）",
+                "provider_config_sha256/codex_config_path/family_override）",
             )
         )
     current_provenance: dict | None = None
@@ -960,13 +999,23 @@ def check_review(
                             f"当前 {actual_prompt_hash}）；必须重跑评审",
                         )
                     )
-    if payload["verdict"] == "blocking":
+    same_family_cannot_acquit = (
+        computed_family != "cross-family" and payload["verdict"] == "pass"
+    )
+    if payload["verdict"] == "blocking" or same_family_cannot_acquit:
+        summary = payload["summary"] or "评审报告包含 blocking 项"
+        if same_family_cannot_acquit:
+            summary = (
+                "同族评审不能开释（can drive, never acquit）："
+                f"重算 family_judgement={computed_family!r}，"
+                "记录不能作为 gate pass。"
+            )
         problems.append(
             Problem(
                 "review-blocking",
                 str(path),
                 None,
-                payload["summary"] or "评审报告包含 blocking 项",
+                summary,
             )
         )
         corpus = _input_corpus(paper_root, hashes)
