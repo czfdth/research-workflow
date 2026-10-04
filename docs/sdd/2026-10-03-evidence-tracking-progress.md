@@ -1909,3 +1909,10 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **DOI code 拆分 `c0da3ae`（`Kierkegaard`）**：**Approved**，无新 Critical/Important/Minor。分支矩阵（both 404 → `doi-not-found`；mismatch/title missing/title mismatch/bad JSON → `doi-lookup-failed`、`http_ok=True`；`_default_fetch` 两分支 bytes）全部核实；反向变异用例失败原文留档；干净 worktree 902 OK。
   - 残留观察（已排收尾 B）：台账 `status=failed` 不保存失败原因，读账无法区分 not-found 与 mismatch → 存 `detail`。
 - 收尾轮（A+B）已排 `Confucius`（在 Task 3b 之后）：commit `fix: sharpen run-log provenance and citation failure evidence`。
+
+## Task 3b + 收尾轮落地（`723735a`、`c09601d`）
+
+- **Task 3b `723735a`**（`Confucius`）：run-log 只写 `declared_purpose`（旧 `purpose` 读取兼容；help/docstring 明说"声明不构成证据"）；milestones 的 T-30 对 `declared_purpose=="build"` 豁免 problem 但输出 advisory `t30-declared-build-run`（含 run id、日期、声明不构成证据），experiment/无声明仍是 problem；cross-review `check` 要求每条 blocking 的 evidence 含 ≥20 字符且逐字命中输入文件的引文，否则 `review-uncited-blocking` 退 1。判别力：build 豁免改静默 → `StopIteration`；去引文校验 → `['review-blocking'] != ['review-blocking','review-uncited-blocking']`。tools 908 OK。
+  - 偏离：`test_automation_e2e.py` 的 blocking fixture 换成真实引文（否则全量必红），属必要适配；计划里"gate 证据化"未做（本次规格只要求 T-30 可见化），留待后续。
+- **小收尾 `c09601d`**：非 ASCII 路径守护用例（`<tmp>/论文`，locale 回退时 `'foreign' != 'self'` 失败）；显式 `git_repo: null` 只报 malformed、不再叠加 missing-commit；台账 `status=failed` 保存 `detail`（legacy 兼容）。判别力三条实测。tools 915 OK。
+- 评审（`Kierkegaard`，两节）与 **Task 4** 已派：迁移 `papers/rag-attack-defense` 为独立仓库 + 真实 run-log（`git_repo=self`）+ 覆盖率报告 + `checks.md` 换机器产物 + `test_evidence_integrity_e2e.py`；commit `feat: migrate the example paper and publish its coverage report`。
