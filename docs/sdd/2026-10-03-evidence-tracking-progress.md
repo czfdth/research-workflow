@@ -2387,3 +2387,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness 在台账存在时运行 `rigor-rubric` gate；新论文模板预置台账。
 - 新增 `tools/tests/test_rigor.py` 11 条覆盖；create/readiness/scripts/docs
   测试同步。
+
+## Proof orchestration 与跨天续跑（2026-10-05）
+
+- 新增 `data/proof-campaign.yaml`、`tools/ccfa/proof_orchestrator.py` 与
+  `scripts/proof-orchestrator.ps1`，落地对标报告 P2-11。
+- campaign 绑定 claim、theorem 与多次 attempt；attempt 记录策略、状态、结果、
+  失败原因、证据和 next_action，支持 open/blocked/proved/refuted/abandoned。
+- `proved` 必须指向 proof-audit 中真人 verified 的 review；模型 reviewer 不能
+  开释；refuted 需要 counterexample，abandoned 需要理由。
+- `next` 只读输出当前待办，不自动推进证明；high-assurance 使用
+  `--require-complete` 拒绝仍为 open/blocked 的 campaign。
+- 新增 `tools/tests/test_proof_orchestrator.py` 7 条覆盖；create/readiness/
+  scripts/docs 测试同步。

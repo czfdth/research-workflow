@@ -45,6 +45,7 @@ CCFA_WRAPPERS = {
     "experiment_loop": "experiment-loop.ps1",
     "post_submission": "post-submission.ps1",
     "rigor": "rigor-rubric.ps1",
+    "proof_orchestrator": "proof-orchestrator.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

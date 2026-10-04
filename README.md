@@ -87,6 +87,7 @@ git -C $paper status --short
 | `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id，并输出下一批待办动作 | `scripts/experiment-loop.ps1` |
 | `tools/ccfa/post_submission.py` | 校验 rebuttal 回复矩阵、resubmit venue 差异与 talk 大纲的产出物契约 | `scripts/post-submission.ps1` |
 | `tools/ccfa/rigor.py` | 校验六维 rigor rubric 的评分、证据引用与“模型只能 advisory、不能开释”边界 | `scripts/rigor-rubric.ps1` |
+| `tools/ccfa/proof_orchestrator.py` | 记录跨会话 proof campaign、失败尝试、阻塞点与下一步，并把 proved 绑定到真人 verified 证明复核 | `scripts/proof-orchestrator.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查
@@ -113,6 +114,7 @@ git -C $paper status --short
 | `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |
 | `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项；执行模型、provider 与 endpoint 哈希从 Codex 配置解析并写入 provenance；`check` 因输入变化报 `review-stale`，因评审指令变化报 `review-prompt-drift`，因 provider 配置变化报 `review-provider-config-drift` |
 | `internal-review`、`submission-check` | `scripts/rigor-rubric.ps1` | 检查六维 rigor rubric 的真人/模型边界、0..4 评分、理由与 claim/run/file 证据引用 |
+| `grounded`、`internal-review` | `scripts/proof-orchestrator.ps1` | 记录跨天证明尝试与下一步，检查 proved 是否绑定 proof-audit 的真人 verified 记录 |
 | `results-ready`、`internal-review` | `scripts/argument-audit.ps1` | 检查人工证明复核、引用语义支持与图表语义支持台账；未复核即 problem |
 | `experiment-design`、`results-ready` | `scripts/human-coding.ps1` | 对人工双编码表计算一致率与 Cohen's kappa 置信区间 |
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |

@@ -200,6 +200,7 @@ scripts/latex-check.ps1 `
 主要文件：
 
 - `data/proof-audit.yaml`
+- `data/proof-campaign.yaml`
 - `data/citation-support.yaml`
 - `data/figure-support.yaml`
 - `data/rigor-rubric.yaml`
@@ -207,6 +208,7 @@ scripts/latex-check.ps1 `
 
 ```powershell
 scripts/argument-audit.ps1 --paper-root $paper
+scripts/proof-orchestrator.ps1 check --paper-root $paper
 scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
     --strict-cross-family
 scripts/rigor-rubric.ps1 check --paper-root $paper

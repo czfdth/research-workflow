@@ -27,6 +27,7 @@ from ccfa import (
     latex_check,
     novelty,
     post_submission,
+    proof_orchestrator,
     repro_package,
     repro_env,
     research_ledgers,
@@ -62,6 +63,7 @@ EVIDENCE_LEDGER_PATHS = {
     "human-coding": Path("data/human-coding-report.json"),
     "post-submission": Path("data/post-submission.yaml"),
     "rigor-rubric": Path("data/rigor-rubric.yaml"),
+    "proof-orchestrator": Path("data/proof-campaign.yaml"),
 }
 
 PROFILE_REQUIRED_LEDGERS = {
@@ -76,6 +78,7 @@ PROFILE_REQUIRED_LEDGERS = {
         "risk-register",
         "experiment-loop",
         "rigor-rubric",
+        "proof-orchestrator",
         "citation-support",
         "figure-support",
         "novelty",
@@ -104,6 +107,7 @@ LEDGER_GATE_NAMES = {
     "human-coding": "human-coding",
     "experiment-loop": "experiment-loop",
     "rigor-rubric": "rigor-rubric",
+    "proof-orchestrator": "proof-orchestrator",
 }
 
 
@@ -298,6 +302,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         "statistics": lambda: stats_plan.check(paper_root),
         "experiment-loop": lambda: experiment_loop.check(paper_root),
         "rigor-rubric": lambda: rigor.check(
+            paper_root,
+            require_complete=profile == "high-assurance",
+        ),
+        "proof-orchestrator": lambda: proof_orchestrator.check(
             paper_root,
             require_complete=profile == "high-assurance",
         ),

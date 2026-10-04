@@ -66,6 +66,16 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_rigor", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_proof_orchestrator_selects_readiness_integration_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/proof_orchestrator.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_proof_orchestrator", selection.tests)
+        self.assertIn("tools.tests.test_readiness", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_test_module_selects_itself(self):
         selection = select_tests(
             ["tools/tests/test_research_ledgers.py"],

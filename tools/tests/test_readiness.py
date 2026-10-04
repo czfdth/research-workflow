@@ -126,6 +126,7 @@ class ReadinessTests(unittest.TestCase):
         self.assertIn("claim-registry", report["evidence"]["missing_required"])
         self.assertIn("experiment-loop", report["evidence"]["missing_required"])
         self.assertIn("rigor-rubric", report["evidence"]["missing_required"])
+        self.assertIn("proof-orchestrator", report["evidence"]["missing_required"])
         research = next(
             item
             for item in report["gate_results"]

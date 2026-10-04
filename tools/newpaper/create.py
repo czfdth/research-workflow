@@ -236,6 +236,12 @@ SEED_FILES = {
         "    rationale: ''\n"
         "    evidence: []\n"
     ),
+    "data/proof-campaign.yaml": (
+        "version: 1\n"
+        "not_applicable: false\n"
+        "not_applicable_reason: ''\n"
+        "campaigns: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

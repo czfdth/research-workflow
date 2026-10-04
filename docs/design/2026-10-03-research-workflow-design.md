@@ -670,6 +670,22 @@ standard profile 在台账存在时运行 advisory gate；high-assurance 使用
 `--require-complete`，要求真人完成的六维 rubric。该工具验证的是记录完整性
 和边界，不替代人的评分判断。
 
+### 9.6 Proof orchestration 与跨天续跑
+
+对标报告的 P2-11 要求把跨天证明战役做成可中断、可续跑的记录，而不是只保留
+最后一次成功尝试。v6.1 新增 `data/proof-campaign.yaml`、
+`tools/ccfa/proof_orchestrator.py` 与 `scripts/proof-orchestrator.ps1`：
+
+- 每个 campaign 绑定 claim、theorem id 和多次 attempt；attempt 记录策略、
+  状态、结果、失败原因、证据和下一步动作。
+- `open`/`blocked` campaign 必须有最后的 `next_action`；failed/blocked attempt
+  必须写明失败原因。`next` 子命令只输出当前待办，不替人推进证明。
+- `proved` 必须同时指向 `proof-audit.yaml` 中 `status=verified` 且由真人复核的
+  theorem 记录；模型 reviewer 不能开释。`refuted` 需要 counterexample 证据，
+  `abandoned` 需要 abandon_reason。
+- standard profile 使用 advisory gate；high-assurance 使用
+  `--require-complete`，要求所有 campaign 离开 open/blocked。
+
 ## 10. 目录结构
 
 模板库：
