@@ -1950,3 +1950,24 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - fresh clone（新建 `tools/.venv` + `pip install -r tools/requirements.txt`）后：`Ran 929 tests OK`。
 - 论文提交树 clean clone（`9d372d2`）：`git status --porcelain` 为空；`run-log check` 退 0（problems=0）；`cross-review check` 退 1（15 条 stale，符合预期）；`final-check` 退 1（2 个 protected-section problem，符合提交报告）。
 - 现状说明：主工作树中的论文仓库仍被另一个并行任务写入未提交的稿件/表格/手工编码文件（`manuscript/`、`tables/`、`ccfa-workfiles/literature/human-coding-v2/` 等）；按"不得为干净丢弃记录"的规则未触碰、未提交这些改动。可复现性以提交树和 clean clone 为准。
+
+## 长任务安全 v1（2026-10-04，E64–E67）
+
+- 计划：`docs/plans/2026-10-04-long-task-safety.md`。目标是把审计 P1-5 从"只有墙钟预算与显式重试"补到"可中断、可观察、有停止条件"。
+- **E64 并发上限 = 1**：`queue` 用 OS 文件锁而不是易竞态的 PID 陈旧锁协议。Windows 用 `msvcrt.locking`，POSIX 用 `fcntl.flock`；进程退出/异常自动释放，锁文件保留诊断元数据。
+- **E65 GPU 预算**：`GpuMeter` 采样 `nvidia-smi --query-gpu=utilization.gpu`，按利用率 ≥5% 的墙钟时间累计 GPU 秒数；`gpu_seconds/gpu_samples` 进独立 `resource_usage` 字段，**不写 metrics**，因此成功但未调用 `log-metrics` 的运行仍会被 `run-log-metrics-pending` 报出。预算耗尽后后续项记 `skipped-gpu-budget`。
+- **E66 看门狗**：默认 runner 按 4 KiB 字节块读 stdout/stderr 并刷新活动时间；`stall_timeout_s` 内无任何输出才 kill，记 `stalled`，只有 `retry_on_stall` 为真才重试。
+- **E67 策略沙箱**：`sandbox: policy` 做 cwd containment 与环境白名单，只支持默认 runner；注入 runner 直接退 2。help/计划/设计明确写清它不是文件系统、网络或 GPU 隔离。
+
+### 实现与评审
+
+- `17ab214 feat: add long-task safety controls to the experiment queue`：首版实现与判别测试。
+- `1808857 fix: harden queue locks, gpu accounting, and watchdog`：独立评审发现 7 条边界问题；修复了 GPU 计数混入 metrics、无换行输出误杀、policy 被注入 runner 伪记录、relative queue root 的 cwd containment、GpuMeter 采样线程重叠计数、锁写失败残留、陈旧锁回收等问题。
+- `486ae01 fix: use OS file locks for queue exclusion`：第二轮定向复验指出 `_stale()+os.replace()` 仍有 TOCTOU；最终改为 Windows `msvcrt` / POSIX `fcntl` OS 文件锁，彻底移除 `_stale/_pid_alive/_recover_stale/unlink/O_EXCL` 路径。
+- 评审记录：`long-task-review.json`（needs-fixes，7 条）→ `long-task-review-2.json`（needs-fixes，TOCTOU）→ `long-task-review-3.json`（**pass，findings 为空**）。
+
+### 真实验证
+
+- 真实 `nvidia-smi` 冒烟：`GpuMeter` 返回 `{'seconds': 0.25, 'samples': 3, 'errors': 0}`。
+- 真实 queue 冒烟（policy + GPU budget）：CLI 退 0；run-log 记录同时有 `policy={"sandbox":"policy"}`、独立 `resource_usage={"gpu_seconds":..., "gpu_samples":...}`，而 `metrics` 保持 `null`。
+- 全量：tools **955 tests OK**；app（offscreen）**141 tests OK**，于 486ae01 代码状态验证（其后仅文档/账本变更）。
