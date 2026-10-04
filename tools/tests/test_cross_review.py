@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -152,6 +153,35 @@ class TestPromptAndArgv(CrossReviewTests):
 
 
 class TestRunReview(CrossReviewTests):
+    def test_relative_paper_root_uses_absolute_codex_paths(self):
+        runner = self._runner(payload=self._payload())
+        original_cwd = Path.cwd()
+        os.chdir(self.paper_root.parent)
+        try:
+            run_review(
+                Path(self.paper_root.name),
+                model="deepseek-v4-pro",
+                allow_same_family=True,
+                override_reason=(
+                    "test migration: no second-family provider is configured"
+                ),
+                stage="internal-review",
+                paths=[Path("manuscript/main.tex")],
+                runner=runner,
+                codex_config=self.codex_config,
+            )
+        finally:
+            os.chdir(original_cwd)
+
+        argv = runner.calls[0]["argv"]
+        codex_cwd = Path(argv[argv.index("-C") + 1])
+        self.assertTrue(codex_cwd.is_absolute())
+        self.assertEqual(codex_cwd, self.paper_root.resolve())
+        self.assertTrue(
+            Path(argv[argv.index("--output-schema") + 1]).is_absolute()
+        )
+        self.assertTrue(Path(argv[argv.index("-o") + 1]).is_absolute())
+
     def test_review_model_must_be_explicit(self):
         runner = self._runner(payload=self._payload())
 

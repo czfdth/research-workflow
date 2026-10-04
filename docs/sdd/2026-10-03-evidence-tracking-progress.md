@@ -2285,3 +2285,22 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 验证：全量工具测试 `Ran 1211 tests, OK`；真实 doctor 返回
   `functional provider 配置模型可用`，剩余 advisories 为 Docker daemon、
   WorkBuddy、Zotero。
+
+## Cross-review 相对路径与安全 diff 扫描（2026-10-05，E90）
+
+- 重跑 cross-review 时复现 P0：`cross_review.run_review` 接收相对
+  `--paper-root` 后，`codex -C` 的目录与 `--output-schema/-o` 路径一起变为相对，
+  codex 切换目录后把路径拼成两遍。修复：`run_review` 与 `check_review` 入口统一
+  `Path(paper_root).resolve()`；新增相对 paper-root 回归测试，断言 `-C`、
+  `--output-schema`、`-o` 均为绝对路径。
+- 重跑 cross-review：记录现在包含当前输入哈希、prompt hash、execution/review
+  provider、endpoint/config hashes 与显式 same-family override。记录不再 stale，
+  也不缺 provenance。评审 verdict 为 `blocking`，因为 proof/citation/figure 台账
+  仍为 pending；check 另有 2 条 `review-uncited-blocking`。旧 `pass` 不再冒充有效
+  评审，真实跨族仍需第二个 family provider。
+- Codex Security diff scan（`dff6cd4..cb8645a`，scanId
+  `3e2db666-9c2b-4e48-83dc-df8e46b1f24d`）完成：0 reportable findings。威胁模型
+  指出 provider `functional` 仍只是模型列表成员判断，不等价于真实推理能力验证；
+  该限制保留为开放问题。
+- 本地服务：Zotero `127.0.0.1:23119` 已进入 LISTEN，但 API 请求仍报错；Docker
+  Desktop 进程已启动但 Linux engine 不可达；WorkBuddy `8787` 仍无监听。

@@ -331,7 +331,7 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
 
 def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
     """Build the independent-review prompt for the given input files."""
-    paper_root = Path(paper_root)
+    paper_root = Path(paper_root).resolve()
     mode = _load_mode(paper_root)
     relative_paths = [
         _relative_input(paper_root, Path(path))[1]
@@ -481,7 +481,7 @@ def run_review(
     codex_config: Path | None = None,
 ) -> dict:
     """Run codex exec and write a structured review record."""
-    paper_root = Path(paper_root)
+    paper_root = Path(paper_root).resolve()
     if not paths:
         raise ValueError(
             "评审输入不能为空：跨模型评审至少要有一个 --path"
@@ -663,7 +663,7 @@ def check_review(
     codex_config: Path | None = None,
 ) -> list[Problem]:
     """Audit the stored review record against current inputs."""
-    paper_root = Path(paper_root)
+    paper_root = Path(paper_root).resolve()
     path = _review_record_path(paper_root, out_dir)
     if not path.is_file():
         return [
