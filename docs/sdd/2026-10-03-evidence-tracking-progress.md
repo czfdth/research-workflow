@@ -1900,3 +1900,12 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **Task 1b `66d4657`**（`Confucius`）：`git_state` 三态（`self`/`foreign`/`none`）+ realpath 比较；`foreign` 时 commit/dirty 双 null（不再记录父仓库提交）；`check_runs` 新 code：旧记录 advisory `run-log-git-repo-unknown`、foreign problem `run-log-foreign-repo`、none problem `run-log-no-git-repo`、非法值 malformed；顺带修了一处真缺陷——`_run_git` 用系统 locale 解码，中文路径会被误判 foreign，改为 UTF-8。判别力：去掉 toplevel 校验 → 嵌套目录用例 `'self' != 'foreign'` 失败。tools 898 OK。
 - **DOI code 拆分 `c0da3ae`**：`LookupResult.http_ok` 标记"提供方返回过 200"；两源都非 200 → `doi-not-found`，200 但 DOI/标题失败 → 新 code `doi-lookup-failed`；`_default_fetch` HTTPError 分支统一返回 bytes。判别力：title-missing 改回 doi-not-found → `doi-lookup-failed not found in ['doi-not-found', ...]`。tools 902 OK。
 - 评审派 `Kierkegaard`（两节：Task 1b + DOI code 拆分，干净 worktree）；**Task 3b 已派** `Confucius`（`declared_purpose` + T-30 build 豁免 advisory + cross-review 引文逐字命中；commit `feat: mark declarations as declared and require quotable review findings`）。
+
+## Task 1b / DOI code 评审结果（均 Approved）
+
+- **Task 1b `66d4657`（`Kierkegaard`）**：**Approved**。独立矩阵覆盖 none/self/foreign、git 缺失/超时/非零/空输出、CRLF/正斜杠、符号链接/junction/大小写翻转；`check_runs` 的 advisory/problem/malformed 行为核对；UTF-8 修复被证实（本机 locale=cp936，旧实现要么 AttributeError 要么把中文路径误判 foreign）。判别力独立复现（`'self' != 'foreign'`，2 条失败）。干净 worktree 898 OK。
+  - Minor 1：UTF-8 修复**无判别力用例**（测试路径全 ASCII）→ 已排收尾 A1（非 ASCII 子目录用例 + locale 回退判别力）。
+  - Minor 2：显式 `git_repo: null` 同时报 malformed + missing-commit（缺失与 null 被 `record.get()` 混同）→ 收尾 A2。
+- **DOI code 拆分 `c0da3ae`（`Kierkegaard`）**：**Approved**，无新 Critical/Important/Minor。分支矩阵（both 404 → `doi-not-found`；mismatch/title missing/title mismatch/bad JSON → `doi-lookup-failed`、`http_ok=True`；`_default_fetch` 两分支 bytes）全部核实；反向变异用例失败原文留档；干净 worktree 902 OK。
+  - 残留观察（已排收尾 B）：台账 `status=failed` 不保存失败原因，读账无法区分 not-found 与 mismatch → 存 `detail`。
+- 收尾轮（A+B）已排 `Confucius`（在 Task 3b 之后）：commit `fix: sharpen run-log provenance and citation failure evidence`。
