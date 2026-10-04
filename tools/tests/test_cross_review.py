@@ -498,7 +498,13 @@ class TestCheckReview(CrossReviewTests):
             ["review-same-family"],
         )
         self.assertEqual(
-            check_review(self.paper_root, allow_same_family=True),
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
             [],
         )
 
@@ -568,11 +574,17 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-same-family"],
+            ["review-provenance-incomplete", "review-same-family"],
         )
         self.assertEqual(
-            check_review(self.paper_root, allow_same_family=True),
-            [],
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-provenance-incomplete"],
         )
 
     def test_legacy_record_with_family_but_no_execution_model_is_only_same_family(self):
@@ -589,11 +601,17 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-same-family"],
+            ["review-provenance-incomplete", "review-same-family"],
         )
         self.assertEqual(
-            check_review(self.paper_root, allow_same_family=True),
-            [],
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-provenance-incomplete"],
         )
 
     def test_missing_provenance_is_flagged_even_for_a_cross_family_looking_model(self):
@@ -613,11 +631,17 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-same-family"],
+            ["review-provenance-incomplete", "review-same-family"],
         )
         self.assertEqual(
-            check_review(self.paper_root, allow_same_family=True),
-            [],
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-provenance-incomplete"],
         )
 
     def test_edited_execution_model_recomputes_family_and_detects_drift(self):
@@ -668,11 +692,17 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-same-family"],
+            ["review-provenance-incomplete"],
         )
         self.assertEqual(
-            check_review(self.paper_root, allow_same_family=True),
-            [],
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-provenance-incomplete"],
         )
 
     def test_config_change_invalidates_complete_review(self):
@@ -712,7 +742,11 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
-            ["review-family-mismatch", "review-same-family"],
+            [
+                "review-provenance-incomplete",
+                "review-family-mismatch",
+                "review-same-family",
+            ],
         )
         self.assertEqual(
             [
@@ -722,7 +756,7 @@ class TestCheckReview(CrossReviewTests):
                     allow_same_family=True,
                 )
             ],
-            ["review-family-mismatch"],
+            ["review-provenance-incomplete", "review-family-mismatch"],
         )
 
     def test_unknown_family_mismatch_survives_allow_flag(self):

@@ -76,12 +76,12 @@ git -C $paper status --short
 然后只回答五个问题：
 
 1. 当前 stage 和 gate 是什么？
-2. readiness report 的 `schema-valid`、`evidence-present`、`independently-reviewed`、`scientifically-accepted`、`collaboration-ready` 各是什么状态？
+2. readiness report 的 `schema-valid`、`evidence-present`、`gate-verified`、`independently-reviewed`、`scientifically-accepted`、`collaboration-ready` 各是什么状态？
 3. `due` 是否提示临近节点或缺口？
 4. 工作树里哪些改动是今天要继续的？
 5. 当前 gate 缺的是研究工作、人工判断，还是可机械修复的材料？
 
-`readiness` 只是汇总器：它可以说证据是否存在、人工审计是否仍标记为 pending、仓库是否脏、CI/remote 是否接好；它不会自动声称证明成立、引用真的支撑论断或论文已被科学接受。
+`readiness` 会执行当前 profile 对应的 gate。`evidence-present` 只表示文件齐全；`gate-verified` 才表示下游检查器真实通过。人工审计仍是 pending、cross-review provenance 不完整或 lockfile 漂移时，报告必须为 `ready=false`。
 
 ## 5. 阶段操作表
 

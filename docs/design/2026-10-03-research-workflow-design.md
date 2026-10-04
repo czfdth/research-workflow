@@ -204,13 +204,13 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 本机实测（2026-10-03）：
 
 - `codex` CLI 在 PATH 上，版本 0.160.0，支持 `codex exec` 非交互执行，可用 `-c model="..."` 覆盖模型。
-- 本地代理 `cc-switch` 监听 `127.0.0.1:15721`，提供 OpenAI 兼容接口，模型目录含 `deepseek-v4-flash` 与 `deepseek-v4-pro`。
-- 当前执行模型是 `deepseek-v4-flash`，评审可用 `deepseek-v4-pro` 起一个独立会话。
+- 本地代理 `cc-switch` 监听 `127.0.0.1:15721`，提供 OpenAI 兼容接口；可用模型必须以 `/v1/models` 实际返回为准。
+- 当前执行模型由 Codex `config.toml` 决定，评审模型由 `--model` 显式指定；2026-10-05 本机配置为 `deepseek-flash`，但 provider 只实际返回 `deepseek-v4-pro`，因此 doctor 的 provider 仍不是 functional。
 
 | 环节 | 执行 | 评审 |
 | --- | --- | --- |
-| 选题与实验设计 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
-| 正文写作 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
+| 选题与实验设计 | config 中的执行模型 | 显式指定的独立评审模型 |
+| 正文写作 | config 中的执行模型 | 显式指定的独立评审模型 |
 | 终稿检查 | 脚本（确定性） | 不需要模型 |
 
 **必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。E86 之后，执行模型、执行 provider、评审 provider、endpoint 哈希和 provider 配置哈希从 Codex `config.toml` 解析，记录不再接受调用方自称 execution model；`check --codex-config` 或记录中的 `codex_config_path` 会把配置变化报为 `review-provider-config-drift`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。信任边界：`check` 检测记录内部不一致与配置漂移，不是密码学签名；能改写整份 JSON 与配置文件的人仍可伪造整条链路，本机防的是默认同族、无意错写和配置变化后旧评审继续冒充有效。
@@ -297,7 +297,9 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 - **statistics**（`data/statistics-plan.yaml`）：记录 alpha、multiple_comparison、
   每个 claim 的 endpoint/test/effect_size/target_power/sample_size/seeds/
   stopping_rule/missing_data。多个 claim 时 correction 不能为 none；缺失功效、样本量、
-  种子或停止规则都是 problem。
+  种子或停止规则都是 problem。描述性研究可写 `analysis_type: descriptive`，并把
+  alpha、effect_size、target_power、sample_size、seeds 中不适用者显式写
+  `not-applicable`；推断性设计仍拒绝该值。
 - **governance**（`data/governance.yaml`）：记录作者与贡献角色、corresponding、
   逐作者 COI、伦理（human_subjects / IRB / informed consent / data license）、
   AI 使用披露、查重工具与日期、双用途复核与负责任披露联系人。
@@ -306,6 +308,10 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
   变化即报 `repro-env-lockfile-drift`，证据中找不到版本即报 mismatch。
 
 这三道 gate 只保证“结构化声明存在且覆盖完整”，不保证新颖性、统计正确性或治理真实性。
+
+`scripts/readiness.ps1` 现在会真实执行 profile 对应的 gate，而不是只检查台账存在。
+报告新增 `gate-verified` 维度；`evidence-present` 与 `gate-verified` 分离，任一
+下游检查器返回 problem 时 `ready=false`。
 
 ### 6.2 终稿确定性检查项
 

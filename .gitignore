@@ -16,3 +16,4 @@ library/papers/*.pdf
 /papers/
 __pycache__/
 *.pyc
+/repro-bundle.out.json

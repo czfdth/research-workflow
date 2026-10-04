@@ -42,7 +42,6 @@ REVIEW_SCHEMA = {
 }
 
 DEFAULT_MODEL = "deepseek-v4-pro"
-DEFAULT_EXECUTION_MODEL = "deepseek-v4-flash"
 _REQUIRED_PROVENANCE_FIELDS = (
     "provider",
     "execution_model",
@@ -110,7 +109,7 @@ def _model_family(model: str) -> str:
 
 def _family_judgement(
     model: str,
-    execution_model: str = DEFAULT_EXECUTION_MODEL,
+    execution_model: str,
 ) -> str:
     review_family = _model_family(model)
     execution_family = _model_family(execution_model)
@@ -726,6 +725,17 @@ def check_review(
         and _is_sha256(record.get("execution_endpoint_sha256"))
         and _is_sha256(record.get("provider_config_sha256"))
     )
+    if not provenance_complete:
+        problems.append(
+            Problem(
+                "review-provenance-incomplete",
+                str(path),
+                None,
+                "评审记录缺少完整 provider provenance"
+                "（provider/execution_model/execution_provider/endpoint hashes/"
+                "provider_config_sha256/family_override）",
+            )
+        )
     current_provenance: dict | None = None
     config_path = codex_config or record.get("codex_config_path")
     if (
@@ -807,20 +817,13 @@ def check_review(
                     "记录使用的是同族 override，不是真正跨族评审",
                 )
             )
-    same_family_gate = not provenance_complete or computed_family != "cross-family"
+    same_family_gate = computed_family != "cross-family"
     if same_family_gate and not (family_override or allow_same_family):
-        if not provenance_complete:
-            detail = (
-                "评审记录缺少完整跨族 provenance"
-                "（provider/execution_model/execution_provider/endpoint hashes/"
-                "provider_config_sha256/family_override）"
-            )
-        else:
-            detail = (
-                "评审模型不是跨族；"
-                f"family_judgement={computed_family!r}，"
-                "且没有显式 allow-same-family override"
-            )
+        detail = (
+            "评审模型不是跨族；"
+            f"family_judgement={computed_family!r}，"
+            "且没有显式 allow-same-family override"
+        )
         problems.append(
             Problem(
                 "review-same-family",

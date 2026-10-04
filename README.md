@@ -81,7 +81,7 @@ git -C $paper status --short
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
-| `tools/ccfa/readiness.py` | 生成一页式 readiness report，区分结构通过、证据存在、独立复核与科学接受，且不自动声称结论正确 | `scripts/readiness.ps1` |
+| `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 
 ## 阶段到命令速查
 
@@ -91,7 +91,7 @@ git -C $paper status --short
 | --- | --- | --- |
 | 任意阶段的状态校验 | `scripts/validate.ps1` | 校验状态文件结构与 stage/gate 合法性 |
 | 任意阶段（开始前） | `scripts/doctor.ps1` | 预检平台依赖；默认只把必需的 `git` 缺失判为 problem，`--strict` 把可选缺失也判为 problem；只有 Docker 会真正执行探测，daemon 不可达报 `doctor-daemon-down` |
-| 任意阶段（开始前） | `scripts/readiness.ps1` | 生成一页式 readiness report；支持 `--profile minimal|standard|high-assurance`，输出结构、证据、人工复核、科学接受与协作就绪五个维度 |
+| 任意阶段（开始前） | `scripts/readiness.ps1` | 生成一页式 readiness report；支持 `--profile minimal|standard|high-assurance`，输出结构、证据存在、`gate-verified`、人工复核、科学接受与协作就绪六个维度；任一下游 gate 失败都会使 `ready=false` |
 | 读取当前阶段 | `scripts/milestones.ps1` | 调用 `stage` 子命令输出 `current`、`gate`、`updated_at` |
 | 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-90、T-60、T-30、T-21、T-14、T-7、T-3、T-1 与 gate 缺口；T-30 之后出现新实验运行会报 `t30-new-experiment`，只声明 `build` 但没写 `purpose_reason` 会报 `t30-unjustified-build-run` |
 | `idea`、`grounded` | `scripts/library.ps1` | 索引和检索共享文献库，支撑近邻工作与新颖性核对 |

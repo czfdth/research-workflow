@@ -114,7 +114,7 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | `data/citation-support.yaml` | 引用对正文原句的支持判定和来源摘录 |
 | `data/figure-support.yaml` | 交付图、claim、正文归因与支持判定 |
 | `data/novelty-audit.yaml` | 检索库、查询、日期、近邻、重叠与逐 claim 差异 |
-| `data/statistics-plan.yaml` | 端点、检验、alpha、效应量、功效、样本量、种子与停止规则 |
+| `data/statistics-plan.yaml` | 端点、检验、alpha、效应量、功效、样本量、种子与停止规则；描述性研究可显式写 `analysis_type: descriptive` 并对不适用字段写 `not-applicable` |
 | `data/governance.yaml` | 署名、贡献、COI、伦理、许可、AI 使用、查重和负责任披露 |
 | `data/repro-environment.yaml` | Python、依赖文件、lockfile 哈希、系统工具版本与证据 |
 | `data/human-coding.yaml` | 双人编码的一致率、Cohen's kappa 与 bootstrap 置信区间 |
@@ -139,11 +139,14 @@ drift 或 provider config drift，必须重新执行。
 `high-assurance` 三个 profile，汇总当前 stage、gate、必需证据台账、倒排 checkpoint、
 Git dirty 状态、remote 和 GitHub Actions 是否存在。
 
-报告明确分成五个维度：`schema-valid`、`evidence-present`、`independently-reviewed`、
-`scientifically-accepted`、`collaboration-ready`。`standard` 与 `high-assurance` 还要求
-论文仓库已有 remote 和 GitHub Actions；`high-assurance` 会把明确标记为 pending 的证明、
-引用、图表与真人双编码台账继续视为阻塞。科学接受默认是 `not-claimed`，不会把“材料
-齐全”误写成“结论正确”。
+报告明确分成六个维度：`schema-valid`、`evidence-present`、`gate-verified`、
+`independently-reviewed`、`scientifically-accepted`、`collaboration-ready`。
+`evidence-present` 只判断文件是否存在；`gate-verified` 真正执行 profile 对应的
+novelty、statistics、repro-env、argument-audit、governance、cross-review 等检查器。
+任一 gate 有 problem 时 `ready=false`。`standard` 与 `high-assurance` 还要求论文仓库
+已有 remote 和 GitHub Actions；`high-assurance` 会把明确标记为 pending 的证明、引用、
+图表与真人双编码台账继续视为阻塞。科学接受默认是 `not-claimed`，不会把“材料齐全”
+误写成“结论正确”。
 
 ### 5. 长任务安全
 

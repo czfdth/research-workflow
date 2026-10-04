@@ -20,6 +20,23 @@ claims:
     missing_data: complete case
 """
 
+DESCRIPTIVE = """\
+version: 1
+analysis_type: descriptive
+alpha: not-applicable
+multiple_comparison: not-applicable
+claims:
+  - id: claim:matrix
+    endpoint: descriptive counts in the coded matrix
+    test: deterministic recount; no hypothesis test is claimed
+    effect_size: not-applicable
+    target_power: not-applicable
+    sample_size: 43
+    seeds: not-applicable
+    stopping_rule: frozen corpus
+    missing_data: explicit unknown coding; no imputation
+"""
+
 
 class StatisticsTests(unittest.TestCase):
     def setUp(self):
@@ -37,6 +54,36 @@ class StatisticsTests(unittest.TestCase):
     def test_valid_plan_passes(self):
         problems, _advisories = check(self.root)
         self.assertEqual(problems, [])
+
+    def test_descriptive_plan_can_mark_inferential_fields_not_applicable(self):
+        self.path.write_text(DESCRIPTIVE, encoding="utf-8")
+
+        problems, _advisories = check(self.root)
+
+        self.assertEqual(problems, [])
+
+    def test_not_applicable_is_rejected_for_inferential_plan(self):
+        self.path.write_text(
+            VALID.replace("effect_size: 0.5", "effect_size: not-applicable"),
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn("statistics-invalid", self._codes(problems))
+
+    def test_unknown_analysis_type_is_a_problem(self):
+        self.path.write_text(
+            VALID.replace(
+                "alpha: 0.05",
+                "analysis_type: exploratory\nalpha: 0.05",
+            ),
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn("statistics-invalid", self._codes(problems))
 
     def test_multiple_claims_require_correction(self):
         self.path.write_text(

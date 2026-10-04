@@ -1,237 +1,175 @@
 # 科研工作流缺口与完善清单
 
-日期：2026-10-04
+日期：2026-10-05（第二轮复检）
 
 ## 一句话结论
 
-当前工作流已经从“脚本集合”升级为一套有状态、有 gate、有证据、有 readiness 报告的科研基础设施。最新更新补强了环境体检和一页式 readiness 检查，这是实质进步。
+上一轮列出的工程类缺口大部分已经关闭：GitHub remote、CI、Dependabot、论文仓库干净快照、审计台账骨架都已落地。当前主要缺口已经从“管线没接好”转为三类：**人工验证还没有做、readiness 会假绿、外部服务尚未就绪**。
 
-但它仍未形成完整闭环：两个私有 GitHub 远端、Actions 与审计台账已经落地，WorkBuddy/Zotero/provider 服务不可用或不完整，跨私有仓库只读凭据尚未配置，科学正确性仍依赖尚未完成的人类复核。
+## 第三轮修复（2026-10-05）
 
-## 已经改善的部分
+- `readiness` 现在真实执行 profile 对应的下游 gate，新增 `gate-verified`，任一 gate
+  problem 都会使 `ready=false`；`evidence-present` 只保留 presence-only 语义。
+- `data/repro-environment.yaml` 的 lockfile 哈希已修正，`repro-env` 重新通过。
+- `cross-review check` 对缺 provider provenance 的旧记录 fail-closed；
+  `family_override` 不再掩盖缺失的 endpoint/config 哈希。
+- `statistics-plan` 支持描述性研究的 `analysis_type: descriptive` 与
+  `not-applicable`，论文台账不再伪造功效字段。
 
-### 1. `doctor` 体检更诚实
+## 一、本轮已经关闭的缺口
 
-`scripts/doctor.ps1` 已经不再只报告“程序是否存在”，而是开始区分：
+| 上轮缺口 | 当前状态 | 证据 |
+| --- | --- | --- |
+| 主仓库没有 remote | 已关闭 | `origin = https://github.com/czfdth/research-workflow.git`，与 `origin/master` 同步 |
+| 论文仓库没有 remote | 已关闭 | `origin = https://github.com/czfdth/rag-attack-defense.git`，与 `origin/master` 同步 |
+| 没有 GitHub Actions | 已关闭 | 主仓库 `tests/paper-check/repro-smoke/release`，论文仓库 `paper-check/repro-smoke` |
+| 没有依赖更新 | 已关闭 | `.github/dependabot.yml`（github-actions + tools pip + app pip） |
+| 论文仓库 dirty | 已关闭 | `git status` 干净，HEAD `40b3f3c` |
+| standard 台账缺失 | 已关闭 | 7 个台账文件已落地，`readiness` 报 `missing_required: []` |
+| readiness 不通过 | 部分关闭 | `ready=true`、`blocking=[]`、`collaboration-ready=pass` |
+| run-log E2E 测试隔离 | 已关闭 | 本轮 CI 目标测试集 213 项全部通过 |
+| 论文仓库双盲风险 | 已缓解 | 两个仓库未认证 API 均返回 404，符合 private 预期 |
 
-| 层级 | 含义 |
+需要强调：台账“已落地”不等于“已验证”。本轮新增文件中有多个是**明确的 pending 占位**，下文单独说明。
+
+## 二、本轮暴露与仍存在的问题
+
+### 1. `readiness` 会假绿（本轮最重要的新发现）
+
+`readiness` 目前只检查台账文件是否存在、schema 是否可解析，**不执行下游 gate**。
+
+实测反例：
+
+```text
+python -m ccfa.repro_env --paper-root papers/rag-attack-defense
+-> problem_count = 1  (repro-env-lockfile-drift)
+-> exit 1
+
+scripts/readiness.ps1 --paper-root papers/rag-attack-defense
+-> ready = true
+-> dimensions.evidence-present = pass
+```
+
+具体漂移：
+
+| 项 | 值 |
 | --- | --- |
-| `installed` | 命令或虚拟环境存在 |
-| `reachable` | daemon 或 HTTP 服务可连接 |
-| `authenticated` | 服务没有拒绝凭据 |
-| `functional` | 返回了最小预期结果 |
+| `data/repro-environment.yaml` 记录 | `sha256:cf503d5b7c2799659550291e8ff2a2c152257c8486b6b8d6d5803c8d27e8370f` |
+| `requirements.lock` 实际 | `sha256:7481a005f985689c9a170de2cf3aa1429176574ce34dbd1209e31880641a2755` |
 
-本次检测中它正确发现：
+同样地，`independently-reviewed` 显示 `independent-evidence-present`，但 proof、citation、figure 三个台账的内容其实都是 pending 占位。
 
-- provider 可连接，但配置模型不在 `/v1/models` 返回列表中；
-- WorkBuddy converter 不可达；
-- Zotero Desktop API 不可达。
+建议：`readiness` 应聚合各 gate 的真实退出码，或明确标注每个维度是 `presence-only` 还是 `gate-verified`。当前状态会让人误以为“存在即通过”。
 
-这解决了上一轮最大的“假绿”问题：基础工具存在不再被误读为完整科研链路可用。
+### 2. 人工验证仍未完成（科学核心缺口）
 
-### 2. 新增 `readiness` 总览
+| 台账 | 当前内容 | 结论 |
+| --- | --- | --- |
+| `proof-audit.yaml` | 8 条全部 `reviewer: Human reviewer pending`、`status: pending` | 未做人工证明复核 |
+| `citation-support.yaml` | `supports: []` | 未做引用语义支持 |
+| `figure-support.yaml` | `figures: []` | 未做图表语义支持 |
+| `human-coding-report.json` | `status: pending-human-dual-coding` | 真人双编码未完成 |
+| `governance.yaml` | COI、查重、披露联系人均为 pending | 治理证据不完整 |
+| `scientific-acceptance.yaml` | 不存在 | `scientifically-accepted: not-claimed` |
 
-新增的 `scripts/readiness.ps1` / `tools/ccfa/readiness.py` 能把论文状态、证据台账、Git 状态、deadline 检查和科学边界汇总到一份报告。
+这些是目前真正的科学阻塞项。特别是 Proposition 4 的 soundness 问题仍未被人工复核，而跨模型评审却已经给出 `pass`。
 
-它明确区分：
+### 3. 模型 provenance：代码已收紧，运行时配置仍漂移
 
-- schema 是否有效；
-- evidence 是否存在；
-- 是否有独立复核证据；
-- 是否声明科学结论已被外部接受。
+| 位置 | 值 |
+| --- | --- |
+| `~/.codex/config.toml` | `model = "deepseek-flash"` |
+| provider `/v1/models` 实际返回 | 只列出 `deepseek-v4-pro` |
+| `tools/ccfa/cross_review.py` | 已删除 `DEFAULT_EXECUTION_MODEL`；执行模型/provider 从 Codex config 解析，缺失 provenance 会 fail closed |
+| 已存 `reviews/cross-review.json` | 旧记录仍是 `provider = null`、缺 prompt/config hashes；`cross-review check` 现在退 1 |
 
-这比单独运行很多命令更适合日常决策，也能避免“某个检查通过，所以论文科学上正确”的误解。
+因此 doctor 仍报告“配置模型不在模型列表中”。旧同族评审虽然写了 override，但缺少 provider
+provenance，readiness 与 cross-review check 都会把它判为 problem。
 
-### 3. `run-log` 测试隔离问题已修复
+### 4. 外部服务未就绪
 
-上一轮失败的两个 `run-log` E2E 测试现在通过。用正确的 `PYTHONPATH=tools` 环境重跑：
+| 服务 | 状态 | 影响 |
+| --- | --- | --- |
+| Docker daemon | 不可达（本轮回归） | `queue` 的 Docker 沙箱后端不可用 |
+| WorkBuddy converter `127.0.0.1:8787` | 连接被拒 | 模型转换链路不可用 |
+| Zotero Desktop API `127.0.0.1:23119` | 连接被拒 | 文献管理与引用链路不可用 |
+
+`doctor` 仍以 `exit 0` 结束，因为以上都按 advisory 处理。这在“快速体检”场景合理，但用户容易把退出码 0 读成“全绿”。投稿前应使用 `--strict`。
+
+### 5. CI 跨仓库 secret 尚未验证
+
+两个仓库的跨仓库 checkout 依赖 PAT：
+
+| 仓库 | 需要 secret |
+| --- | --- |
+| `research-workflow` | `PAPER_REPOSITORY_TOKEN` |
+| `rag-attack-defense` | `RESEARCH_WORKFLOW_TOKEN` |
+
+本机没有安装 `gh` CLI，因此无法确认 secret 是否已配置、Actions 是否真正跑过。此外，两个跨仓库 workflow 都是手动触发类型，不是每次 push 都自动验证论文。
+
+### 6. 复现仍停留在 stdlib 级别
+
+- `submission/repro/MANIFEST.json` 的 `requirements` 仍为 `null`；
+- `requirements.lock` 只有 `python==3.12.14`，没有第三方包、LaTeX 或容器 digest；
+- `reviews/repro-check.json` 的 advisory 明确说明：只在新建 venv 中重跑，不提供容器级隔离；
+- 尚无第二台机器或容器的成功实测证据。
+
+因此当前更准确的表述是“关键汇总值可复算”，而不是“完整科研环境可复现”。
+
+### 7. 统计台账存在填充痕迹
+
+`statistics-plan.yaml` 把描述性 SoK 声明为无推断检验，却仍填了 `effect_size: 1.0`、`target_power: 0.8`。这类不适用字段容易被审稿人视为机械填表。建议在 schema 层允许 `not-applicable`，而不是强行填写数值。
+
+### 8. 根仓库仍有轻微未提交改动
 
 ```text
-tools.tests.test_doctor
-tools.tests.test_readiness
-tools.tests.test_run_log_e2e
+ D docs/research-workflow-weaknesses.md
+?? repro-bundle.out.json
 ```
 
-共 38 个测试全部通过。
+论文仓库已经干净，这两个是主仓库的收尾项。
 
-## 当前仍缺什么
+## 三、还缺的插件与应用
 
-### 1. GitHub 远端已建立，保护策略与跨仓库凭据待配置
-
-账号 `czfdth` 下的两个私有仓库已经创建并完成首次推送。Actions、Dependabot、PR 模板和安全元数据已生效；分支保护、secret scanning 与跨私有仓库只读 token 尚未配置。
-
-因此目前缺少：
-
-- 分支保护；
-- 论文仓库读取工具仓库所需的最小权限凭据；
-- secret scanning 与发布前安全检查；
-- 论文 Actions 的成功第二环境运行。
-
-建议创建两个私有仓库：
-
-| 仓库 | 建议可见性 | 用途 |
+| 能力 | 建议 | 说明 |
 | --- | --- | --- |
-| `research-workflow` | private | 工具、应用、模板、文档 |
-| `rag-attack-defense` | private | 旗舰论文；双盲投稿期间不能公开 |
+| 长期归档 / DOI | Zenodo 或 OSF | 录用后归档 artifact 并获取 DOI |
+| 作者身份 | ORCID | 投稿元数据与成果归属 |
+| CI 本地核验 | GitHub CLI (`gh`) | 查询 secret、Actions 运行与 branch protection |
+| 文献管理 | Zotero Desktop | 已配置 MCP，但服务未启动 |
+| 模型转换 | WorkBuddy converter | 需启动 8787 服务 |
+| 依赖更新 | Dependabot | 已配置，无需新增 |
 
-### 2. 旗舰论文审计台账已建，但人工语义审计未完成
+搜索类插件（arXiv、Semantic Scholar、Paper Search、Academic Search、Overleaf、浏览器）已经足够，不需要继续堆叠。真正缺的是它们之间的去重、证据快照与台账闭环。
 
-`papers/rag-attack-defense/data/` 下八类关键台账均已创建。自动可核验的 governance、novelty、statistics 与 repro environment 检查已通过；以下人工台账仍明确标为 pending：
+## 四、优先行动清单
 
-| 台账 | 当前状态 | 作用 |
-| --- | --- | --- |
-| `proof-audit.yaml` | pending，0/8 | 人工逐项复核 theorem/proposition/lemma |
-| `citation-support.yaml` | pending，0/6 | 人工判断引用是否支撑正文 claim |
-| `figure-support.yaml` | pending，0/1 | 人工判断图表是否支撑对应结论 |
-| `human-coding-report.json` | pending | 真人双重编码一致性与分歧裁决 |
+### P0：先消除假绿与科学阻塞
 
-`readiness` 已进一步收紧：`standard` 和 `high-assurance` 要求 remote 与 Actions；`high-assurance` 不再把 pending 占位台账当作独立复核完成。
+1. 修正 `repro-environment.yaml` 的 lockfile 哈希，或让 `readiness` 聚合 `repro_env` 的真实结果。
+2. 让 `readiness` 汇总各 gate 退出码，区分 `presence-only` 与 `gate-verified`。
+3. 完成 proof / citation / figure 三项人工复核。
+4. 完成真人第二编码，输出 kappa、置信区间、分歧与裁决。
 
-### 3. 论文当前不 ready
+### P1：修 provenance 与 CI
 
-`scripts/readiness.ps1 --paper-root papers/rag-attack-defense` 当前判定 `ready=false`。
+5. 把 provider 的 `/v1/models` 与 config 的执行模型统一；旧评审记录必须重跑并写入完整 provenance。
+6. 配置并验证 `PAPER_REPOSITORY_TOKEN` 与 `RESEARCH_WORKFLOW_TOKEN`，让跨仓库 CI 真正跑一次。
+7. 复现包补 lockfile 语义、容器或第二环境证据，并回填 `MANIFEST.json` 的 `requirements`。
 
-主要 blocking 包括：
+### P2：环境与收尾
 
-- paper git worktree 是 dirty；
-- 跨私有仓库工具 checkout 尚未配置只读 secret；
-- proof、citation support、figure support 与真人双编码尚未完成人工复核。
+8. 启动 Docker、WorkBuddy、Zotero，使 `doctor --strict` 归零。
+9. 清理根仓库的 `research-workflow-weaknesses.md` 删除状态与 `repro-bundle.out.json`。
+10. 把 governance 的 COI、查重、披露联系人补到真实值。
+11. 录入 ORCID，并在录用后接入 Zenodo/OSF。
 
-当前 `ccfa.yaml` 仍显示：
+## 五、当前最短路径
 
-```text
-internal-review / review_cleared
-```
+如果只做三件事：
 
-但从 readiness 看，更准确的状态应接近：
+1. 修 `readiness` 的假绿问题，并修掉已经暴露的 lockfile 漂移。
+2. 完成 Proposition 4 的独立证明复核与真人双编码。
+3. 验证两个 PAT secret，让跨仓库 CI 真正在第二环境跑通论文检查与 repro smoke。
 
-```text
-internal-review / evidence-incomplete
-```
-
-### 4. 本地服务仍不可用
-
-最新检测结果：
-
-| 服务 | 当前状态 | 问题 |
-| --- | --- | --- |
-| provider `127.0.0.1:15721` | 可连接但不 functional | `/v1/models` 返回空列表，配置模型不在列表中 |
-| WorkBuddy converter `127.0.0.1:8787` | 不可达 | 服务未启动或端口未监听 |
-| Zotero API `127.0.0.1:23119` | 不可达 | Zotero Desktop 或本地 API 未启动 |
-
-这意味着本地科研环境还不是完整可用状态。基础命令存在，但模型评审、WorkBuddy 转换和 Zotero 文献链路不能算 ready。
-
-### 5. 论文仓库仍然 dirty
-
-旗舰论文仓库仍有大量 modified / untracked 文件，包含：
-
-- 论文源文件；
-- PDF；
-- 复现包；
-- stderr / stdout 诊断文件；
-- 审计报告；
-- 人工编码材料；
-- supplementary 压缩包。
-
-这会削弱：
-
-- run-log 的 commit 可追溯性；
-- cross-review provenance；
-- 复现包与源状态的一致性；
-- release 的可审计性。
-
-### 6. 科学正确性仍未闭环
-
-`readiness` 很好地标注了：
-
-```text
-scientifically-accepted: not-claimed
-```
-
-这意味着系统没有声称脚本能证明论文科学上正确。仍需人工完成：
-
-- Proposition 4 或等价理论主张的独立证明复核；
-- 真人第二编码；
-- 引用语义支持复核；
-- 图表语义支持复核；
-- 统计计划人工审查；
-- 新颖性检索召回检查；
-- 外部人类挑战性评审。
-
-## 还可以完善的插件与应用接入
-
-### 应优先接入或恢复
-
-| 能力 | 建议工具 | 当前问题 |
-| --- | --- | --- |
-| 远程备份与 CI | GitHub private repos + Actions | 两个 remote 已推送；主 CI 正在修复首次 runner 差异，论文 CI 待只读 secret |
-| 文献管理 | Zotero Desktop + Zotero MCP | 配置存在，本地 API 不可达 |
-| WorkBuddy 模型/转换服务 | WorkBuddy converter | 桌面进程可能在，但 `8787` 不可达 |
-| 长期归档 | Zenodo 或 OSF | 尚未接入 release/DOI 流程 |
-| 依赖更新 | Dependabot | 配置已就绪，待推送后启用 |
-| 复现环境 | lockfile / GitHub Actions smoke test | 本地环境证据已通过，待 GitHub runner 第二环境实跑 |
-| 作者身份 | ORCID | 尚未纳入投稿元数据与归档流程 |
-
-### 暂不需要继续堆叠
-
-以下能力已经足够多，当前问题不是插件不足：
-
-- arXiv / Semantic Scholar / Paper Search / Academic Search；
-- Overleaf；
-- PDF / Office / 表格插件；
-- Docker；
-- LaTeX；
-- 浏览器和 computer-use。
-
-真正缺的是这些工具之间的闭环：去重、证据快照、台账、CI、复现和长期归档。
-
-## 优先行动清单
-
-### P0：先让当前论文可信
-
-1. 修复、降级或删除 Proposition 4，并完成独立证明复核。
-2. 完成真人第二编码，输出 kappa、置信区间、分歧和裁决记录。
-3. 补齐 standard profile 必需台账：
-   - `citation-support.yaml`
-   - `figure-support.yaml`
-   - `novelty-audit.yaml`
-   - `statistics-plan.yaml`
-   - `repro-environment.yaml`
-4. 清理旗舰论文 dirty worktree，区分权威输入、生成输出、临时诊断文件和 release artifact。
-
-### P1：建立 GitHub 工程闭环
-
-1. 配置跨私有仓库只读 secret。
-2. 验证 GitHub Actions：
-   - unit tests；
-   - `doctor --skip-services`；
-   - `readiness`；
-   - citation / trace / latex / final checks；
-   - repro smoke test。
-3. 配置 branch protection。
-4. 配置 Dependabot 或 Renovate。
-5. 配置 release 产物生成与 SHA-256 manifest。
-
-### P2：恢复本地服务
-
-1. 修 provider，使 `/v1/models` 返回当前配置模型。
-2. 启动 WorkBuddy converter，并验证 `/health`。
-3. 启动 Zotero Desktop，并验证 `127.0.0.1:23119`。
-4. 用 `scripts/doctor.ps1 --strict` 作为投稿前环境 gate。
-
-### P3：长期归档与公开发布
-
-1. 投稿前保持论文仓库 private，避免双盲泄露。
-2. 录用或允许公开后，创建 GitHub release。
-3. 将 artifact 同步到 Zenodo 或 OSF，获取 DOI。
-4. 增加 `CITATION.cff`、license、数据许可和 artifact README。
-
-## 当前最短路径
-
-如果只选三件事，优先做：
-
-1. 完成四项仍 pending 的人类审计，不伪造 reviewer 或结论。
-2. 提交旗舰论文仓库，使 run-log 和 review provenance 能指向确定 commit。
-3. 配置最小权限 token，并在论文 Actions 第二环境实跑一次。
-
-完成这三件事后，工作流才会从“本机很强的科研脚手架”变成“可协作、可审计、可恢复、可发布的科研生产线”。
+完成这三件事后，工作流才会从“结构完备”进入“证据可信”。

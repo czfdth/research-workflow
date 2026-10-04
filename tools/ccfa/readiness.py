@@ -17,9 +17,22 @@ from pathlib import Path
 
 import yaml
 
-from ccfa.cli import save_text_atomically, tool_error
+from ccfa import (
+    argument_audit,
+    citation_guard,
+    cross_review,
+    final_check,
+    governance,
+    latex_check,
+    novelty,
+    repro_env,
+    stats_plan,
+    trace_claims,
+)
+from ccfa.cli import Problem, ToolEnvironmentError, save_text_atomically, tool_error
 from ccfa.milestones import due_report, stage_report
 from ccfa.stages import gate_for
+from ccfa.texscan import iter_tex_files
 from ccfa.validate import validate_yaml
 
 PROFILES = ("minimal", "standard", "high-assurance")
@@ -54,6 +67,17 @@ PENDING_REVIEW_STATUSES = {
     "pending-human-dual-coding",
     "not-started",
     "not_started",
+}
+
+LEDGER_GATE_NAMES = {
+    "proof": "argument-audit",
+    "citation-support": "argument-audit",
+    "figure-support": "argument-audit",
+    "governance": "governance",
+    "novelty": "novelty",
+    "statistics": "statistics",
+    "repro-environment": "repro-environment",
+    "human-coding": "human-coding",
 }
 
 
@@ -143,6 +167,162 @@ def _ledger_status(paper_root: Path, profile: str) -> dict:
     return {"items": ledgers, "missing_required": sorted(missing_required)}
 
 
+def _problem_dict(problem: Problem) -> dict:
+    return {
+        "code": problem.code,
+        "path": problem.path,
+        "line": problem.line,
+        "message": problem.message,
+    }
+
+
+def _gate_result(
+    name: str,
+    problems: list[Problem],
+    advisories: list[Problem] | None = None,
+) -> dict:
+    advisories = advisories or []
+    return {
+        "name": name,
+        "status": "problem" if problems else "pass",
+        "problem_count": len(problems),
+        "advisory_count": len(advisories),
+        "problems": [_problem_dict(problem) for problem in problems],
+        "advisories": [_problem_dict(problem) for problem in advisories],
+    }
+
+
+def _run_gate(name: str, runner) -> dict:
+    try:
+        outcome = runner()
+    except ToolEnvironmentError as exc:
+        return _gate_result(
+            name,
+            [Problem("gate-environment-error", name, None, str(exc))],
+        )
+    except (OSError, ValueError) as exc:
+        return _gate_result(
+            name,
+            [Problem("gate-error", name, None, str(exc))],
+        )
+    if isinstance(outcome, list):
+        problems, advisories = outcome, []
+    else:
+        problems, advisories = outcome
+    return _gate_result(name, list(problems), list(advisories))
+
+
+def _schema_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
+    path = paper_root / "ccfa.yaml"
+    problems = [
+        Problem("schema-invalid", str(path), None, message)
+        for message in validate_yaml(path)
+    ]
+    return problems, []
+
+
+def _human_coding_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
+    path = paper_root / "data" / "human-coding-report.json"
+    if not path.is_file():
+        return [
+            Problem(
+                "human-coding-report-missing",
+                str(path),
+                None,
+                "缺少真人双编码报告",
+            )
+        ], []
+    payload = _load_structured(path)
+    status = payload.get("status") if payload else None
+    if (
+        not isinstance(status, str)
+        or status.strip().casefold() in PENDING_REVIEW_STATUSES
+    ):
+        return [
+            Problem(
+                "human-coding-pending",
+                str(path),
+                None,
+                "真人双编码尚未完成",
+            )
+        ], []
+    accepted = {"complete", "completed", "human-attested", "passed"}
+    if status.strip().casefold() not in accepted:
+        return [
+            Problem(
+                "human-coding-unknown-status",
+                str(path),
+                None,
+                f"未知真人双编码状态: {status!r}",
+            )
+        ], []
+    return [], []
+
+
+def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
+    specs: dict[str, object] = {
+        "schema-valid": lambda: _schema_gate(paper_root),
+    }
+    runners = {
+        "argument-audit": lambda: argument_audit.check(paper_root),
+        "governance": lambda: governance.check(paper_root),
+        "human-coding": lambda: _human_coding_gate(paper_root),
+        "novelty": lambda: novelty.check(paper_root),
+        "repro-environment": lambda: repro_env.check(paper_root),
+        "statistics": lambda: stats_plan.check(paper_root),
+    }
+    for ledger in PROFILE_REQUIRED_LEDGERS[profile]:
+        if not (paper_root / EVIDENCE_LEDGER_PATHS[ledger]).is_file():
+            continue
+        gate_name = LEDGER_GATE_NAMES.get(ledger)
+        if gate_name is not None:
+            specs[gate_name] = runners[gate_name]
+
+    if profile == "minimal":
+        return list(specs.items())
+
+    manuscript = paper_root / "manuscript"
+    bib = manuscript / "references.bib"
+    if manuscript.is_dir():
+        specs["latex-structure"] = lambda: latex_check.check(manuscript, bib)
+        tex_files = list(iter_tex_files(manuscript))
+        if tex_files:
+            specs["trace-claims"] = lambda: trace_claims.check(
+                tex_files,
+                base_dir=paper_root,
+            )
+    citation_ledger = paper_root / "data" / "citation-ledger.json"
+    if manuscript.is_dir() and bib.is_file() and citation_ledger.is_file():
+        specs["citation-guard"] = lambda: citation_guard.check(
+            manuscript,
+            bib,
+            citation_ledger,
+        )
+    pdf = paper_root / "submission" / "final.pdf"
+    if pdf.is_file():
+        specs["final-check"] = lambda: final_check.check(
+            manuscript,
+            pdf=pdf,
+            paper_root=paper_root,
+        )
+    if (paper_root / "reviews" / "cross-review.json").is_file():
+        specs["cross-review"] = lambda: (
+            cross_review.check_review(
+                paper_root,
+                strict_cross_family=profile == "high-assurance",
+            ),
+            [],
+        )
+    return list(specs.items())
+
+
+def _run_gates(paper_root: Path, profile: str) -> list[dict]:
+    return [
+        _run_gate(name, runner)
+        for name, runner in _gate_specs(paper_root, profile)
+    ]
+
+
 def _load_structured(path: Path) -> dict | None:
     try:
         if path.suffix.casefold() == ".json":
@@ -226,6 +406,7 @@ def build_report(
     human_review = _human_review_status(paper_root, selected_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
+    gate_results = _run_gates(paper_root, selected_profile)
 
     blocking = []
     if schema_problems:
@@ -238,6 +419,12 @@ def build_report(
         blocking.append("deadline or gate milestone problems are present")
     if git.present and git.dirty:
         blocking.append("paper git worktree is dirty")
+    for result in gate_results:
+        if result["status"] in {"problem", "error"}:
+            codes = ", ".join(
+                problem["code"] for problem in result["problems"][:5]
+            ) or "unknown"
+            blocking.append(f"{result['name']} gate failed: {codes}")
     if selected_profile != "minimal":
         if not git.present:
             blocking.append("paper is not a git worktree")
@@ -249,7 +436,9 @@ def build_report(
         blocking.append("required human review is incomplete")
 
     review_status = "independent-evidence-present"
-    if selected_profile == "high-assurance":
+    if selected_profile == "minimal":
+        review_status = "not-required"
+    elif selected_profile == "high-assurance":
         required_human = {"proof", "human-coding", "citation-support", "figure-support"}
         missing_human = required_human.intersection(ledgers["missing_required"])
         review_status = (
@@ -257,6 +446,25 @@ def build_report(
             if missing_human
             else human_review["status"]
         )
+    else:
+        audit = next(
+            (
+                result
+                for result in gate_results
+                if result["name"] == "argument-audit"
+            ),
+            None,
+        )
+        if audit is None:
+            review_status = "missing-human-evidence"
+        elif audit["status"] != "pass":
+            review_status = "pending-human-review"
+
+    gate_verified = "pass"
+    if any(result["status"] != "pass" for result in gate_results):
+        gate_verified = "problem"
+    elif ledgers["missing_required"]:
+        gate_verified = "not-run"
 
     collaboration_ready = (
         git.present and bool(git.remotes) and git.workflows_present
@@ -272,6 +480,7 @@ def build_report(
         "dimensions": {
             "schema-valid": "pass" if not schema_problems else "problem",
             "evidence-present": "pass" if not ledgers["missing_required"] else "problem",
+            "gate-verified": gate_verified,
             "independently-reviewed": review_status,
             "scientifically-accepted": scientific["status"],
             "collaboration-ready": "pass" if collaboration_ready else "problem",
@@ -283,6 +492,7 @@ def build_report(
             "problems": due.get("problems", []),
             "advisories": due.get("advisories", []),
         },
+        "gate_results": gate_results,
         "git": {
             "present": git.present,
             "dirty": git.dirty,
@@ -322,6 +532,15 @@ def render_markdown(report: dict) -> str:
         marker = "present" if item["present"] else "missing"
         required = "required" if item["required"] else "optional"
         lines.append(f"- `{key}`: `{marker}` ({required}) `{item['path']}`")
+    lines.extend(["", "## Gate Verification", ""])
+    for result in report["gate_results"]:
+        codes = ", ".join(
+            problem["code"] for problem in result["problems"]
+        ) or "none"
+        lines.append(
+            f"- `{result['name']}`: `{result['status']}` "
+            f"(problems: {result['problem_count']}; codes: {codes})"
+        )
     lines.extend(["", "## Git And CI", ""])
     git = report["git"]
     lines.append(f"- git: `{'present' if git['present'] else 'missing'}`")

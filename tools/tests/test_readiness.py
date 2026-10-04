@@ -4,7 +4,9 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
+from ccfa.cli import Problem
 from ccfa.readiness import build_report, main, render_markdown
 
 
@@ -67,7 +69,46 @@ class ReadinessTests(unittest.TestCase):
         for name in names:
             path = self.paper_root / paths[name]
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("{}\n", encoding="utf-8")
+            if name == "novelty":
+                path.write_text(
+                    "version: 1\n"
+                    "search:\n"
+                    "  databases: [arXiv, OpenAlex]\n"
+                    "  queries: [readiness test]\n"
+                    "  searched_at: '2026-10-04'\n"
+                    "  cutoff: '2026-10-04'\n"
+                    "claims: [claim-1]\n"
+                    "neighbors:\n"
+                    "  - id: a\n"
+                    "    title: A\n"
+                    "    venue: Test\n"
+                    "    overlap: Overlap A\n"
+                    "    difference: Difference A\n"
+                    "    claim_ids: [claim-1]\n"
+                    "  - id: b\n"
+                    "    title: B\n"
+                    "    venue: Test\n"
+                    "    overlap: Overlap B\n"
+                    "    difference: Difference B\n"
+                    "    claim_ids: [claim-1]\n"
+                    "  - id: c\n"
+                    "    title: C\n"
+                    "    venue: Test\n"
+                    "    overlap: Overlap C\n"
+                    "    difference: Difference C\n"
+                    "    claim_ids: [claim-1]\n",
+                    encoding="utf-8",
+                )
+                manuscript = self.paper_root / "manuscript"
+                manuscript.mkdir(exist_ok=True)
+                (manuscript / "references.bib").write_text(
+                    "@misc{a, title={A}}\n"
+                    "@misc{b, title={B}}\n"
+                    "@misc{c, title={C}}\n",
+                    encoding="utf-8",
+                )
+            else:
+                path.write_text("{}\n", encoding="utf-8")
 
     def test_standard_profile_reports_missing_required_ledgers_and_no_science_claim(self):
         report = build_report(self.paper_root)
@@ -75,12 +116,97 @@ class ReadinessTests(unittest.TestCase):
         self.assertFalse(report["ready"])
         self.assertEqual(report["profile"], "standard")
         self.assertEqual(report["dimensions"]["schema-valid"], "pass")
+        self.assertEqual(report["dimensions"]["gate-verified"], "not-run")
         self.assertEqual(report["dimensions"]["evidence-present"], "problem")
         self.assertEqual(
             report["dimensions"]["scientifically-accepted"],
             "not-claimed",
         )
         self.assertIn("citation-support", report["evidence"]["missing_required"])
+
+    def test_lockfile_drift_makes_gate_verified_fail(self):
+        self._touch_ledgers(
+            [
+                "citation-support",
+                "figure-support",
+                "novelty",
+                "statistics",
+                "repro-environment",
+            ]
+        )
+        (self.paper_root / "requirements.txt").write_text(
+            "# stdlib only\n",
+            encoding="utf-8",
+        )
+        (self.paper_root / "requirements.lock").write_text(
+            "python==3.12.14\n",
+            encoding="utf-8",
+        )
+        (self.paper_root / "reviews").mkdir(exist_ok=True)
+        (self.paper_root / "reviews" / "python-version.txt").write_text(
+            "Python 3.12.14\n",
+            encoding="utf-8",
+        )
+        (self.paper_root / "data" / "repro-environment.yaml").write_text(
+            "version: 1\n"
+            "python: '3.12.14'\n"
+            "package_manager: pip\n"
+            "requirements: requirements.txt\n"
+            "lockfile: requirements.lock\n"
+            "lockfile_sha256: sha256:"
+            + "0" * 64
+            + "\n"
+            "system_tools:\n"
+            "  - name: python\n"
+            "    version: '3.12.14'\n"
+            "    command: python --version\n"
+            "    evidence: reviews/python-version.txt\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="standard")
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["dimensions"]["gate-verified"], "problem")
+        repro = next(
+            item
+            for item in report["gate_results"]
+            if item["name"] == "repro-environment"
+        )
+        self.assertEqual(repro["status"], "problem")
+        self.assertIn(
+            "repro-env-lockfile-drift",
+            [problem["code"] for problem in repro["problems"]],
+        )
+
+    def test_standard_pending_argument_audit_is_not_independent_review(self):
+        self._touch_ledgers(
+            [
+                "citation-support",
+                "figure-support",
+                "novelty",
+                "statistics",
+                "repro-environment",
+            ]
+        )
+        with mock.patch(
+            "ccfa.readiness.argument_audit.check",
+            return_value=([
+                Problem(
+                    "proof-review-not-verified",
+                    "proof-audit.yaml",
+                    None,
+                    "pending",
+                )
+            ], []),
+        ):
+            report = build_report(self.paper_root, profile="standard")
+
+        self.assertEqual(
+            report["dimensions"]["independently-reviewed"],
+            "pending-human-review",
+        )
+        self.assertEqual(report["dimensions"]["gate-verified"], "problem")
 
     def test_high_assurance_requires_all_ledgers(self):
         self._touch_ledgers(["novelty"])

@@ -2222,3 +2222,31 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 科学边界：readiness 只输出 `schema-valid`、`evidence-present`、`independently-reviewed`、`scientifically-accepted` 四维状态；`scientifically-accepted` 默认 `not-claimed`，除非存在外部人类接受台账。工具不会把“材料齐全”升格为“结论正确”。
 - 定向验证：`tools.tests.test_cross_review` **65 tests OK**，`tools.tests.test_readiness` **7 tests OK**。随后还需随 README/脚本清单更新跑 `test_docs_consistency` 与 `test_scripts`。
 - 边界：GitHub 私有仓库、branch protection、Actions、Zenodo/OSF 和第二机器复现没有被自动创建；这些是外部副作用，需用户明确确认后再接线。Readiness 只能检测本地是否已有 remote/workflows，不能证明远端策略已经配置正确。
+
+## Readiness gate 聚合与 provenance fail-closed（2026-10-05，E87）
+
+- 目标：关闭第二轮复检发现的假绿：readiness 只检查台账存在与 pending 状态，没有执行
+  `repro_env`、`argument_audit`、`cross_review` 等下游 gate，导致
+  `repro-env-lockfile-drift` 存在时仍可能 `ready=true`。
+- `readiness` 新增 `gate-verified` 维度，并实际调用 profile 对应的检查器：
+  novelty、statistics、repro-environment、argument-audit、governance、human-coding，
+  以及输入存在的 LaTeX structure、trace-claims、citation-guard、final-check、
+  cross-review。`gate_results` 记录每个 gate 的 status、problem/advisory count 和
+  problem codes；任一 gate problem 会进入 blocking 并使 `ready=false`。
+- `evidence-present` 保持 presence-only 语义；缺少必需台账时 `gate-verified` 是
+  `not-run`，不再与“gate 已执行且通过”混为一谈。standard profile 下
+  argument-audit 失败会把 `independently-reviewed` 显示为 `pending-human-review`。
+- `cross_review.check` 收紧 fail-closed：缺 provider、execution_model、
+  execution_provider、endpoint/config 哈希时统一报 `review-provenance-incomplete`；
+  `family_override` 只能解释同族评审，不能替代 provenance。删除硬编码
+  `DEFAULT_EXECUTION_MODEL`，家族判定必须由记录中的真实模型字段重算。
+- `stats_plan` 支持 `analysis_type: descriptive`：描述性研究可对 alpha、effect_size、
+  target_power、sample_size、seeds 写 `not-applicable`；推断性设计仍拒绝该值，避免
+  通过填写虚假的 `effect_size=1.0`、`target_power=0.8` 机械过关。
+- 论文仓库 `data/repro-environment.yaml` 的 lockfile 哈希已从
+  `cf503d5b...` 修正为实际的 `7481a005...`；`data/statistics-plan.yaml` 改为
+  descriptive，不再伪造功效字段。
+- 定向验证：`tools.tests.test_readiness` 11 tests OK、`tools.tests.test_cross_review`
+  65 tests OK、`tools.tests.test_statistics` 9 tests OK。真实论文 readiness 现在
+  `gate-verified=problem`，明确列出 proof/citation/figure 人工审计未完成与旧
+  cross-review provenance/stale/prompt-hash 问题。
