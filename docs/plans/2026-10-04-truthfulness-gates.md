@@ -36,9 +36,10 @@
 - 证明台账字段：`id`、`reviewer`、`reviewed_at`、`method`、`status`；
   `status` 必须为 `verified` 才通过。
 - 引用支持台账字段：`id`、`claim_text`、`citations`、`reviewer`、`reviewed_at`、
-  `verdict`、`support_quote`、可选 `source_path`。
+  `verdict`、`support_quote`、`source_path`。
 - 受保护章节中的每个 citation key 必须至少被一条 `supports` 记录覆盖；
-  给了 `source_path` 时，`support_quote` 必须逐字出现在该来源中。
+  `claim_text` 必须逐字出现在该引用所在的受保护章节中；`support_quote` 必须逐字
+  出现在 `source_path` 中。
 - 判别力：缺台账、模型 reviewer、uncertain、contradicts、未知 bib key、
   引文不在 source 中都触发对应 problem；有效人类记录通过。
 

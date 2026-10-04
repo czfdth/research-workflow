@@ -263,7 +263,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 机械 gate 只能证明"案卷整齐"，不能证明"结论正确"。为补上这个天花板，新增两道必须由人完成的门：
 
 - **人工证明复核**（`data/proof-audit.yaml`）：扫出 theorem/proposition/lemma/corollary 环境；每个环境必须有 `reviewer`（人类姓名）、`reviewed_at`、`method`、`status`。`status` 不是 `verified` 即 problem；模型名不能冒充 reviewer。
-- **引用语义支持**（`data/citation-support.yaml`）：受保护章节中的每个 `\cite{}` 必须有 `reviewer`、`reviewed_at`、`verdict`、`support_quote`、`citations`。`contradicts`/`irrelevant` 是 problem，`partial` 是 advisory；给了 `source_path` 时脚本会核对引文是否真的出现在该来源中。脚本不判断证明和语义本身，只强制这些判断有人做过、可追责、可复核。
+- **引用语义支持**（`data/citation-support.yaml`）：受保护章节中的每个 `\cite{}` 必须有 `reviewer`、`reviewed_at`、`verdict`、`claim_text`、`support_quote`、`citations`、`source_path`。`contradicts`/`irrelevant` 是 problem，`partial` 是 advisory；脚本核对 `claim_text` 是否出现在该引用所在的受保护章节中，并核对 `support_quote` 是否真的出现在 `source_path` 中。脚本不判断证明和语义本身，只强制这些判断有人做过、可追责、可复核。
 - **人工编码一致性**（`human-coding`）：两张人工编码表按 item id join，计算 observed agreement、Cohen's kappa 与 95% bootstrap CI；`--min-kappa` 以下退 1。模型辅助审计不能替代这一步。
 - **同族评审 override**：`cross-review run --allow-same-family` 现在必须同时提供 `--override-reason`（≥20 字符），原因写入记录；`check --strict-cross-family` 会把任何同族 override 报成 problem。真正的 gate 仍然要求不同 family 的 provider。
 
@@ -395,7 +395,9 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | `PowerPoint.Application` | 已注册 | 可生成原生可编辑 pptx |
 | `Excel.Application` | 已注册 | 可生成含原生图表的 xlsx |
 | `KWPS.Application` | 已注册 | WPS 可用 |
-| `Origin.ApplicationSI | 未安装 | 图表走 matplotlib / seaborn |
+| `EndNote.Application` | 未安装 | 走 RIS / BibTeX 文件交换 |
+| `MathType.Application` | 未安装 | 公式走 Office 原生 OMML |
+| `Origin.ApplicationSI` | 未安装 | 图表走 matplotlib / seaborn |
 
 | 需求 | 实现手段 | 可用性 |
 | --- | --- | --- |

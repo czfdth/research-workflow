@@ -2021,8 +2021,10 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 
 - 计划：`docs/plans/2026-10-04-truthfulness-gates.md`。目标：处理审计总结的三条最高优先级缺口——人工验证缺位、跨族评审能力与 gate 不匹配、证明与引用语义没有 gate。确定性脚本不判断证明/语义本身，只强制这些判断有人做过、可追责、可复核。
 - **E72 `human-coding`**：两张人工编码表按 item id join，输出 observed agreement、Cohen's kappa、95% bootstrap CI、逐标签计数与混淆矩阵；重复 item、缺 item、空 code 都是 problem；`--min-kappa`（默认 0.6）以下退 1。判别力：完美一致 κ=1；已知 2×2 表 κ=0.8；低 κ 触发 `human-coding-low-kappa`。
-- **E73 `argument-audit`**：扫描 theorem/proposition/lemma/corollary 环境，要求 `data/proof-audit.yaml` 有具名人类复核记录；扫描受保护章节 `\cite{}`，要求 `data/citation-support.yaml` 有具名人类语义支持记录。模型 reviewer、`refuted`/`uncertain`/`contradicts`、未知 bib key、`support_quote` 不在 `source_path` 中都是 problem；`partial` 与未给 source 的引文是 advisory。
+- **E73 `argument-audit`**：扫描 theorem/proposition/lemma/corollary 环境，要求 `data/proof-audit.yaml` 有具名人类复核记录；扫描受保护章节 `\cite{}`，要求 `data/citation-support.yaml` 有具名人类语义支持记录。`claim_text` 必须出现在引用所在的受保护章节，`support_quote` 必须出现在必填的 `source_path` 中；模型 reviewer、`refuted`/`uncertain`/`contradicts`、未知 bib key、缺 source、claim/source 不匹配都是 problem；`partial` 是 advisory。
 - **E74 同族 override 异常化**：`cross-review run --allow-same-family` 现在必须同时给 `--override-reason`（≥20 字符），原因写入 `family_override_reason`；`check` 缺 reason 报 `review-override-reason-missing`；新增 `check --strict-cross-family`，任何同族 override 都报 `review-family-override`。
 - 文档同步：README 工具表与阶段速查、`docs/research-workflow-intro.md`、`docs/design/2026-10-03-research-workflow-design.md` §6.1.2、`tools/ccfa/stages.py` 的 `internal-review` gate 判据与两份 checklist。
-- 全量：tools **1013 tests OK**，app（offscreen）**141 tests OK**。
+- 第一轮独立评审（`truthfulness-gates-review.json`）判 **fail**：畸形 `method/status/verdict` 会抛未捕获 TypeError；`\cite[opt]{key}` 与 `\section[short]{Title}` 漏扫；reviewer deny-list 漏 grok/sonnet/nova；引用覆盖只按 key、未绑定 `claim_text`；受保护子节后的非保护兄弟子节会清掉父章节保护。
+- 修复：membership 改为类型安全；引用/标题 regex 支持 optional args；reviewer deny-list 扩充；`claim_text` 必须逐字出现在引用所在受保护章节，`source_path` 必填且 quote 必须命中；受保护章节改为栈式父子继承；移除非标准 normal κ CI；恢复设计文档 COM 表。补对应判别测试。
+- 修复后全量：tools **1021 tests OK**，app（offscreen）**141 tests OK**。
 - 边界：新 gate 只证明「有人做过判断」，不证明判断正确。数学证明的最终正确性仍靠外部数学专家；引用语义的最终判断仍靠领域专家；跨族 gate 仍要求真实第二 provider，override 只是异常路径。

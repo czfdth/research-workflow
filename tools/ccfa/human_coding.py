@@ -212,13 +212,6 @@ def check(
     n = base["n"]
     observed = base["observed_agreement"]
     expected = base["expected_agreement"]
-    if expected < 1.0 and n:
-        standard_error = math.sqrt(
-            max(0.0, observed * (1.0 - observed))
-            / (n * (1.0 - expected) ** 2)
-        )
-    else:
-        standard_error = 0.0
     ci_low, ci_high = _bootstrap_ci(
         pairs,
         seed=seed,
@@ -236,12 +229,6 @@ def check(
             "high": round(ci_high, 6),
             "iterations": bootstrap_iterations,
             "seed": seed,
-        },
-        "ci95_normal": {
-            "low": round(kappa - 1.96 * standard_error, 6),
-            "high": round(kappa + 1.96 * standard_error, 6),
-            "standard_error": round(standard_error, 6),
-            "note": "normal approximation; bootstrap is the primary interval",
         },
         "labels": _label_report(pairs, base["labels"]),
         "matrix": [

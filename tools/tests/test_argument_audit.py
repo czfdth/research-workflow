@@ -127,6 +127,49 @@ class ArgumentAuditTests(unittest.TestCase):
 
         self.assertIn("proof-review-not-verified", self._codes(problems))
 
+    def test_non_string_proof_fields_are_problems_not_crashes(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        self._write_proof_ledger(
+            "version: 1\n"
+            "reviews:\n"
+            "  - id: prop:main\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    method: [line-by-line]\n"
+            "    status: {bad: true}\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("proof-review-invalid-method", self._codes(problems))
+        self.assertIn("proof-review-invalid-status", self._codes(problems))
+
+    def test_model_name_variants_cannot_be_reviewers(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        for reviewer in ("grok-3", "Sonnet 4.5", "amazon-nova-pro"):
+            with self.subTest(reviewer=reviewer):
+                self._write_proof_ledger(
+                    "version: 1\n"
+                    "reviews:\n"
+                    "  - id: prop:main\n"
+                    f"    reviewer: {reviewer}\n"
+                    "    reviewed_at: '2026-10-04'\n"
+                    "    method: line-by-line\n"
+                    "    status: verified\n"
+                )
+
+                problems, _advisories = self._run()
+
+                self.assertIn("proof-review-not-human", self._codes(problems))
+
     def test_protected_citation_requires_support_ledger(self):
         self._write_tex(
             "\\section{Abstract}\n"
@@ -148,10 +191,51 @@ class ArgumentAuditTests(unittest.TestCase):
 
         self.assertIn("citation-support-ledger-missing", self._codes(problems))
 
+    def test_optional_citation_argument_is_detected(self):
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "Prior work \\cite[p. 3]{smith2024} shows this.\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-ledger-missing", self._codes(problems))
+
+    def test_short_section_title_is_detected(self):
+        self._write_tex(
+            "\\section[short]{Abstract}\n"
+            "Prior work \\cite{smith2024} shows this.\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-ledger-missing", self._codes(problems))
+
+    def test_protected_section_survives_non_protected_sibling_subsection(self):
+        (self.root / "data" / "claims.yaml").write_text(
+            "version: 1\n"
+            "protected_sections:\n"
+            "  - findings\n"
+            "  - data\n"
+            "waivers: []\n",
+            encoding="utf-8",
+        )
+        self._write_tex(
+            "\\section{Findings}\n"
+            "\\subsection{Data}\n"
+            "No citation here.\n"
+            "\\subsection{Discussion}\n"
+            "Prior work \\cite{smith2024} shows this.\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-ledger-missing", self._codes(problems))
+
     def test_support_record_with_source_quote_passes(self):
         self._write_tex(
             "\\section{Abstract}\n"
-            "Prior work \\cite{smith2024} shows this.\n"
+            "Prior work shows this. \\cite{smith2024}\n"
         )
         quote = "Smith et al. show the exact semantic support for this claim."
         (self.root / "references" / "smith2024.md").write_text(
@@ -162,7 +246,7 @@ class ArgumentAuditTests(unittest.TestCase):
             "version: 1\n"
             "supports:\n"
             "  - id: claim:abstract\n"
-            "    claim_text: Prior work supports this.\n"
+            "    claim_text: Prior work shows this.\n"
             "    citations: [smith2024]\n"
             "    reviewer: Alice Zhang\n"
             "    reviewed_at: '2026-10-04'\n"
@@ -202,6 +286,76 @@ class ArgumentAuditTests(unittest.TestCase):
         problems, _advisories = self._run()
 
         self.assertIn("citation-support-quote-not-found", self._codes(problems))
+
+    def test_support_record_requires_source_path(self):
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "Prior work shows this. \\cite{smith2024}\n"
+        )
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:abstract\n"
+            "    claim_text: Prior work shows this.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: supports\n"
+            "    support_quote: \"A quote long enough to pass the length check.\"\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-source-missing", self._codes(problems))
+
+    def test_claim_text_must_appear_in_manuscript(self):
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "A different sentence. \\cite{smith2024}\n"
+        )
+        quote = "Smith et al. show the exact semantic support for this claim."
+        (self.root / "references" / "smith2024.md").write_text(
+            f"# Notes\n\n{quote}\n",
+            encoding="utf-8",
+        )
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:abstract\n"
+            "    claim_text: This sentence is not in the manuscript.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: supports\n"
+            f"    support_quote: \"{quote}\"\n"
+            "    source_path: references/smith2024.md\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-claim-not-found", self._codes(problems))
+
+    def test_non_string_support_verdict_is_a_problem_not_a_crash(self):
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "Prior work \\cite{smith2024} shows this.\n"
+        )
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:abstract\n"
+            "    claim_text: Prior work shows this.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: [supports]\n"
+            "    support_quote: \"A quote long enough to pass the length check.\"\n"
+            "    source_path: references/smith2024.md\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-invalid-verdict", self._codes(problems))
 
     def test_contradicting_support_verdict_is_a_problem(self):
         self._write_tex(

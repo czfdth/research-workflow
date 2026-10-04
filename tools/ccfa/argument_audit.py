@@ -41,13 +41,18 @@ _ENV_BEGIN = re.compile(
 )
 _ENV_END = re.compile(r"\\end\{(theorem|proposition|lemma|corollary)\}")
 _LABEL = re.compile(r"\\label\{([^{}]+)\}")
-_HEADING = re.compile(r"\\(section|subsection)\*?\s*\{([^{}]*)\}")
-_CITE = re.compile(r"\\cite[a-zA-Z]*\s*\{([^{}]+)\}")
+_HEADING = re.compile(
+    r"\\(section|subsection)\*?\s*(?:\[[^\]]*\]\s*)*\{([^{}]*)\}"
+)
+_CITE = re.compile(
+    r"\\cite[a-zA-Z]*\s*(?:\[[^\]]*\]\s*)*\{([^{}]+)\}"
+)
 _BIB_KEY = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
 _ABSTRACT_BEGIN = re.compile(r"\\begin\{abstract\}")
 _ABSTRACT_END = re.compile(r"\\end\{abstract\}")
 _MODEL_REVIEWER = re.compile(
-    r"(?i)\b(gpt|chatgpt|claude|gemini|deepseek|qwen|llama|mistral|o[134])\b"
+    r"(?i)\b(gpt|chatgpt|claude|gemini|deepseek|qwen|llama|mistral|"
+    r"grok|sonnet|haiku|opus|nova|command|phi|o[134])\b"
 )
 _MIN_QUOTE = 20
 
@@ -165,8 +170,7 @@ def _scan_protected_citations(
             lines = tex.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError as exc:
             raise ValueError(f"无法读取 {tex}: {exc}") from exc
-        active = False
-        active_level = 99
+        active_stack: list[tuple[int, bool]] = []
         in_abstract = False
         for line_number, raw in enumerate(lines, start=1):
             line = strip_comment(raw)
@@ -179,13 +183,21 @@ def _scan_protected_citations(
             if heading:
                 level = 1 if heading.group(1) == "section" else 2
                 normalised = _normalise_section(heading.group(2))
-                if normalised in protected_sections:
-                    active = True
-                    active_level = level
-                elif level <= active_level:
-                    active = False
-            protected = active or (
-                in_abstract and "abstract" in protected_sections
+                while active_stack and active_stack[-1][0] >= level:
+                    active_stack.pop()
+                parent_protected = (
+                    active_stack[-1][1] if active_stack else False
+                )
+                active_stack.append(
+                    (
+                        level,
+                        parent_protected
+                        or normalised in protected_sections,
+                    )
+                )
+            protected = (
+                (in_abstract and "abstract" in protected_sections)
+                or (active_stack and active_stack[-1][1])
             )
             if not protected:
                 continue
@@ -207,6 +219,28 @@ def _bib_keys(bib: Path) -> set[str]:
     except OSError as exc:
         raise ValueError(f"无法读取 BibTeX {bib}: {exc}") from exc
     return {match.group(1) for match in _BIB_KEY.finditer(text)}
+
+
+def _claim_appears_in_files(
+    manuscript: Path,
+    relative_paths: set[str],
+    needle: str,
+    cache: dict[str, str],
+) -> bool:
+    for relative in sorted(relative_paths):
+        if relative not in cache:
+            try:
+                cache[relative] = _normalise_whitespace(
+                    (manuscript / relative).read_text(
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                )
+            except OSError:
+                cache[relative] = ""
+        if needle and needle in cache[relative]:
+            return True
+    return False
 
 
 def _check_proofs(
@@ -313,7 +347,8 @@ def _check_proofs(
                     f"{review_id}: reviewed_at 必须是 YYYY-MM-DD",
                 )
             )
-        if review.get("method") not in PROOF_METHODS:
+        method = review.get("method")
+        if not isinstance(method, str) or method not in PROOF_METHODS:
             problems.append(
                 _problem(
                     "proof-review-invalid-method",
@@ -322,7 +357,8 @@ def _check_proofs(
                     f"{review_id}: method 必须是 {sorted(PROOF_METHODS)}",
                 )
             )
-        if review.get("status") not in PROOF_STATUSES:
+        status = review.get("status")
+        if not isinstance(status, str) or status not in PROOF_STATUSES:
             problems.append(
                 _problem(
                     "proof-review-invalid-status",
@@ -331,13 +367,13 @@ def _check_proofs(
                     f"{review_id}: status 必须是 {sorted(PROOF_STATUSES)}",
                 )
             )
-        elif review.get("status") != "verified":
+        elif status != "verified":
             problems.append(
                 _problem(
                     "proof-review-not-verified",
                     ledger_path,
                     None,
-                    f"{review_id}: status={review.get('status')!r}，"
+                    f"{review_id}: status={status!r}，"
                     "未通过人工复核",
                 )
             )
@@ -417,6 +453,11 @@ def _check_citation_support(
             "required": len(protected_citations),
             "reviewed": 0,
         }
+    citation_files: dict[str, set[str]] = {
+        key: {path for path, _line in locations}
+        for key, locations in protected_citations.items()
+    }
+    manuscript_text_cache: dict[str, str] = {}
     covered: set[str] = set()
     for index, support in enumerate(supports):
         if not isinstance(support, dict):
@@ -463,6 +504,20 @@ def _check_citation_support(
                 )
             )
             continue
+        claim_text = support.get("claim_text")
+        claim_text_valid = (
+            isinstance(claim_text, str)
+            and len(_normalise_whitespace(claim_text)) >= _MIN_QUOTE
+        )
+        if not claim_text_valid:
+            problems.append(
+                _problem(
+                    "citation-support-claim-too-short",
+                    ledger_path,
+                    None,
+                    f"{support_id}: claim_text 至少需要 {_MIN_QUOTE} 字符",
+                )
+            )
         if not _human_reviewer(support.get("reviewer")):
             problems.append(
                 _problem(
@@ -482,7 +537,7 @@ def _check_citation_support(
                 )
             )
         verdict = support.get("verdict")
-        if verdict not in SUPPORT_VERDICTS:
+        if not isinstance(verdict, str) or verdict not in SUPPORT_VERDICTS:
             problems.append(
                 _problem(
                     "citation-support-invalid-verdict",
@@ -551,8 +606,33 @@ def _check_citation_support(
                 )
             if key in protected_citations:
                 covered.add(key)
+                if claim_text_valid:
+                    if not _claim_appears_in_files(
+                        manuscript,
+                        citation_files.get(key, set()),
+                        _normalise_whitespace(claim_text),
+                        manuscript_text_cache,
+                    ):
+                        problems.append(
+                            _problem(
+                                "citation-support-claim-not-found",
+                                ledger_path,
+                                None,
+                                f"{support_id}: claim_text 没有出现在引用 "
+                                f"{key!r} 的受保护章节中",
+                            )
+                        )
         source_path = support.get("source_path")
-        if quote_valid and isinstance(source_path, str) and source_path.strip():
+        if not isinstance(source_path, str) or not source_path.strip():
+            problems.append(
+                _problem(
+                    "citation-support-source-missing",
+                    ledger_path,
+                    None,
+                    f"{support_id}: source_path 必填，否则引文无法本地复核",
+                )
+            )
+        elif quote_valid:
             source = (Path(paper_root) / source_path).resolve()
             try:
                 source.relative_to(Path(paper_root).resolve())
@@ -591,15 +671,6 @@ def _check_citation_support(
                         f"{support_id}: support_quote 未在 source_path 中找到",
                     )
                 )
-        elif quote_valid:
-            advisories.append(
-                _problem(
-                    "citation-support-quote-unverified",
-                    ledger_path,
-                    None,
-                    f"{support_id}: 未给 source_path，引文无法本地复核",
-                )
-            )
     for key, locations in sorted(protected_citations.items()):
         if key not in covered:
             first_path, first_line = locations[0]
