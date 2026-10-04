@@ -113,6 +113,69 @@ class TestLookup(unittest.TestCase):
         self.assertEqual(result.detail, "title mismatch")
         self.assertIsNone(result.evidence)
 
+    def test_missing_title_is_not_found(self):
+        body = json.dumps({"message": {"DOI": "10.1/x", "title": []}})
+        fetch, _ = _fetcher({"crossref.org": (200, body)})
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertFalse(result.found)
+        self.assertEqual(result.detail, "title missing")
+        self.assertIsNone(result.evidence)
+
+    def test_non_string_title_is_not_found(self):
+        body = json.dumps({"message": {"DOI": "10.1/x", "title": [123]}})
+        fetch, _ = _fetcher({"crossref.org": (200, body)})
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertFalse(result.found)
+        self.assertEqual(result.detail, "title missing")
+        self.assertIsNone(result.evidence)
+
+    def test_title_similarity_boundary_is_around_point_nine(self):
+        base = "the quick brown fox jumps over the lazy dog"
+        high = base + "z" * 8
+        low = base + "z" * 10
+
+        self.assertGreaterEqual(title_similarity(base, high), 0.9)
+        self.assertLess(title_similarity(base, low), 0.9)
+
+    def test_title_just_above_threshold_is_found(self):
+        base = "the quick brown fox jumps over the lazy dog"
+        high = base + "z" * 8
+        fetch, _ = _fetcher(
+            {"crossref.org": (200, _crossref_body(title=high))}
+        )
+
+        result = lookup("10.1/x", fetch=fetch, expected_title=base)
+
+        self.assertTrue(result.found)
+
+    def test_title_just_below_threshold_is_mismatch(self):
+        base = "the quick brown fox jumps over the lazy dog"
+        low = base + "z" * 10
+        fetch, _ = _fetcher(
+            {"crossref.org": (200, _crossref_body(title=low))}
+        )
+
+        result = lookup("10.1/x", fetch=fetch, expected_title=base)
+
+        self.assertFalse(result.found)
+        self.assertEqual(result.detail, "title mismatch")
+
+    def test_evidence_hashes_raw_response_bytes(self):
+        raw = _crossref_body().encode("utf-8")
+        fetch, _ = _fetcher({"crossref.org": (200, raw)})
+
+        result = lookup("10.1/x", fetch=fetch)
+
+        self.assertTrue(result.found)
+        self.assertEqual(
+            result.evidence.body_sha256,
+            "sha256:" + hashlib.sha256(raw).hexdigest(),
+        )
+
     def test_title_match_tolerates_case_and_punctuation(self):
         fetch, _ = _fetcher(
             {

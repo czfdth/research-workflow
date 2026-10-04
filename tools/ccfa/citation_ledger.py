@@ -5,6 +5,10 @@ separates "a key that exists because someone verified it" from "a key that
 exists because a model typed it". A ``verified`` record must carry fetched
 evidence; the loader never crashes on a missing or malformed evidence block,
 it records the reason on the entry so ``citation_guard`` can report it.
+
+``evidence.body_sha256`` is the sha256 of the raw response bytes: it proves a
+fetch happened, but without the stored body it cannot be recomputed offline,
+so the anti-forgery boundary is incomplete.
 """
 
 from __future__ import annotations

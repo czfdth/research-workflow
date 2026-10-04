@@ -3,8 +3,15 @@
 A 200 response is not evidence by itself. The body must be JSON, the DOI in
 the body must match the requested DOI after normalization, and (when an
 expected title is supplied) the returned title must be at least 0.9 similar
-after normalization. A successful lookup carries a :class:`LookupEvidence`
-record binding the answer to the fetched body.
+after normalization. The provider must also return a usable non-empty string
+title; a missing title is a failure, never evidence with ``matched_title``
+``None``. A successful lookup carries a :class:`LookupEvidence` record binding
+the answer to the fetched body.
+
+The ``body_sha256`` proves that some fetch happened. Without the response body
+itself there is no way to recompute it offline, so this digest is not a
+complete anti-forgery boundary; it cannot detect a hand-written ledger entry
+with a plausible hash.
 
 Network access is opt-in at the caller level: nothing here runs unless
 lookup() is called explicitly.
@@ -25,7 +32,7 @@ from typing import Any, Callable, NamedTuple
 
 from ccfa.bib import normalize_doi
 
-Fetcher = Callable[[str, float], "tuple[int, str]"]
+Fetcher = Callable[[str, float], "tuple[int, str | bytes]"]
 
 _ENDPOINTS = (
     ("crossref", "https://api.crossref.org/works/{doi}"),
@@ -42,9 +49,16 @@ _TITLE_SEPARATORS = re.compile(r"[^0-9a-z\u4e00-\u9fff]+")
 
 
 class LookupEvidence(NamedTuple):
+    """Fetched-body evidence.
+
+    ``body_sha256`` is computed over the raw response bytes. It proves that a
+    fetch happened, but it cannot be recomputed offline when the body was not
+    stored, so the anti-forgery boundary is incomplete.
+    """
+
     body_sha256: str
     retrieved_at: str
-    matched_title: str | None
+    matched_title: str
     source: str
 
 
@@ -82,8 +96,8 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _body_sha256(body: str) -> str:
-    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+def _body_sha256(raw: bytes) -> str:
+    digest = hashlib.sha256(raw).hexdigest()
     return f"sha256:{digest}"
 
 
@@ -131,11 +145,11 @@ def _datacite_fields(payload: Any) -> tuple[str | None, str | None]:
     )
 
 
-def _default_fetch(url: str, timeout: float) -> tuple[int, str]:
+def _default_fetch(url: str, timeout: float) -> tuple[int, bytes]:
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.read().decode("utf-8", errors="replace")
+            return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, ""
 
@@ -169,8 +183,17 @@ def lookup(
         if status != 200:
             attempts.append(f"{source}: HTTP {status}")
             continue
+        if isinstance(body, bytes):
+            raw = body
+            text = body.decode("utf-8", errors="replace")
+        elif isinstance(body, str):
+            text = body
+            raw = body.encode("utf-8")
+        else:
+            attempts.append(f"{source}: 响应体类型非法")
+            continue
         try:
-            payload = json.loads(body)
+            payload = json.loads(text)
         except (json.JSONDecodeError, TypeError):
             attempts.append(f"{source}: 响应不是合法 JSON")
             continue
@@ -185,6 +208,13 @@ def lookup(
                 source,
                 "doi mismatch",
             )
+        if not isinstance(matched_title, str) or not matched_title.strip():
+            return LookupResult(
+                normalized,
+                False,
+                source,
+                "title missing",
+            )
         if expected_title:
             similarity = title_similarity(expected_title, matched_title)
             if similarity < TITLE_MATCH_THRESHOLD:
@@ -195,9 +225,9 @@ def lookup(
                     "title mismatch",
                 )
         evidence = LookupEvidence(
-            body_sha256=_body_sha256(body),
+            body_sha256=_body_sha256(raw),
             retrieved_at=_utc_now(),
-            matched_title=matched_title,
+            matched_title=matched_title.strip(),
             source=source,
         )
         return LookupResult(

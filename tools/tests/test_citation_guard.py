@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import tempfile
@@ -402,3 +403,96 @@ class TestVerifyOnline(BaseCase):
         record = load_ledger(self.ledger)["good"]
         self.assertEqual(record.status, "failed")
         self.assertIsNone(record.evidence)
+
+    def test_real_lookup_round_trips_through_the_ledger(self):
+        body = json.dumps(
+            {
+                "message": {
+                    "DOI": "10.1/ok",
+                    "title": ["A Real Paper"],
+                }
+            }
+        )
+        self.bib.write_text(
+            '@misc{good, doi = {10.1/ok}, title = {A Real Paper}}\n',
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {}}),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{good}")
+        from ccfa.citation_ledger import load_ledger
+
+        def fetch(url, timeout):
+            return 200, body
+
+        problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_online=True,
+            fetch=fetch,
+        )
+
+        self.assertEqual(problems, [], problems)
+        record = load_ledger(self.ledger)["good"]
+        self.assertEqual(record.status, "verified")
+        self.assertEqual(
+            record.evidence.body_sha256,
+            "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(record.evidence.matched_title, "A Real Paper")
+
+        read_problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+        )
+
+        self.assertEqual(read_problems, [], read_problems)
+        self.assertNotIn(
+            "citation-self-asserted",
+            self.codes(read_problems),
+        )
+
+    def test_missing_provider_title_never_writes_unreadable_evidence(self):
+        body = json.dumps({"message": {"DOI": "10.1/ok", "title": []}})
+        self.bib.write_text(
+            "@misc{good, doi = {10.1/ok}}\n",
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {}}),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{good}")
+        from ccfa.citation_ledger import load_ledger
+
+        def fetch(url, timeout):
+            return 200, body
+
+        problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_online=True,
+            fetch=fetch,
+        )
+
+        self.assertIn("doi-not-found", self.codes(problems))
+        record = load_ledger(self.ledger)["good"]
+        self.assertEqual(record.status, "failed")
+        self.assertIsNone(record.evidence)
+
+        read_problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+        )
+
+        self.assertNotIn(
+            "citation-self-asserted",
+            self.codes(read_problems),
+        )
+        self.assertIn("unverified-entry", self.codes(read_problems))

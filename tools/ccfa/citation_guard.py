@@ -28,7 +28,9 @@ def check(
     bib_path: Path,
     ledger_path: Path,
     verify_online: bool = False,
+    fetch=None,
 ) -> tuple[list[Problem], list[Problem]]:
+    """Check citations; ``fetch`` is an injection point for offline tests."""
     manuscript = Path(manuscript)
     if not manuscript.is_dir():
         raise ValueError(f"手稿目录不存在或不是目录: {manuscript}")
@@ -45,7 +47,11 @@ def check(
             entry = entries[key]
             if not entry.doi:
                 continue
-            result = lookup(entry.doi, expected_title=entry.title)
+            result = lookup(
+                entry.doi,
+                fetch=fetch,
+                expected_title=entry.title,
+            )
             if result.found and result.evidence is not None:
                 refreshed[key] = LedgerRecord(
                     key=key,
@@ -152,7 +158,8 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help=(
             "在线核验 DOI，并把响应体证据（sha256、时间、标题、来源）"
-            "写入 --ledger；会改写台账文件"
+            "写入 --ledger；会改写台账文件。body_sha256 证明某次取回发生过，"
+            "但未存响应体时无法离线复算，防伪造边界不完整"
         ),
     )
     args = parser.parse_args(argv[1:])
