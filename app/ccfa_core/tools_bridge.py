@@ -21,6 +21,8 @@ from typing import Any, Callable, NamedTuple
 from ccfa import library, memory, milestones, state, trace_claims
 from ccfa.cli import save_text_atomically
 
+from ccfa_core.http_tools import HttpToolRegistry
+
 READ = "read"
 WRITE = "write"
 
@@ -407,6 +409,16 @@ def _error(name: Any, code: str, message: str) -> dict:
     }
 
 
+def _http_handler(
+    registry: HttpToolRegistry,
+    name: str,
+) -> Callable[[ToolContext, dict], Any]:
+    def handler(context: ToolContext, arguments: dict) -> Any:
+        return registry.call(name, arguments)
+
+    return handler
+
+
 class ToolBridge:
     """Dispatch model tool calls against one paper project."""
 
@@ -417,6 +429,7 @@ class ToolBridge:
         library_dir: Path | None = None,
         confirm_write: Callable[[str, dict], bool] | None = None,
         on_call: Callable[[dict], None] | None = None,
+        http_tools: HttpToolRegistry | None = None,
     ):
         self.project_root = Path(project_root)
         self.library_dir = (
@@ -426,6 +439,36 @@ class ToolBridge:
         self._confirm_write = confirm_write
         self._on_call = on_call
         self._tools = dict(_TOOLS_BY_NAME)
+        if http_tools is not None:
+            self._register_http_tools(http_tools)
+
+    def _register_http_tools(self, registry: HttpToolRegistry) -> None:
+        for spec in registry.specs():
+            if spec.name in self._tools:
+                raise ValueError(
+                    f"HTTP 工具名与内置工具冲突: {spec.name!r}"
+                )
+            self._tools[spec.name] = Tool(
+                name=spec.name,
+                description=spec.description,
+                risk=spec.risk,
+                parameters=copy.deepcopy(spec.parameters),
+                handler=_http_handler(registry, spec.name),
+            )
+
+    def openai_tools(self) -> list[dict]:
+        """Return fresh OpenAI specs for built-in plus registered tools."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": copy.deepcopy(tool.parameters),
+                },
+            }
+            for tool in self._tools.values()
+        ]
 
     def risk(self, name: str) -> str:
         return self._tools[name].risk
@@ -462,7 +505,7 @@ class ToolBridge:
         except Exception as exc:
             result = _error(
                 name,
-                "tool-error",
+                getattr(exc, "code", "tool-error"),
                 f"{type(exc).__name__}: {exc}",
             )
             self._finish(name, arguments, tool.risk, "error", result)

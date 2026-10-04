@@ -48,3 +48,14 @@ $env:PYTHONPATH = (Resolve-Path ../tools).Path
 - `CodexExecEngine` 的取消会立即 kill 子进程。
 - 引擎错误消息不包含 `SecretStore.get()` 的原始异常文本（可能嵌入 key），
   只带异常类型名。
+
+## 自定义 HTTP 工具
+
+`ccfa_core/http_tools.py` 提供声明式 HTTP 工具注册表。它只读 YAML，不执行任意
+代码：v1 只支持 GET/POST；`http://` 需显式 `allow_http: true`；敏感头必须写成
+`secret:<key_name>` 并由 keyring 取值（明文凭据是加载错误）；占位符必须在
+`parameters` 中声明；任一工具非法则整份注册表不加载。格式与示例见仓库根
+`README.md` 的「论文工作台（P2）」一节。
+
+`ToolBridge(project_root, http_tools=HttpToolRegistry(...))` 会把注册的工具与内置
+工具合并：同一套参数校验、写操作确认与审计（只记参数摘要）。

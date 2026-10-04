@@ -174,6 +174,41 @@ P1 边界（如实）：
 - HTTP 取消是请求边界式：最坏等当前请求完成或超时（`timeout_s` 兜底）；codex 取消会立即 kill 子进程。
 - 安装包未做；仍需按上面的"首次准备"手动建 venv。
 
+## 论文工作台（P2：自定义 HTTP 工具注册表）
+
+P2 让使用者用声明式配置接入自己的 API，不写代码。注册表是一份 YAML；每项描述一个模型可发起的 HTTP 请求：
+
+```yaml
+version: 1
+tools:
+  - name: arxiv_search
+    description: "Search arXiv for a query."
+    method: GET
+    url: "https://export.arxiv.org/api/query"
+    risk: read
+    timeout_s: 20
+    query:
+      search_query: "{search_query}"
+    parameters:
+      type: object
+      properties:
+        search_query: {type: string}
+      required: [search_query]
+      additionalProperties: false
+```
+
+加载规则（`app/ccfa_core/http_tools.py`）：
+
+- v1 只支持 HTTP，不支持任意 Python handler——那样会拿到应用自身权限，且无法校验。
+- `http://` 明文默认拒绝，必须显式写 `allow_http: true`。
+- 敏感头（`Authorization`、`X-Api-Key`、`Cookie` 等）只能写 `secret:<key_name>`，由 keyring 取值；写明文凭据直接是加载错误，密钥永不落到注册表文件里。
+- url / query / json / headers 里的 `{占位符}` 必须在 `parameters` 中声明；GET 不许带 json body。
+- **任一工具非法，整个注册表不加载**（fail-closed），不会留下「一半工具悄悄生效」的状态。
+
+接入方式：`ToolBridge(project_root, http_tools=HttpToolRegistry(specs, resolve_secret=...))`；注册的工具与内置工具走同一套参数校验、风险分级、写操作确认与审计日志（只记参数摘要）。
+
+P2 边界（如实）：注册表到 `ToolBridge` 的核心链路已通并有测试；把它接到设置界面与聊天面板（一个 `http_tools` 设置项 + 启动时加载）与 P3 的打包安装仍未做。
+
 ## 从零搭建
 
 依赖清单固定在 `tools/requirements.txt`。需要 Python 3.12（本仓库实测 3.12.14）。`tools/.venv` 已被 gitignore，不会随克隆提供。在仓库根执行：
