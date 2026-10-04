@@ -1971,3 +1971,29 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 真实 `nvidia-smi` 冒烟：`GpuMeter` 返回 `{'seconds': 0.25, 'samples': 3, 'errors': 0}`。
 - 真实 queue 冒烟（policy + GPU budget）：CLI 退 0；run-log 记录同时有 `policy={"sandbox":"policy"}`、独立 `resource_usage={"gpu_seconds":..., "gpu_samples":...}`，而 `metrics` 保持 `null`。
 - 全量：tools **955 tests OK**；app（offscreen）**141 tests OK**，于 486ae01 代码状态验证（其后仅文档/账本变更）。
+
+## 跨族评审 v1（2026-10-04，E68–E70）
+
+- 计划：`docs/plans/2026-10-04-cross-family-review.md`。目标：同族/未知族评审默认不能冒充跨族 gate；本机没有第二 provider 时只实现强制与诚实边界，不伪造跨族。
+- **E68 记录真实组成**：记录 `provider`、`execution_model`、`family_judgement`、`family_override`；v1 执行模型固定为 `deepseek-v4-flash`。
+- **E69 默认拒绝同族/未知族**：`cross-review run` 只有 `family_judgement=="cross-family"` 才能写 pass；同族/未知族退 2，除非显式 `--allow-same-family`。
+- **E70 `check` 同一口径**：从记录 `model` 与固定执行模型重算 family；检测 `family_judgement` 被单字段篡改；旧/缺字段记录默认报 `review-same-family`，`--allow-same-family` 只豁免迁移问题，不掩盖 `review-family-mismatch`。`--provider` 映射为 `codex exec -c model_provider=<provider>`。信任边界：本地一致性审计，不是密码学签名。
+
+### 实现与评审
+
+- `3ed3d0b feat: enforce cross-family review provenance`：首版跨族判定、默认拒绝、provider 传递、记录字段。
+- `543794b fix: recompute cross-family provenance during review checks`：`check` 从 `model`+执行模型重算，检测 `family_judgement` 单字段篡改。
+- `3e2c955 fix: close cross-family migration and self-report bypasses`：移除 `--execution-model` 自报覆盖，固定工作流执行模型；修复真实旧记录只报 `review-same-family`、allow 迁移可豁免。
+- `52d7d16 docs: state the cross-family trust boundary`：设计、计划、用户介绍同步“默认拒绝同族/未知族”“本机尚无第二 provider”和“改写整份 JSON 仍可伪造，不是密码学签名”。
+- `e6d204c fix: require complete cross-family provenance`：缺 `provider/execution_model/family_override` 的记录即使 model 看起来跨族也报 `review-same-family`。
+- `0bfbd07 fix: require the fixed execution model in provenance`：记录 `execution_model` 必须等于工作流常量，不能用自报执行模型翻 family。
+- `abaa790 fix: preserve family mismatch through migration allow flag`：`allow-same-family` 不再吞掉 `review-family-mismatch`。
+- `3c40c53 fix: keep unknown family mismatches visible`：`computed_family=="unknown"` 与具体 `family_judgement` 的冲突也保留 mismatch。
+
+### 评审与最终证据
+
+- `cross-family-review.json`：needs-fixes（旧记录缺字段、`--provider` 提示、文档未同步）；`cross-family-review-2.json`：needs-fixes（旧记录 mismatch 迁移口、model/execution_model 自报）；`cross-family-review-3.json`：对 `3e2c955`+`52d7d16` 判 **pass**；`cross-family-review-4.json`：对 `e6d204c` 判 critical（mismatch 被 allow 掩盖）；`cross-family-review-5.json`：对 `abaa790` 指出 unknown family 窄分支。
+- 最终只读内存对照：对 `model=mystery-v1`、`execution_model=deepseek-v4-flash`、`family_judgement=same-family`、缺 provider 的记录，`abaa790^` 返回 `['review-same-family'] / []`，`3c40c53` 返回 `['review-family-mismatch','review-same-family'] / ['review-family-mismatch']`。
+- 真实旧记录 CLI：`cross-review check --paper-root papers/rag-attack-defense --out-dir reviews` 只报 `review-same-family`；加 `--allow-same-family` 后 problems 为空。
+- 全量：tools **966 tests OK**，app（offscreen）**141 tests OK**；最终代码 HEAD 为 `3c40c53`（其后仅本账本说明）。
+- 未实现边界：本机仍未配置第二个可用 provider，跨族评审还没有真实双 provider 运行证据；`check` 是本地一致性审计，不防整份 JSON 被重写。论文仓库未按用户要求触碰。
