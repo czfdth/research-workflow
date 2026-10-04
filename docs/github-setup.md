@@ -2,7 +2,7 @@
 
 日期：2026-10-04
 
-本页记录把本地科研工作流接到 GitHub 的最小闭环。仓库文件已经包含 Actions、Dependabot、PR 模板、CITATION、LICENSE 和安全说明；远端仓库、分支保护和 secret scanning 仍需在 GitHub 私有仓库中启用。
+本页记录把本地科研工作流接到 GitHub 的最小闭环。两个私有仓库已创建并推送，仓库文件包含 Actions、Dependabot、PR 模板、CITATION、LICENSE 和安全说明；分支保护、跨仓库只读凭据和 secret scanning 仍需在 GitHub 中启用。
 
 ## 建议仓库
 
@@ -24,18 +24,18 @@
 
 `paper-check.yml` 和 `repro-smoke.yml` 默认检出 `czfdth/rag-attack-defense`。由于论文是独立私有仓库，需在工具仓库配置只读 `PAPER_REPOSITORY_TOKEN`；论文仓库反向检出工具时则使用只读 `RESEARCH_WORKFLOW_TOKEN`。
 
-## 远端接线步骤
+## 已接入的远端
 
 ```powershell
-git remote add origin https://github.com/czfdth/research-workflow.git
-git push -u origin master
+git remote -v
+# origin https://github.com/czfdth/research-workflow.git
 ```
 
 论文仓库单独执行：
 
 ```powershell
-git -C papers/rag-attack-defense remote add origin https://github.com/czfdth/rag-attack-defense.git
-git -C papers/rag-attack-defense push -u origin master
+git -C papers/rag-attack-defense remote -v
+# origin https://github.com/czfdth/rag-attack-defense.git
 ```
 
 推送前先运行：

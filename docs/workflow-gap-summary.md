@@ -6,7 +6,7 @@
 
 当前工作流已经从“脚本集合”升级为一套有状态、有 gate、有证据、有 readiness 报告的科研基础设施。最新更新补强了环境体检和一页式 readiness 检查，这是实质进步。
 
-但它仍未形成完整闭环：GitHub Actions 与审计台账已经落地，本地仓库仍未连接远端，WorkBuddy/Zotero/provider 服务不可用或不完整，论文仓库仍处于 dirty 状态，科学正确性仍依赖尚未完成的人类复核。
+但它仍未形成完整闭环：两个私有 GitHub 远端、Actions 与审计台账已经落地，WorkBuddy/Zotero/provider 服务不可用或不完整，跨私有仓库只读凭据尚未配置，科学正确性仍依赖尚未完成的人类复核。
 
 ## 已经改善的部分
 
@@ -56,20 +56,16 @@ tools.tests.test_run_log_e2e
 
 ## 当前仍缺什么
 
-### 1. GitHub 本地配置已完成，远端闭环尚未建立
+### 1. GitHub 远端已建立，保护策略与跨仓库凭据待配置
 
-GitHub 插件已经认证成功，账号为 `czfdth`。两个仓库已经具备 Actions、Dependabot、PR 模板和安全元数据，但仍没有 remote，远端私有仓库与保护规则尚未建立。
+账号 `czfdth` 下的两个私有仓库已经创建并完成首次推送。Actions、Dependabot、PR 模板和安全元数据已生效；分支保护、secret scanning 与跨私有仓库只读 token 尚未配置。
 
 因此目前缺少：
 
-- 远程备份；
-- 已在本地定义、但尚未在 GitHub runner 实跑的 CI；
-- pull request 审查路径；
-- 自动 release；
-- 第二环境 smoke test；
-- branch protection；
-- Dependabot 或 Renovate；
-- secret scanning 与发布前安全检查。
+- 分支保护；
+- 论文仓库读取工具仓库所需的最小权限凭据；
+- secret scanning 与发布前安全检查；
+- 论文 Actions 的成功第二环境运行。
 
 建议创建两个私有仓库：
 
@@ -98,7 +94,7 @@ GitHub 插件已经认证成功，账号为 `czfdth`。两个仓库已经具备 
 主要 blocking 包括：
 
 - paper git worktree 是 dirty；
-- 论文仓库没有 remote；
+- 跨私有仓库工具 checkout 尚未配置只读 secret；
 - proof、citation support、figure support 与真人双编码尚未完成人工复核。
 
 当前 `ccfa.yaml` 仍显示：
@@ -168,7 +164,7 @@ scientifically-accepted: not-claimed
 
 | 能力 | 建议工具 | 当前问题 |
 | --- | --- | --- |
-| 远程备份与 CI | GitHub private repos + Actions | Actions 文件已就绪，但仓库未接 remote、runner 未实跑 |
+| 远程备份与 CI | GitHub private repos + Actions | 两个 remote 已推送；主 CI 正在修复首次 runner 差异，论文 CI 待只读 secret |
 | 文献管理 | Zotero Desktop + Zotero MCP | 配置存在，本地 API 不可达 |
 | WorkBuddy 模型/转换服务 | WorkBuddy converter | 桌面进程可能在，但 `8787` 不可达 |
 | 长期归档 | Zenodo 或 OSF | 尚未接入 release/DOI 流程 |
@@ -205,8 +201,8 @@ scientifically-accepted: not-claimed
 
 ### P1：建立 GitHub 工程闭环
 
-1. 创建私有 GitHub 仓库并添加 remote。
-2. 增加 GitHub Actions：
+1. 配置跨私有仓库只读 secret。
+2. 验证 GitHub Actions：
    - unit tests；
    - `doctor --skip-services`；
    - `readiness`；
@@ -236,6 +232,6 @@ scientifically-accepted: not-claimed
 
 1. 完成四项仍 pending 的人类审计，不伪造 reviewer 或结论。
 2. 提交旗舰论文仓库，使 run-log 和 review provenance 能指向确定 commit。
-3. 建立私有 GitHub remote，配置最小权限 token，并在 Actions 第二环境实跑一次。
+3. 配置最小权限 token，并在论文 Actions 第二环境实跑一次。
 
 完成这三件事后，工作流才会从“本机很强的科研脚手架”变成“可协作、可审计、可恢复、可发布的科研生产线”。
