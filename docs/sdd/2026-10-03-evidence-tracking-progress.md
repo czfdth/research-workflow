@@ -2333,3 +2333,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   `review-provenance-incomplete`，后者报 `review-record-invalid`。
 - 验证：`tools.tests.test_research_ledgers` 18 tests OK；全量工具测试
   `Ran 1236 tests, OK`。
+
+## 测试影响选择与 CI 降频（2026-10-05）
+
+- 新增 `tools/ccfa/test_impact.py` / `scripts/test-impact.ps1`：从
+  `base...HEAD` 和本地工作树收集改动，按显式映射选择最小测试集。
+- fail closed 规则：未知路径、删除的测试文件、`tools/ccfa/cli.py`、
+  `tools/ccfa/stages.py`、依赖清单等共享边界回退对应 suite 全量测试。
+- tools/app 分 suite；app 选择使用 `app/.venv`、`PYTHONPATH=app;tools` 与
+  `QT_QPA_PLATFORM=offscreen`。
+- CI 改为 PR/push 跑影响集，每晚 schedule 和 `workflow_dispatch` 跑全量；
+  checkout 使用 `fetch-depth: 0`，PR 以 base SHA 计算 diff。
+- README、workflow guide、PR 模板与设计文档同步；新增
+  `tools/tests/test_test_impact.py`，覆盖精确映射、未知回退、删除回退、
+  dotfile 路径、工作树未跟踪文件和运行命令选择。

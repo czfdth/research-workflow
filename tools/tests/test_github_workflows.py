@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from ccfa.test_impact import select_tests
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PAPER_ROOT = ROOT / "papers" / "rag-attack-defense"
@@ -131,26 +133,38 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertIn("python -m venv tools/.venv", workflow)
         self.assertIn("python -m venv app/.venv", workflow)
         self.assertIn(
-            "tools/.venv/Scripts/python.exe -m unittest",
+            "scripts/test-impact.ps1 run --suite tools",
             workflow,
         )
         self.assertIn(
-            "app/.venv/Scripts/python.exe -m unittest",
+            "scripts/test-impact.ps1 run --suite app",
             workflow,
         )
         self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 2)
 
     def test_ci_covers_cross_review_downstream_e2e_modules(self):
+        selection = select_tests(
+            ["tools/ccfa/cross_review.py"],
+            suite="tools",
+        )
+        expected = (
+            "tools.tests.test_automation_e2e",
+            "tools.tests.test_evidence_integrity_e2e",
+        )
+        for module in expected:
+            with self.subTest(module=module):
+                self.assertIn(module, selection.tests)
+
+    def test_ci_uses_impact_selection_and_scheduled_full_regression(self):
         workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
             encoding="utf-8"
         )
 
-        for module in (
-            "tools.tests.test_automation_e2e",
-            "tools.tests.test_evidence_integrity_e2e",
-        ):
-            with self.subTest(module=module):
-                self.assertIn(module, workflow)
+        self.assertIn("schedule:", workflow)
+        self.assertIn("--base \"${{ github.event.pull_request.base.sha }}\"", workflow)
+        self.assertIn("${{ github.event.before }}", workflow)
+        self.assertIn("scripts/test-impact.ps1 run --suite tools --full", workflow)
+        self.assertIn("scripts/test-impact.ps1 run --suite app --full", workflow)
 
     def test_actions_use_current_node24_compatible_majors(self):
         workflow_text = "\n".join(

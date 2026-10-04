@@ -13,7 +13,8 @@
 
 List only the tests or checks relevant to the changed files.
 
-- [ ] `python -m unittest ...`
+- [ ] `scripts/test-impact.ps1 plan --base origin/master`
+- [ ] `scripts/test-impact.ps1 run --base origin/master`
 - [ ] `git diff --check`
 - [ ] `scripts/readiness.ps1 --paper-root <paper> --out reviews/readiness.md`
 

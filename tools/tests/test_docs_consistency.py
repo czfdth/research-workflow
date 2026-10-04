@@ -47,6 +47,7 @@ CLI_WRAPPERS = {
     "doctor": "scripts/doctor.ps1",
     "readiness": "scripts/readiness.ps1",
     "research_ledgers": "scripts/research-ledgers.ps1",
+    "test_impact": "scripts/test-impact.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

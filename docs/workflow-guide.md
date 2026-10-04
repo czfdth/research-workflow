@@ -304,11 +304,13 @@ $env:PYTHONPATH = (Resolve-Path ../tools).Path
 修改工具后只运行新增、修改模块及直接消费者：
 
 ```powershell
-rg -ln "<改动的符号或错误码>" tools/tests app/tests
+scripts/test-impact.ps1 plan --base origin/master
+scripts/test-impact.ps1 run --base origin/master
 ```
 
-然后用对应 venv 运行找到的测试模块。只有发布、状态机/公共契约大改或明确要求时，
-才运行全量套件。
+选择器把改动映射到最小测试集；未知路径、删除的测试文件、`cli.py` / `stages.py`
+等共享边界会自动回退全量。工作台改动用 `--suite app`。只有发布、每晚 CI、
+状态机/公共契约大改或明确要求时，才主动运行全量套件。
 
 不要把测试生成物、临时复现输出或某篇论文的工作文件提交到模板仓库。
 

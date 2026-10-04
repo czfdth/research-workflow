@@ -84,6 +84,7 @@ git -C $paper status --short
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/research_ledgers.py` | 校验 claim registry、assumptions/limitations、venue checklist、artifact provenance、探索图、成本账本与风险登记册 | `scripts/research-ledgers.ps1` |
+| `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查
 
@@ -269,22 +270,21 @@ $env:PYTHONPATH = (Resolve-Path tools).Path
 
 ## 跑测试
 
-日常按改动范围跑**受影响的测试模块**，不要每次全量（全量 `tools` 约 1115 条、
-约 150 秒；改动通常只碰其中几个模块）：
+日常不要手写测试模块清单。先看影响计划，再运行最小测试集：
 
 ```powershell
 cd <仓库根>
-$env:PYTHONPATH = (Resolve-Path tools).Path
-& tools/.venv/Scripts/python.exe -m unittest tools.tests.test_run_log tools.tests.test_milestones
+scripts/test-impact.ps1 plan --base origin/master
+scripts/test-impact.ps1 run --base origin/master
 ```
 
-先 `rg -ln "<改动的符号|错误码>" tools/tests app/tests` 找出受影响的模块；
-只有跨模块契约或发布前才跑全量：
+工作台改动使用 `--suite app`。未知路径、`cli.py` / `stages.py`、
+依赖文件等共享边界会 fail closed，自动回退到对应 suite 的全量测试。
+只有全量回退、每晚 schedule、手动发布检查，或明确要验证跨模块契约时才运行全量：
 
 ```powershell
 cd <仓库根>
-$env:PYTHONPATH = (Resolve-Path tools).Path
-& tools/.venv/Scripts/python.exe -m unittest discover -s tools/tests -t tools -v
+scripts/test-impact.ps1 run --suite tools --full
 ```
 
 ## 已知环境约束

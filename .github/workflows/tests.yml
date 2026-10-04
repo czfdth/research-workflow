@@ -4,20 +4,24 @@ on:
   pull_request:
   push:
     branches: [master, main]
+  schedule:
+    - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  tools-targeted:
-    name: tools targeted tests
+  tools-impact:
+    name: tools impacted tests
     runs-on: windows-latest
     env:
       PYTHONUTF8: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -35,7 +39,7 @@ jobs:
           tools/.venv/Scripts/python.exe -m pip install --upgrade pip
           tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.txt
 
-      - name: Compile changed core modules
+      - name: Compile core modules
         shell: pwsh
         run: |
           $env:PYTHONPATH = "tools"
@@ -44,33 +48,38 @@ jobs:
             tools/ccfa/doctor.py `
             tools/ccfa/readiness.py `
             tools/ccfa/repro_package.py `
-            tools/ccfa/research_ledgers.py
+            tools/ccfa/research_ledgers.py `
+            tools/ccfa/test_impact.py
 
-      - name: Run targeted tool tests
+      - name: Run impacted tool tests
         shell: pwsh
         run: |
-          $env:PYTHONPATH = "tools"
-          tools/.venv/Scripts/python.exe -m unittest `
-            tools.tests.test_cross_review `
-            tools.tests.test_automation_e2e `
-            tools.tests.test_doctor `
-            tools.tests.test_evidence_integrity_e2e `
-            tools.tests.test_readiness `
-            tools.tests.test_research_ledgers `
-            tools.tests.test_repro_package `
-            tools.tests.test_run_log_e2e `
-            tools.tests.test_docs_consistency `
-            tools.tests.test_github_workflows `
-            tools.tests.test_scripts
+          $event = "${{ github.event_name }}"
+          if ($event -eq "pull_request") {
+            scripts/test-impact.ps1 run --suite tools `
+              --base "${{ github.event.pull_request.base.sha }}"
+          } elseif ($event -eq "push") {
+            $base = "${{ github.event.before }}"
+            git cat-file -e "$base^{commit}" 2>$null
+            if ($base -match "^0+$" -or $LASTEXITCODE -ne 0) {
+              scripts/test-impact.ps1 run --suite tools --full
+            } else {
+              scripts/test-impact.ps1 run --suite tools --base $base
+            }
+          } else {
+            scripts/test-impact.ps1 run --suite tools --full
+          }
 
-  app-targeted:
-    name: app targeted tests
+  app-impact:
+    name: app impacted tests
     runs-on: windows-latest
     env:
       PYTHONUTF8: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -89,13 +98,23 @@ jobs:
           app/.venv/Scripts/python.exe -m pip install --upgrade pip
           app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
 
-      - name: Run targeted app tests
+      - name: Run impacted app tests
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          $env:PYTHONPATH = "app;tools"
-          app/.venv/Scripts/python.exe -m unittest `
-            app.tests.test_settings `
-            app.tests.test_chat_panel `
-            app.tests.test_workbench_e2e
+          $event = "${{ github.event_name }}"
+          if ($event -eq "pull_request") {
+            scripts/test-impact.ps1 run --suite app `
+              --base "${{ github.event.pull_request.base.sha }}"
+          } elseif ($event -eq "push") {
+            $base = "${{ github.event.before }}"
+            git cat-file -e "$base^{commit}" 2>$null
+            if ($base -match "^0+$" -or $LASTEXITCODE -ne 0) {
+              scripts/test-impact.ps1 run --suite app --full
+            } else {
+              scripts/test-impact.ps1 run --suite app --base $base
+            }
+          } else {
+            scripts/test-impact.ps1 run --suite app --full
+          }

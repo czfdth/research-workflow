@@ -326,6 +326,14 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 审计能防的范围。`codex_config_path` 现在是必需的 provenance 字段，缺失时报
 `review-provenance-incomplete`，防止删掉该字段来跳过配置漂移核验。
 
+**影响面测试选择（2026-10-05）：** 新增 `tools/ccfa/test_impact.py` 与
+`scripts/test-impact.ps1`。它从 `base...HEAD` 与当前工作树收集改动，把路径映射到
+最小相关测试模块。未知路径、删除的测试文件、`cli.py` / `stages.py`、依赖清单等
+共享边界 fail closed 到对应 suite 的全量测试；tools 与 app 分开选择，app 使用
+`app/.venv` 与 offscreen Qt。GitHub Actions 只在 PR/push 上跑影响集，每晚 schedule
+和手动 `workflow_dispatch` 保留完整回归。该选择器减少的是重复验证成本，不放松
+跨模块改动与未知改动的全量回退。
+
 ### 6.2 终稿确定性检查项
 
 基线是渲染后的 PDF，不是编译日志。
