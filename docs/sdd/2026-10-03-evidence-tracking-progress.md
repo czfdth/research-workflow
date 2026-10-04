@@ -1945,6 +1945,7 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 
 ### 最终验证（当前模板 HEAD）
 
+- 验证时模板代码 HEAD = `b2c6676`（图规则修复后）；论文 HEAD = `9d372d2`（交付图纳入后）。其后只追加本账本说明。
 - `tools`：`Ran 929 tests OK`；`app`（offscreen）：`Ran 141 tests OK`。
 - fresh clone（新建 `tools/.venv` + `pip install -r tools/requirements.txt`）后：`Ran 929 tests OK`。
 - 论文提交树 clean clone（`9d372d2`）：`git status --porcelain` 为空；`run-log check` 退 0（problems=0）；`cross-review check` 退 1（15 条 stale，符合预期）；`final-check` 退 1（2 个 protected-section problem，符合提交报告）。
