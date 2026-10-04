@@ -380,6 +380,7 @@ class AutomationEndToEndTests(unittest.TestCase):
             stage="internal-review",
             paths=[Path("main.tex")],
             runner=runner,
+            allow_same_family=True,
         )
 
         self.assertEqual(

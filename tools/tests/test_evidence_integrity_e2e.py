@@ -254,6 +254,7 @@ class EvidenceIntegrityEndToEnd(unittest.TestCase):
             stage="internal-review",
             paths=[Path("main.tex")],
             runner=runner,
+            allow_same_family=True,
         )
 
         codes = [problem.code for problem in check_review(paper)]

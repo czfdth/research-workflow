@@ -75,6 +75,7 @@ class CrossReviewTests(unittest.TestCase):
     def _run(self, runner, **overrides):
         values = {
             "model": "deepseek-v4-pro",
+            "allow_same_family": True,
             "stage": "internal-review",
             "paths": [Path("manuscript/main.tex")],
         }
@@ -147,6 +148,42 @@ class TestRunReview(CrossReviewTests):
         self.assertTrue(self._record_path().is_file())
         self.assertTrue((self.paper_root / "reviews" / "cross-review.md").is_file())
         self.assertEqual(result["model"], "deepseek-v4-pro")
+
+    def test_same_family_requires_explicit_override(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        with self.assertRaisesRegex(ValueError, "allow-same-family"):
+            self._run(runner, allow_same_family=False)
+
+        self.assertEqual(runner.calls, [])
+        self.assertFalse(self._record_path().exists())
+
+    def test_cross_family_model_is_allowed_without_override(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+
+        self.assertEqual(result["family_judgement"], "cross-family")
+        self.assertFalse(result["family_override"])
+
+    def test_provider_is_passed_to_codex_and_recorded(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(
+            runner,
+            model="gpt-5.6",
+            provider="other-provider",
+            allow_same_family=False,
+        )
+
+        argv = runner.calls[0]["argv"]
+        self.assertIn("-c", argv)
+        self.assertIn("model_provider=other-provider", argv)
+        self.assertEqual(result["provider"], "other-provider")
 
     def test_blocking_verdict_preserves_evidence_exactly(self):
         blocking = [
@@ -350,6 +387,43 @@ class TestCheckReview(CrossReviewTests):
         problems = check_review(self.paper_root)
 
         self.assertEqual([problem.code for problem in problems], ["review-stale"])
+
+    def test_same_family_record_is_a_problem_without_override(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record["family_override"] = False
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-same-family"],
+        )
+        self.assertEqual(
+            check_review(self.paper_root, allow_same_family=True),
+            [],
+        )
+
+    def test_legacy_record_without_family_fields_requires_explicit_migration(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("family_judgement", None)
+        record.pop("family_override", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-same-family"],
+        )
+        self.assertEqual(
+            check_review(self.paper_root, allow_same_family=True),
+            [],
+        )
 
     def test_blocking_record_is_review_blocking(self):
         quote = (

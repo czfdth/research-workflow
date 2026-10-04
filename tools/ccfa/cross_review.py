@@ -41,7 +41,20 @@ REVIEW_SCHEMA = {
 }
 
 DEFAULT_MODEL = "deepseek-v4-pro"
-_SAME_FAMILY_MODELS = {"deepseek-v4-pro", "deepseek-v4-flash"}
+DEFAULT_EXECUTION_MODEL = "deepseek-v4-flash"
+_MODEL_FAMILIES = (
+    ("deepseek-", "deepseek"),
+    ("gpt-", "openai"),
+    ("o1", "openai"),
+    ("o3", "openai"),
+    ("o4", "openai"),
+    ("claude-", "anthropic"),
+    ("gemini-", "google"),
+    ("glm-", "zhipu"),
+    ("qwen-", "qwen"),
+    ("llama-", "meta"),
+    ("mistral-", "mistral"),
+)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STDERR_LIMIT = 4000
 _RAW_LAST_MESSAGE_LIMIT = 10000
@@ -78,12 +91,25 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _family_judgement(model: str) -> str:
-    if model in _SAME_FAMILY_MODELS:
-        return "same-family"
-    if model.startswith(("gpt-", "claude-", "glm-")):
-        return "cross-family"
+def _model_family(model: str) -> str:
+    normalized = str(model).strip().casefold()
+    for prefix, family in _MODEL_FAMILIES:
+        if normalized.startswith(prefix):
+            return family
     return "unknown"
+
+
+def _family_judgement(
+    model: str,
+    execution_model: str = DEFAULT_EXECUTION_MODEL,
+) -> str:
+    review_family = _model_family(model)
+    execution_family = _model_family(execution_model)
+    if review_family == "unknown" or execution_family == "unknown":
+        return "unknown"
+    if review_family == execution_family:
+        return "same-family"
+    return "cross-family"
 
 
 def _bounded_text(value: object, limit: int) -> str:
@@ -362,6 +388,9 @@ def run_review(
     paper_root: Path,
     *,
     model: str = DEFAULT_MODEL,
+    provider: str | None = None,
+    execution_model: str = DEFAULT_EXECUTION_MODEL,
+    allow_same_family: bool = False,
     stage: str,
     paths: list[Path],
     runner=None,
@@ -371,6 +400,12 @@ def run_review(
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root)
+    family = _family_judgement(model, execution_model)
+    if family != "cross-family" and not allow_same_family:
+        raise ValueError(
+            "评审模型与执行模型不是跨族；请用 --model/--provider 选择"
+            "不同模型家族，或显式传 --allow-same-family"
+        )
     output_dir = _resolve_out_dir(paper_root, out_dir)
     json_path, markdown_path, schema_path, last_message_path = _record_paths(
         output_dir
@@ -391,6 +426,7 @@ def run_review(
     argv = [
         "codex",
         "exec",
+        *(["-c", f"model_provider={provider}"] if provider else []),
         "-m",
         model,
         "-s",
@@ -413,13 +449,14 @@ def run_review(
     except OSError as exc:
         raise ValueError(f"无法运行 codex exec: {exc}") from exc
     duration_s = round(time.monotonic() - started, 6)
-    family = _family_judgement(model)
-
     if exit_code != 0:
         failure = {
             "status": "failed",
             "model": model,
+            "provider": provider,
+            "execution_model": execution_model,
             "family_judgement": family,
+            "family_override": allow_same_family,
             "verdict": None,
             "blocking": [],
             "summary": "codex exec failed",
@@ -450,7 +487,10 @@ def run_review(
         malformed = {
             "status": "malformed",
             "model": model,
+            "provider": provider,
+            "execution_model": execution_model,
             "family_judgement": family,
+            "family_override": allow_same_family,
             "verdict": "malformed",
             "blocking": [],
             "summary": "review output missing or malformed",
@@ -471,7 +511,10 @@ def run_review(
     record = {
         "status": "complete",
         "model": model,
+        "provider": provider,
+        "execution_model": execution_model,
         "family_judgement": family,
+        "family_override": allow_same_family,
         "verdict": normalized["verdict"],
         "blocking": normalized["blocking"],
         "summary": normalized["summary"],
@@ -493,6 +536,8 @@ def _review_record_path(paper_root: Path, out_dir: Path | None = None) -> Path:
 def check_review(
     paper_root: Path,
     out_dir: Path | None = None,
+    *,
+    allow_same_family: bool = False,
 ) -> list[Problem]:
     """Audit the stored review record against current inputs."""
     paper_root = Path(paper_root)
@@ -541,6 +586,19 @@ def check_review(
         ]
 
     problems: list[Problem] = []
+    family = record.get("family_judgement")
+    family_override = record.get("family_override") is True
+    if family != "cross-family" and not (family_override or allow_same_family):
+        problems.append(
+            Problem(
+                "review-same-family",
+                str(path),
+                None,
+                "评审模型不是跨族；"
+                f"family_judgement={family!r}，"
+                "且没有显式 allow-same-family override",
+            )
+        )
     hashes = record.get("input_hashes")
     if not isinstance(hashes, dict):
         problems.append(
@@ -628,7 +686,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "用独立模型执行 gate 评审。默认 deepseek-v4-pro 与执行模型 "
-            "deepseek-v4-flash 同族不同规模，非跨族。"
+            "deepseek-v4-flash 同族不同规模，非跨族；默认拒绝写入同族 pass，"
+            "除非显式 --allow-same-family。"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -638,6 +697,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--stage", required=True)
     run.add_argument("--path", action="append", required=True)
     run.add_argument("--model", default=DEFAULT_MODEL)
+    run.add_argument("--provider")
+    run.add_argument(
+        "--execution-model",
+        default=DEFAULT_EXECUTION_MODEL,
+    )
+    run.add_argument("--allow-same-family", action="store_true")
     run.add_argument("--timeout", type=float, default=600)
     run.add_argument("--out-dir")
     run.add_argument("--force", action="store_true")
@@ -645,6 +710,7 @@ def build_parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("check", help="审计已有评审记录")
     check.add_argument("--paper-root", default=".")
     check.add_argument("--out-dir", default="reviews")
+    check.add_argument("--allow-same-family", action="store_true")
     return parser
 
 
@@ -656,11 +722,15 @@ def main(argv: list[str]) -> int:
                 check_review(
                     Path(args.paper_root),
                     out_dir=Path(args.out_dir),
+                    allow_same_family=args.allow_same_family,
                 )
             )
         record = run_review(
             Path(args.paper_root),
             model=args.model,
+            provider=args.provider,
+            execution_model=args.execution_model,
+            allow_same_family=args.allow_same_family,
             stage=args.stage,
             paths=[Path(item) for item in args.path],
             timeout=args.timeout,
