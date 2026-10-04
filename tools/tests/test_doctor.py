@@ -247,6 +247,60 @@ class DoctorTests(unittest.TestCase):
                 1,
             )
 
+    def test_injected_runner_exception_is_reported_not_raised(self):
+        def run(argv):
+            raise RuntimeError("boom")
+
+        problems, advisories, _statuses = check_environment(
+            self.root,
+            which=_locator(self._all_available()),
+            path_exists=lambda path: False,
+            dependencies=DEPENDENCIES,
+            venvs=(),
+            run=run,
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(self._codes(advisories), ["doctor-daemon-down"])
+
+    def test_plain_command_status_says_found_not_ok(self):
+        _problems, _advisories, statuses = self._check(self._all_available())
+
+        git_line = next(line for line in statuses if "git" in line)
+        self.assertTrue(git_line.startswith("found"))
+
+    def test_default_path_check_rejects_an_empty_interpreter(self):
+        venv = Venv(key="tools", relative="tools/.venv", capability="包装器")
+        marker = self.root / "tools" / ".venv" / "bin" / "python"
+        marker.parent.mkdir(parents=True)
+        marker.write_bytes(b"")
+
+        _problems, advisories, statuses = check_environment(
+            self.root,
+            which=_locator(self._all_available()),
+            dependencies=(),
+            venvs=(venv,),
+        )
+
+        self.assertEqual(self._codes(advisories), ["doctor-missing-venv"])
+        self.assertIn("MISSING", " ".join(statuses))
+
+    def test_default_path_check_accepts_a_nonempty_interpreter(self):
+        venv = Venv(key="tools", relative="tools/.venv", capability="包装器")
+        marker = self.root / "tools" / ".venv" / "bin" / "python"
+        marker.parent.mkdir(parents=True)
+        marker.write_bytes(b"#!/bin/sh\n")
+
+        problems, advisories, _statuses = check_environment(
+            self.root,
+            which=_locator(self._all_available()),
+            dependencies=(),
+            venvs=(venv,),
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+
     def test_main_prints_json_and_exits_zero_when_only_optional_missing(self):
         available = self._all_available()
         del available["docker"]

@@ -1,10 +1,16 @@
-"""Report which platform pieces this workflow can actually use.
+"""Report which platform pieces this workflow needs and which are absent.
 
 The workflow is deliberately coupled to a few local tools (git, a LaTeX
 toolchain, codex, Docker, nvidia-smi) and to two virtualenvs. When one is
 missing, the failure shows up later as a confusing crash inside an unrelated
 step, so this preflight names what is absent and which capability it disables.
-It never installs anything and never writes files.
+
+What a clean report does and does not mean: ``found`` is produced by looking the
+command up on ``PATH``; the virtualenv check only confirms an interpreter file
+exists. The one execution probe is the Docker daemon, because a Docker binary
+with no reachable daemon is the failure this workflow actually hits -- it is
+reported as ``found`` plus a separate ``doctor-daemon-down`` finding. This tool
+never installs anything and never writes files.
 """
 
 from __future__ import annotations
@@ -81,6 +87,14 @@ def _default_which(name: str) -> str | None:
     return shutil.which(name)
 
 
+def _default_path_exists(path: Path) -> bool:
+    """A venv interpreter must be a real, non-empty file."""
+    try:
+        return Path(path).is_file() and Path(path).stat().st_size > 0
+    except OSError:
+        return False
+
+
 def _default_run(argv: list[str]) -> int:
     try:
         completed = subprocess.run(
@@ -122,7 +136,7 @@ def check_environment(
     """Return (problems, advisories, human status lines)."""
     repo_root = Path(repo_root)
     which = which or _default_which
-    path_exists = path_exists or (lambda path: Path(path).exists())
+    path_exists = path_exists or _default_path_exists
     run = run or _default_run
     problems: list[Problem] = []
     advisories: list[Problem] = []
@@ -148,11 +162,11 @@ def check_environment(
                 break
         label = dependency.executables[0]
         if found:
-            statuses.append(f"ok      {label:<12} {found}")
+            statuses.append(f"found   {label:<12} {found}")
             if dependency.daemon_args is not None:
                 try:
                     reachable = run([found, *dependency.daemon_args]) == 0
-                except OSError:
+                except Exception:  # a probe must never take down the preflight
                     reachable = False
                 if not reachable:
                     statuses.append(f"MISSING {label} daemon 不可达")
@@ -176,7 +190,7 @@ def check_environment(
     for venv in venvs:
         python = _venv_python(repo_root, venv.relative, path_exists)
         if python is not None:
-            statuses.append(f"ok      {venv.relative:<12} {python}")
+            statuses.append(f"found   {venv.relative:<12} {python}")
         else:
             statuses.append(f"MISSING {venv.relative:<12} -")
             report(
