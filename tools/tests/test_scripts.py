@@ -32,6 +32,7 @@ CCFA_WRAPPERS = {
     "novelty": "novelty.ps1",
     "stats_plan": "statistics.ps1",
     "governance": "governance.ps1",
+    "repro_env": "repro-env.ps1",
     "watch": "watch.ps1",
     "queue": "queue.ps1",
     "validate": "validate.ps1",

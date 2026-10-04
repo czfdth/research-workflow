@@ -46,6 +46,7 @@
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
 | `tools/ccfa/governance.py` | 检查署名/贡献、利益冲突、伦理与许可、AI 使用、查重、双用途与负责任披露 | `scripts/governance.ps1` |
+| `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
 | `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
@@ -75,6 +76,7 @@
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
 | `submission-check`、`camera-ready` | `scripts/final-check.ps1` | 对终稿或渲染 PDF 执行确定性检查 |
 | `submission-check` | `scripts/governance.ps1` | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与披露 |
+| `submission-check` | `scripts/repro-env.ps1` | 检查 lockfile 哈希与系统工具版本证据 |
 | `submission-check`、`archived` | `scripts/repro-package.ps1` | 生成复现包并实际重跑 |
 | 任意需要快照的阶段 | `scripts/research-version.ps1` | 建立版本 tag 或比较两版差异 |
 

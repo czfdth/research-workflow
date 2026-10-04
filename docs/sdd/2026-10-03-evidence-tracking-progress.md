@@ -2031,16 +2031,17 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 第三轮定向复核（`truthfulness-gates-review-3.json`，HEAD `d25a6e9`）判 **pass，findings 为空**；确认 claim_text 已在受保护章节区间内匹配，前序修复未回归。
 - 边界：新 gate 只证明「有人做过判断」，不证明判断正确。数学证明的最终正确性仍靠外部数学专家；引用语义的最终判断仍靠领域专家；跨族 gate 仍要求真实第二 provider，override 只是异常路径。
 
-## 治理、统计与新颖性 gate（2026-10-04，E75–E77）
+## 治理、统计、新颖性与复现环境 gate（2026-10-04，E75–E78）
 
 - 计划：`docs/plans/2026-10-04-governance-statistics-novelty.md`。目标：关闭审计剩余的三条高严重度缺口——治理与伦理空白、统计设计门槛薄、新颖性只有三篇最近邻。
 - **E75 `novelty`**：`data/novelty-audit.yaml` 要求 ≥2 个去重数据库、非空查询、一致的 YYYY-MM-DD 检索日期与 cutoff、≥3 篇去重近邻（id 必须在 `manuscript/references.bib` 中）、每篇 overlap/difference/claim_ids；claim id 必须属于声明的去重 claims，且每个 claim 必须被至少一个近邻差异覆盖；禁止“没人做过 / no one has done / first to”式表述。
 - **E76 `stats_plan`**（CLI `scripts/statistics.ps1`）：`data/statistics-plan.yaml` 要求 alpha、multiple_comparison、每个 claim 的 endpoint/test/effect_size/target_power/sample_size/seeds/stopping_rule/missing_data；多 claim 时 correction 不能为 none；effect_size 必须有限且为正。
 - **E77 `governance`**：`data/governance.yaml` 要求作者/贡献角色/corresponding、逐作者 COI、伦理与数据许可（human_subjects=true 时 IRB 与 informed consent 必填）、AI 使用披露、查重工具与日期、双用途复核与负责任披露联系人。
-- gate 同步：`grounded` 要求 novelty audit；`experiment-design` 要求 statistics plan；`submission-check` 要求 governance 台账；两份 checklist 已重新生成。模块名为 `stats_plan.py`，避免与 Python 标准库 `statistics` 冲突；CLI 入口仍是 `scripts/statistics.ps1`；新论文模板会 seed 三份空台账，等待逐项填写。
+- **E78 `repro-env`**：`data/repro-environment.yaml` 要求 Python、包管理器、requirements、lockfile 与 sha256、系统工具名称/版本/命令/证据文件；lockfile 漂移、requirements/证据缺失、证据版本不匹配、无效容器 digest、重复工具都是 problem。
+- gate 同步：`grounded` 要求 novelty audit；`experiment-design` 要求 statistics plan；`submission-check` 要求 repro-environment 与 governance 台账；两份 checklist 已重新生成。模块名为 `stats_plan.py`，避免与 Python 标准库 `statistics` 冲突；CLI 入口仍是 `scripts/statistics.ps1`；新论文模板会 seed 四份空台账，等待逐项填写。
 - 判别力：三个新测试文件共 19 条，覆盖缺台账、少近邻、单数据库、未覆盖 claim、未支撑表述、alpha/sample_size/seeds/correction 错误、缺 COI、缺 IRB/consent、AI 未披露、查重未做、双用途未复核等。
 - 独立评审（`governance-stats-novelty-review.json`）判 **fail**：novelty 可用重复数据库/重复 claim/未声明 claim_id 蒙过；stats_plan 接受 `.nan/.inf` 作为 `effect_size`；另有混合 ISO 日期、宽松 version、未 seed 台账、文档计数等低风险问题。
 - 修复：novelty 增加数据库/claim/近邻标题去重、近邻 id 必须存在于 `manuscript/references.bib`、claim_id 必须属于声明 claims；stats_plan 用有限数检查拒绝 `.nan/.inf` 和超大整数 effect_size；`is_iso_date` 只接受 `YYYY-MM-DD`；ledger version 要求严格 int；new-paper seed 三份空台账；更新设计文档与账本。
-- 修复后全量：tools **1056 tests OK**，app（offscreen）**141 tests OK**。
+- 修复后全量：tools **1066 tests OK**，app（offscreen）**141 tests OK**。
 - 第二轮复核（`governance-stats-novelty-review-2.json`）判 **pass**，无 blocking/important finding；保留两条低风险观察：缺 `references.bib` 时 novelty 退 2 而非结构化 problem，未跟踪的 weaknesses 文档仍保留旧治理缺口表述。
 - 边界：三道 gate 只强制结构化声明与覆盖，不保证新颖性、统计正确性或治理真实性。

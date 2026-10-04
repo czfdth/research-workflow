@@ -19,10 +19,14 @@
   逐作者利益冲突声明、伦理（human_subjects / IRB / informed consent / data license）、
   AI 使用披露、查重工具与日期、双用途复核与负责任披露联系人。缺失、未知作者、
   human_subjects=true 但缺 IRB/consent、AI/查重/双用途未完成都是 problem。
+- **E78 `repro-env`**：`data/repro-environment.yaml` 记录 Python、包管理器、
+  requirements、lockfile 与 sha256、系统工具的名称/版本/命令/证据文件。lockfile
+  哈希漂移、requirements/证据缺失、证据中找不到版本、无效容器 digest 都是 problem。
 
 **Files:** 新增 `tools/ccfa/ledger.py`、`tools/ccfa/novelty.py`、
 `tools/ccfa/stats_plan.py`、`tools/ccfa/governance.py`、三个 `scripts/*.ps1`
-与三个测试文件；修改 `tools/ccfa/stages.py`、README、设计文档、checklists、进度账本。
+与测试文件；另新增 `tools/ccfa/repro_env.py`、`scripts/repro-env.ps1` 与测试；
+修改 `tools/ccfa/stages.py`、README、设计文档、checklists、进度账本。
 
 ### Task 1: novelty
 
@@ -43,10 +47,16 @@
 - 判别力：缺作者 COI、human_subjects=true 但缺 IRB/consent、AI 未披露、查重未做、
   双用途未复核都触发 problem；完整台账通过。
 
+### Task 4: repro-env
+
+- 输入 `data/repro-environment.yaml`。
+- 判别力：缺台账、requirements/lockfile 缺失、lockfile 哈希漂移、system tool
+  证据缺失或版本不匹配、无效容器 digest、重复工具都触发 problem；完整台账通过。
+
 ## 完成定义
 
 - `grounded` gate 要求 novelty audit；`experiment-design` gate 要求 statistics plan；
-  `submission-check` gate 要求 governance 台账。
+  `submission-check` gate 要求 repro-environment 与 governance 台账。
 - 新工具、wrapper、README、设计文档、checklists、测试与进度账本同步。
 - 全量 tools/app 测试全绿。
 - 文档明确：这三道 gate 只强制结构化声明与覆盖，不保证新颖性、统计正确性或治理真实性。

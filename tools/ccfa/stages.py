@@ -77,6 +77,7 @@ _SHARED_GATES: dict[str, Gate] = {
     "submission-check": Gate(
         "package_ready",
         "模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；"
+        "repro-environment 记录 lockfile 哈希与系统工具版本证据；"
         "governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、"
         "双用途与负责任披露）",
     ),

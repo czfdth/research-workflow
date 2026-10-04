@@ -76,7 +76,7 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | results-ready | claims_supported | 每个 claim 指到具体数值，且该数值通过行内标记脚本核对；无支撑项标记待验证或删除 |
 | writing | draft_complete | 正文、图表、引用齐备；页数符合 venue；所有引用条目来自检索期已核验的条目 |
 | internal-review | review_cleared | 跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过；人工证明复核与引用语义支持台账无未复核项 |
-| submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露） |
+| submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；repro-environment 记录 lockfile 哈希与系统工具版本证据；governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露） |
 
 会议尾部：
 
@@ -242,6 +242,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | `novelty`（v6 补记） | 检查检索范围/日期、≥3 篇近邻、逐 claim 差异；禁止未支撑的没人做过式表述 |
 | `statistics`（v6 补记） | 检查预注册统计设计：alpha、功效、样本量、多重比较、种子、停止规则、缺失数据处理 |
 | `governance`（v6 补记） | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露 |
+| `repro-env`（v6 补记） | 检查 requirements、lockfile 哈希、系统工具版本与证据文件 |
 
 **分期说明（v6 补记）**：`research-version` 推迟到"复现与归档"计划实施，且默认按 **git 的薄封装**（tag + 真实 diff）而非独立版本库来做。理由：论文库本身已是 git 仓库，独立快照库会制造"两个版本真相"——同一份稿子的"第几版"到底以哪个为准。先不建与 git 打架的东西，比建了再拆便宜。
 
@@ -286,6 +287,9 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 - **governance**（`data/governance.yaml`）：记录作者与贡献角色、corresponding、
   逐作者 COI、伦理（human_subjects / IRB / informed consent / data license）、
   AI 使用披露、查重工具与日期、双用途复核与负责任披露联系人。
+- **repro-env**（`data/repro-environment.yaml`）：记录 Python 版本、包管理器、
+  requirements、lockfile 与 sha256、系统工具的名称/版本/命令/证据文件；lockfile
+  变化即报 `repro-env-lockfile-drift`，证据中找不到版本即报 mismatch。
 
 这三道 gate 只保证“结构化声明存在且覆盖完整”，不保证新颖性、统计正确性或治理真实性。
 

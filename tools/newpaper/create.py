@@ -128,6 +128,15 @@ SEED_FILES = {
         "  disclosure_contact: ''\n"
         "  notes: ''\n"
     ),
+    "data/repro-environment.yaml": (
+        "version: 1\n"
+        "python: ''\n"
+        "package_manager: ''\n"
+        "requirements: ''\n"
+        "lockfile: ''\n"
+        "lockfile_sha256: ''\n"
+        "system_tools: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]
