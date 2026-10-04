@@ -664,6 +664,20 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(problems, [])
 
+    def test_repeated_path_does_not_cause_prompt_drift(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            paths=[
+                Path("manuscript/main.tex"),
+                Path("manuscript/main.tex"),
+            ],
+        )
+
+        problems = check_review(self.paper_root, allow_same_family=True)
+
+        self.assertEqual(problems, [])
+
     def test_record_without_prompt_hash_is_review_prompt_unknown(self):
         runner = self._runner(payload=self._payload())
         self._run(runner)

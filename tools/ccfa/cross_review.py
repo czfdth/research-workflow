@@ -230,10 +230,11 @@ def _sha256_text(text: str) -> str:
 def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
     """Render the review prompt from already-resolved relative paths.
 
-    The file list is sorted so the prompt -- and therefore its digest -- does
-    not depend on the order the caller passed ``--path``. ``check_review``
-    rebuilds the same text from the stored record, so any change to the gate
-    criterion or the instruction block shows up as ``review-prompt-drift``.
+    The file list is sorted and de-duplicated so the prompt -- and therefore its
+    digest -- depends only on *which* files are reviewed, not on the order or
+    repetition of ``--path``. ``check_review`` rebuilds the same text from the
+    stored record, so any change to the gate criterion or the instruction block
+    shows up as ``review-prompt-drift``.
     """
     try:
         gate = gate_for(mode, stage)
@@ -248,7 +249,7 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
         "",
         "待评审文件:",
     ]
-    lines.extend(f"- {path}" for path in sorted(relative_paths))
+    lines.extend(f"- {path}" for path in sorted(set(relative_paths)))
     if stage == "internal-review":
         lines.extend(
             [
