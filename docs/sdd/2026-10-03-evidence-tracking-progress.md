@@ -2028,4 +2028,5 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 修复：membership 改为类型安全；引用/标题 regex 支持 optional args；reviewer deny-list 扩充；`claim_text` 必须逐字出现在引用所在受保护章节，`source_path` 必填且 quote 必须命中；受保护章节改为栈式父子继承；移除非标准 normal κ CI；恢复设计文档 COM 表。补对应判别测试。
 - 第二轮复核（`truthfulness-gates-review-2.json`）仍判 **fail**：`claim_text` 仍按整份 manuscript 文件匹配，没有限定到引用所在的受保护章节，同文件非保护章节中的句子可以误过。修复：扫描器记录受保护章节区间的归一化文本，`claim_text` 必须在对应引用区间内命中；补“同文件非保护章节不能覆盖”反例。
 - 修复后全量：tools **1022 tests OK**，app（offscreen）**141 tests OK**。
+- 第三轮定向复核（`truthfulness-gates-review-3.json`，HEAD `d25a6e9`）判 **pass，findings 为空**；确认 claim_text 已在受保护章节区间内匹配，前序修复未回归。
 - 边界：新 gate 只证明「有人做过判断」，不证明判断正确。数学证明的最终正确性仍靠外部数学专家；引用语义的最终判断仍靠领域专家；跨族 gate 仍要求真实第二 provider，override 只是异常路径。
