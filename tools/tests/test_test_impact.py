@@ -76,6 +76,15 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_readiness", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_meta_optimize_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/meta_optimize.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_meta_optimize", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_test_module_selects_itself(self):
         selection = select_tests(
             ["tools/tests/test_research_ledgers.py"],

@@ -69,6 +69,10 @@ _TOOLS_EXACT = {
         "tools.tests.test_proof_orchestrator",
         "tools.tests.test_readiness",
     ),
+    "tools/ccfa/meta_optimize.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_meta_optimize",
+    ),
     "tools/ccfa/cross_review.py": (
         "tools.tests.test_automation_e2e",
         "tools.tests.test_cross_review",

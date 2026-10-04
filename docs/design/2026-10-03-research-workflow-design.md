@@ -686,6 +686,20 @@ standard profile 在台账存在时运行 advisory gate；high-assurance 使用
 - standard profile 使用 advisory gate；high-assurance 使用
   `--require-complete`，要求所有 campaign 离开 open/blocked。
 
+### 9.7 周期性工作流自评
+
+对标报告的 P2-14 要求把 `friction_log` 与 gate 失败原因转成改进提案，而不是
+靠模型逐次凭印象修改工作流。v6.1 新增 `tools/ccfa/meta_optimize.py` 与
+`scripts/meta-optimize.ps1`：
+
+- 合并多个 `friction_log.json`，按 `category + component` 聚合重复次数、
+  最高 severity、来源论文、stage 与样例描述。
+- 读取 readiness JSON 的 `gate_results[*].problems[*].code`，按
+  `gate + code` 聚合重复失败。
+- 达到 `--min-count` 的重复模式输出候选提案；工具只读，结果 status 固定为
+  `proposed`，必须由人批准后才能改 skill、gate 或代码。
+- Markdown/JSON 输出支持落盘不覆盖；不自动修改论文或工作流。
+
 ## 10. 目录结构
 
 模板库：

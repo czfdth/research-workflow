@@ -334,6 +334,15 @@ scripts/test-impact.ps1 run --base origin/master
 等共享边界会自动回退全量。工作台改动用 `--suite app`。只有发布、每晚 CI、
 状态机/公共契约大改或明确要求时，才主动运行全量套件。
 
+周期性自优化用 friction 与 readiness 报告聚合候选，不直接改工作流：
+
+```powershell
+scripts/meta-optimize.ps1 `
+    --friction "<paper>/friction_log.json=paper-slug" `
+    --readiness "<paper>/reviews/readiness.json=paper-slug" `
+    --min-count 2 --out "<repo>/reviews/meta-optimize.md"
+```
+
 不要把测试生成物、临时复现输出或某篇论文的工作文件提交到模板仓库。
 
 ## 11. 每日收工

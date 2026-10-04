@@ -2400,3 +2400,15 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   `--require-complete` 拒绝仍为 open/blocked 的 campaign。
 - 新增 `tools/tests/test_proof_orchestrator.py` 7 条覆盖；create/readiness/
   scripts/docs 测试同步。
+
+## 周期性工作流自评（2026-10-05）
+
+- 新增 `tools/ccfa/meta_optimize.py` 与 `scripts/meta-optimize.ps1`，落地
+  对标报告 P2-14。
+- 聚合多个 friction store 的 category+component 重复模式，以及 readiness
+  `gate_results` 中的 gate+problem-code 重复失败。
+- 达到 `--min-count` 的模式输出候选提案，status 固定为 `proposed`；工具只读，
+  不自动改 skill、gate、代码或论文。
+- 支持 Markdown/JSON 输出、原子写和不覆盖已有报告。
+- 新增 `tools/tests/test_meta_optimize.py` 5 条覆盖；scripts/docs/test-impact
+  测试同步。

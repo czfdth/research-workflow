@@ -52,6 +52,7 @@ CLI_WRAPPERS = {
     "post_submission": "scripts/post-submission.ps1",
     "rigor": "scripts/rigor-rubric.ps1",
     "proof_orchestrator": "scripts/proof-orchestrator.ps1",
+    "meta_optimize": "scripts/meta-optimize.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"
