@@ -203,7 +203,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | 正文写作 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
 | 终稿检查 | 脚本（确定性） | 不需要模型 |
 
-**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列，这是"同族不同规模"，比自查强，但不是严格意义的跨族评审。真正的跨族需要另一个 provider，本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 未在配置中定义，需要转换器在跑才能用。第一版按 v4-pro 落地，跨族评审列为可选升级。
+**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。
 
 触发约束：跨模型评审只在 gate 关键节点触发（T-14、内部审稿），不逐轮触发。
 
@@ -588,7 +588,7 @@ papers/<slug>/
 - 是否现在建立示例论文目录跑通派生流程。
 - 文献监控的初始关键词与对标工作。
 - 共享文献库是否纳入 git（PDF 默认不纳入，只纳入 BibTeX）。
-- 跨模型评审第一版用 `deepseek-v4-pro`（同族不同规模）是否够用，还是必须配跨族 provider。
+- 跨模型评审：默认 `deepseek-v4-pro` 仍与执行模型同族；要过默认 gate 必须配不同 family 的 provider，或显式 `--allow-same-family` 留 override。
 **已定**：第 6.1 节的 9 个工具全建（用户 2026-10-03 决定），分六个实施计划推进。
 
 ## 12. 验收标准

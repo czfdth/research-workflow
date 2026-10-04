@@ -138,8 +138,11 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | 终稿检查 | 脚本（确定性） | 不需要模型 |
 
 跨模型评审只在 gate 关键节点触发，不逐轮触发，避免成本失控。
-需要说清的限制是：两个模型同属 V4 系列，这是同族不同规模，比自查强，但不是
-严格意义的跨族评审。真正的跨族评审列为可选升级。
+现在 `cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有
+`family_judgement=="cross-family"` 才允许写入，或显式
+`--allow-same-family` 留 override；`check` 对旧同族记录报
+`review-same-family`。当前本机尚未配置第二个可用 provider，所以真正跨族仍需
+用户接入不同 family 的 provider；工具不会把同族评审冒充成跨族。
 
 ## 七、记忆与知识层
 

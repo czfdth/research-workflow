@@ -403,8 +403,9 @@ def run_review(
     family = _family_judgement(model, execution_model)
     if family != "cross-family" and not allow_same_family:
         raise ValueError(
-            "评审模型与执行模型不是跨族；请用 --model/--provider 选择"
-            "不同模型家族，或显式传 --allow-same-family"
+            "评审模型与执行模型不是跨族；请用 --model 选择不同家族的"
+            "评审模型（必要时用 --provider 指向其 provider），"
+            "或显式传 --allow-same-family"
         )
     output_dir = _resolve_out_dir(paper_root, out_dir)
     json_path, markdown_path, schema_path, last_message_path = _record_paths(
@@ -586,16 +587,36 @@ def check_review(
         ]
 
     problems: list[Problem] = []
-    family = record.get("family_judgement")
+    model = record.get("model")
+    execution_model = record.get("execution_model")
+    computed_family = (
+        _family_judgement(model, execution_model)
+        if isinstance(model, str) and isinstance(execution_model, str)
+        else "unknown"
+    )
+    stored_family = record.get("family_judgement")
+    if isinstance(stored_family, str) and stored_family != computed_family:
+        problems.append(
+            Problem(
+                "review-family-mismatch",
+                str(path),
+                None,
+                "评审记录的 family_judgement="
+                f"{stored_family!r} 与 model/execution_model 重算值 "
+                f"{computed_family!r} 不一致",
+            )
+        )
     family_override = record.get("family_override") is True
-    if family != "cross-family" and not (family_override or allow_same_family):
+    if computed_family != "cross-family" and not (
+        family_override or allow_same_family
+    ):
         problems.append(
             Problem(
                 "review-same-family",
                 str(path),
                 None,
                 "评审模型不是跨族；"
-                f"family_judgement={family!r}，"
+                f"family_judgement={computed_family!r}，"
                 "且没有显式 allow-same-family override",
             )
         )
