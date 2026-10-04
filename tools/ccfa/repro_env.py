@@ -33,6 +33,17 @@ def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+def _version_present(text: str, version: str) -> bool:
+    escaped = re.escape(version.strip())
+    return (
+        re.search(
+            rf"(?<![0-9A-Za-z._-]){escaped}(?![0-9A-Za-z._-])",
+            text,
+        )
+        is not None
+    )
+
+
 def _check_tools(path: Path, paper_root: Path, tools: object) -> list:
     if not isinstance(tools, list) or not tools:
         return [
@@ -135,7 +146,7 @@ def _check_tools(path: Path, paper_root: Path, tools: object) -> list:
             text = evidence_path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             raise ValueError(f"无法读取 {evidence_path}: {exc}") from exc
-        if is_nonempty_str(version) and version.strip() not in text:
+        if is_nonempty_str(version) and not _version_present(text, version):
             problems.append(
                 problem(
                     "repro-env-evidence-mismatch",
@@ -150,7 +161,16 @@ def _check_tools(path: Path, paper_root: Path, tools: object) -> list:
 def check(paper_root: Path, ledger: Path | None = None) -> tuple[list, list]:
     paper_root = Path(paper_root)
     path = Path(ledger) if ledger else paper_root / LEDGER_RELATIVE_PATH
-    payload, problems = load_ledger(path, code="repro-env-ledger-missing")
+    if not path.is_file():
+        return [
+            problem(
+                "repro-env-ledger-missing",
+                path,
+                None,
+                "台账不存在",
+            )
+        ], []
+    payload, problems = load_ledger(path, code="repro-env-invalid")
     if payload is None:
         return problems, []
     missing = missing_fields(payload, TOP_FIELDS)

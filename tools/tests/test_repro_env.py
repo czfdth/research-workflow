@@ -99,6 +99,96 @@ class ReproEnvTests(unittest.TestCase):
         problems, _advisories = check(self.root)
         self.assertIn("repro-env-evidence-mismatch", self._codes(problems))
 
+    def test_version_must_match_as_a_token_not_a_substring(self):
+        (self.root / "evidence" / "pdflatex.txt").write_text(
+            "MiKTeX-pdfTeX 4.11 (31.24.10)\n",
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-evidence-mismatch", self._codes(problems))
+
+    def test_requirements_escape_is_a_problem(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                "requirements: tools/requirements.txt",
+                "requirements: ../README.md",
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-path-escape", self._codes(problems))
+
+    def test_lockfile_escape_is_a_problem(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                "lockfile: tools/requirements.lock",
+                "lockfile: ../README.md",
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-path-escape", self._codes(problems))
+
+    def test_evidence_escape_is_a_problem(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                "evidence: evidence/pdflatex.txt",
+                "evidence: ../README.md",
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-evidence-escape", self._codes(problems))
+
+    def test_system_tools_must_be_a_list(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                "system_tools:\n",
+                "system_tools: {}\n",
+            ).replace(
+                "  - name: MiKTeX\n"
+                "    version: '24.1'\n"
+                "    command: pdflatex --version\n"
+                "    evidence: evidence/pdflatex.txt\n",
+                "",
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-invalid", self._codes(problems))
+
+    def test_missing_lockfile_hash_is_a_problem(self):
+        self.path.write_text(
+            "".join(
+                line
+                for line in self.path.read_text(encoding="utf-8").splitlines(
+                    keepends=True
+                )
+                if not line.startswith("lockfile_sha256:")
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-invalid-hash", self._codes(problems))
+
+    def test_non_dict_tool_is_a_problem(self):
+        self.path.write_text(
+            self.path.read_text(encoding="utf-8").replace(
+                "  - name: MiKTeX\n",
+                "  - 7\n",
+                1,
+            ).replace(
+                "    version: '24.1'\n"
+                "    command: pdflatex --version\n"
+                "    evidence: evidence/pdflatex.txt\n",
+                "",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("repro-env-invalid", self._codes(problems))
+
     def test_invalid_container_digest_is_a_problem(self):
         self.path.write_text(
             self.path.read_text(encoding="utf-8").replace(
