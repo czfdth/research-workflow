@@ -45,6 +45,7 @@ git -C $paper status --short
 | `docs/workflow-guide.md` | 面向研究者的日常操作手册和逐阶段命令 |
 | `library/` | 共享 BibTeX 与 PDF 原件 |
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
+| `library/wiki/` | 跨项目研究记忆卡片；支持确定性索引与本地搜索 |
 | `papers/<slug>/` | 派生论文项目的默认目标目录，已在 `.gitignore` 中忽略 |
 | `scripts/` | 所有确定性 CLI 的 PowerShell 包装器 |
 | `tools/` | 确定性工具与项目测试 |
@@ -90,6 +91,7 @@ git -C $paper status --short
 | `tools/ccfa/proof_orchestrator.py` | 记录跨会话 proof campaign、失败尝试、阻塞点与下一步，并把 proved 绑定到真人 verified 证明复核 | `scripts/proof-orchestrator.ps1` |
 | `tools/ccfa/meta_optimize.py` | 聚合 friction store 与 readiness gate 失败，输出人类审批用的候选工作流改进 | `scripts/meta-optimize.ps1` |
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
+| `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki 的 frontmatter、ID 与关联，并构建确定性索引与搜索 | `scripts/research-wiki.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查

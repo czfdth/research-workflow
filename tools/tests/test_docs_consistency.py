@@ -54,6 +54,7 @@ CLI_WRAPPERS = {
     "proof_orchestrator": "scripts/proof-orchestrator.ps1",
     "meta_optimize": "scripts/meta-optimize.ps1",
     "artifact_badge": "scripts/artifact-badge.ps1",
+    "research_wiki": "scripts/research-wiki.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

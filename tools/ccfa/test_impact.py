@@ -78,6 +78,10 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_readiness",
     ),
+    "tools/ccfa/research_wiki.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_research_wiki",
+    ),
     "tools/ccfa/cross_review.py": (
         "tools.tests.test_automation_e2e",
         "tools.tests.test_cross_review",
@@ -199,6 +203,8 @@ def _select_tools(path: str) -> tuple[str, ...] | None:
         return ("tools.tests.test_scripts",)
     if path.startswith(".github/"):
         return ("tools.tests.test_github_workflows",)
+    if path == ".gitignore":
+        return ("tools.tests.test_docs_consistency",)
     if path == "README.md" or path.startswith("docs/"):
         return ("tools.tests.test_docs_consistency",)
     if path.startswith("checklists/"):

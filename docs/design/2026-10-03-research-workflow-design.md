@@ -714,6 +714,22 @@ v6.1 新增 `data/artifact-badge.yaml`、`tools/ccfa/artifact_badge.py` 与
 - standard profile 在台账存在时做结构检查；high-assurance 使用
   `--require-verified`，要求三类 badge、独立复核与归档证据完整。
 
+### 9.9 Research Wiki 与跨项目记忆
+
+对标报告的 P2-10 需要把文献、决策、死路、方法和结果累积成跨项目记忆，
+而不是每篇论文各自重读。v6.1 新增 `library/wiki/`、
+`tools/ccfa/research_wiki.py` 与 `scripts/research-wiki.ps1`：
+
+- 每个条目是带 YAML frontmatter 的 Markdown 文件，字段固定为
+  `id`、`kind`、`title`、`status`、`tags`、`projects`、`evidence`、
+  `related`、`updated_at`。
+- `kind` 支持 source/claim/decision/dead-end/method/result；`related` 必须指向
+  真实存在的 wiki id，evidence 使用 `run:`、`file:`、`doi:`、`url:`、
+  `claim:` 或 `project:` 前缀。
+- `index` 生成确定性 JSON 索引（含 body sha256），`search` 只在本地索引上做
+  大小写不敏感的确定性子串搜索；Markdown 是 source of truth，索引可重建。
+- 该层不自动创造结论，也不替代每篇论文的 claim/proof/experiment 台账。
+
 ## 10. 目录结构
 
 模板库：

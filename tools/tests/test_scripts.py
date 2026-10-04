@@ -48,6 +48,7 @@ CCFA_WRAPPERS = {
     "proof_orchestrator": "proof-orchestrator.ps1",
     "meta_optimize": "meta-optimize.ps1",
     "artifact_badge": "artifact-badge.ps1",
+    "research_wiki": "research-wiki.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

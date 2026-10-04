@@ -54,6 +54,7 @@ jobs:
             tools/ccfa/readiness.py `
             tools/ccfa/repro_package.py `
             tools/ccfa/research_ledgers.py `
+            tools/ccfa/research_wiki.py `
             tools/ccfa/rigor.py `
             tools/ccfa/test_impact.py
 

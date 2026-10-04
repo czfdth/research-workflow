@@ -2424,3 +2424,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   `--require-verified` 要求三类 badge 与归档证据完整。
 - 新论文模板预置台账；新增 `tools/tests/test_artifact_badge.py` 6 条覆盖；
   create/readiness/scripts/docs 测试同步。
+
+## Research Wiki 与跨项目记忆（2026-10-05）
+
+- 新增 `library/wiki/README.md`、`tools/ccfa/research_wiki.py` 与
+  `scripts/research-wiki.ps1`，落地对标报告 P2-10。
+- 条目是带固定 YAML frontmatter 的 Markdown；校验 id、kind、status、
+  tags、projects、evidence、related 与 updated_at。
+- `related` 必须解析到真实 id；evidence 使用 run/file/doi/url/claim/project
+  前缀；重复 id、悬空链接、非法枚举与缺失字段都报 problem。
+- `index` 生成带 body sha256 的确定性 JSON，`search` 做本地大小写不敏感
+  子串搜索；Markdown 是 source of truth，索引可重建。
+- 新增 `tools/tests/test_research_wiki.py` 8 条覆盖；scripts/docs/test-impact
+  测试同步。

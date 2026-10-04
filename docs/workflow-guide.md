@@ -344,6 +344,15 @@ scripts/meta-optimize.ps1 `
     --min-count 2 --out "<repo>/reviews/meta-optimize.md"
 ```
 
+跨项目的 decision、dead-end、claim、method 与 result 卡片写入
+`library/wiki/`，先校验再重建索引：
+
+```powershell
+scripts/research-wiki.ps1 check --dir library/wiki
+scripts/research-wiki.ps1 index --dir library/wiki --out library/wiki/index.json
+scripts/research-wiki.ps1 search --index library/wiki/index.json --query "artifact"
+```
+
 不要把测试生成物、临时复现输出或某篇论文的工作文件提交到模板仓库。
 
 ## 11. 每日收工
