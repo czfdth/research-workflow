@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,7 +12,17 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from ccfa.queue import build_parser, load_queue, main, run_queue
+from ccfa.queue import (
+    GpuMeter,
+    QueueLock,
+    QueueLocked,
+    QueueStalled,
+    _sandbox_env,
+    build_parser,
+    load_queue,
+    main,
+    run_queue,
+)
 from ccfa.run_log import check_runs
 
 
@@ -68,6 +80,23 @@ class FakeProcess:
         raise AssertionError("kill should not be called")
 
 
+class FakeGpuMeter:
+    def __init__(self, readings):
+        self.readings = list(readings)
+        self.starts = 0
+        self.stops = 0
+
+    def start(self):
+        self.starts += 1
+
+    def stop(self):
+        self.stops += 1
+        value = self.readings.pop(0)
+        if isinstance(value, dict):
+            return value
+        return {"seconds": value, "samples": 1, "errors": 0}
+
+
 class QueueTests(unittest.TestCase):
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory()
@@ -96,13 +125,25 @@ class QueueTests(unittest.TestCase):
             for path in sorted(self.log_dir.glob("*.json"))
         ]
 
-    def _run(self, runner, *, budget_s=None, clock=None):
+    def _run(
+        self,
+        runner,
+        *,
+        budget_s=None,
+        clock=None,
+        gpu_budget_s=None,
+        gpu_meter_factory=None,
+        sandbox=None,
+    ):
         return run_queue(
             self.queue_path,
             log_dir=self.log_dir,
             runner=runner,
             budget_s=budget_s,
             clock=clock,
+            gpu_budget_s=gpu_budget_s,
+            gpu_meter_factory=gpu_meter_factory,
+            sandbox=sandbox,
         )
 
 
@@ -123,7 +164,40 @@ class TestLoadQueue(QueueTests):
         self.assertEqual(items[0]["command"], ["python", "one.py"])
         self.assertEqual(items[0]["retry_exit_codes"], [])
         self.assertIs(items[0]["retry_on_timeout"], False)
+        self.assertIs(items[0]["retry_on_stall"], False)
+        self.assertIsNone(items[0]["stall_timeout_s"])
         self.assertEqual(items[0]["max_attempts"], 1)
+
+    def test_load_queue_rejects_invalid_safety_fields(self):
+        cases = (
+            {"schema_version": 1, "sandbox": "docker", "queue": []},
+            {"schema_version": 1, "gpu_budget_s": -1, "queue": []},
+            {
+                "schema_version": 1,
+                "queue": [
+                    {
+                        "name": "bad",
+                        "command": ["python"],
+                        "stall_timeout_s": 0,
+                    }
+                ],
+            },
+            {
+                "schema_version": 1,
+                "queue": [
+                    {
+                        "name": "bad",
+                        "command": ["python"],
+                        "retry_on_stall": "yes",
+                    }
+                ],
+            },
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                self.queue_path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    load_queue(self.queue_path)
 
     def test_load_queue_rejects_invalid_shape_and_version(self):
         cases = (
@@ -330,6 +404,186 @@ class TestRunQueue(QueueTests):
         with self.assertRaises(ValueError):
             self._run(RecordingRunner([]), budget_s=-1)
 
+    def test_second_queue_is_refused_until_the_lock_is_released(self):
+        self._write_queue([self._item()])
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        (self.log_dir / ".queue.lock").write_text(
+            json.dumps({"pid": os.getpid(), "created_at": "now"}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(QueueLocked):
+            self._run(RecordingRunner([0]))
+
+    def test_stale_queue_lock_is_replaced(self):
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.log_dir / ".queue.lock"
+        lock_path.write_text(
+            json.dumps({"pid": 999999, "created_at": "old"}),
+            encoding="utf-8",
+        )
+
+        lock = QueueLock(self.log_dir, pid_alive=lambda _pid: False)
+        with lock:
+            self.assertTrue(lock_path.is_file())
+
+        self.assertFalse(lock_path.exists())
+
+    def test_queue_lock_is_released_after_run(self):
+        self._write_queue([self._item()])
+
+        self._run(RecordingRunner([0]))
+        self._run(RecordingRunner([0]))
+
+        self.assertFalse((self.log_dir / ".queue.lock").exists())
+
+    def test_gpu_budget_stops_before_next_item(self):
+        self._write_queue([self._item("first"), self._item("second")])
+        meter = FakeGpuMeter([6, 6])
+
+        result = self._run(
+            RecordingRunner([0, 0]),
+            gpu_budget_s=5,
+            gpu_meter_factory=lambda: meter,
+        )
+
+        self.assertEqual(
+            [run["status"] for run in result["runs"]],
+            ["complete", "skipped-gpu-budget"],
+        )
+        self.assertEqual(result["runs"][1]["attempts"], 0)
+        self.assertEqual(result["stopped"], "gpu-budget")
+        self.assertEqual(self._records()[0]["metrics"]["gpu_seconds"], 6)
+
+    def test_gpu_budget_requires_a_meter(self):
+        self._write_queue([self._item()])
+
+        class BrokenMeter:
+            def start(self):
+                raise ValueError("nvidia-smi unavailable")
+
+            def stop(self):
+                return {"seconds": 0, "samples": 0, "errors": 0}
+
+        with self.assertRaisesRegex(ValueError, "nvidia-smi"):
+            self._run(
+                RecordingRunner([0]),
+                gpu_budget_s=10,
+                gpu_meter_factory=BrokenMeter,
+            )
+
+    def test_zero_gpu_budget_skips_without_starting_a_meter(self):
+        self._write_queue([self._item("first"), self._item("second")])
+
+        def fail_factory():
+            raise AssertionError("meter should not start for a zero budget")
+
+        result = self._run(
+            RecordingRunner([]),
+            gpu_budget_s=0,
+            gpu_meter_factory=fail_factory,
+        )
+
+        self.assertEqual(
+            [run["status"] for run in result["runs"]],
+            ["skipped-gpu-budget", "skipped-gpu-budget"],
+        )
+        self.assertEqual(result["stopped"], "gpu-budget")
+
+    def test_gpu_sampling_error_is_recorded_before_tool_error(self):
+        self._write_queue([self._item()])
+        meter = FakeGpuMeter(
+            [{"seconds": 1.5, "samples": 1, "errors": 1}]
+        )
+
+        with self.assertRaisesRegex(ValueError, "GPU"):
+            self._run(
+                RecordingRunner([0]),
+                gpu_budget_s=10,
+                gpu_meter_factory=lambda: meter,
+            )
+
+        metrics = self._records()[0]["metrics"]
+        self.assertEqual(metrics["gpu_seconds"], 1.5)
+        self.assertEqual(metrics["gpu_sampling_errors"], 1)
+
+    def test_stall_is_recorded_and_not_retried_by_default(self):
+        self._write_queue(
+            [
+                self._item(
+                    stall_timeout_s=1,
+                    max_attempts=2,
+                )
+            ]
+        )
+        runner = RecordingRunner([QueueStalled("no output")])
+
+        result = self._run(runner)
+
+        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(result["runs"][0]["status"], "stalled")
+        metrics = self._records()[0]["metrics"]
+        self.assertTrue(metrics["stalled"])
+        self.assertEqual(metrics["stall_timeout_s"], 1)
+
+    def test_stall_retries_only_when_declared(self):
+        self._write_queue(
+            [
+                self._item(
+                    stall_timeout_s=1,
+                    retry_on_stall=True,
+                    max_attempts=2,
+                )
+            ]
+        )
+        runner = RecordingRunner([QueueStalled("no output"), 0])
+
+        result = self._run(runner)
+
+        self.assertEqual(len(runner.calls), 2)
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertEqual(
+            [record["status"] for record in self._records()],
+            ["failed", "completed"],
+        )
+
+    def test_sandbox_policy_rejects_cwd_escape(self):
+        self._write_queue([self._item(cwd="..")])
+
+        with self.assertRaisesRegex(ValueError, "沙箱策略"):
+            self._run(RecordingRunner([0]), sandbox="policy")
+
+    def test_sandbox_policy_rejects_absolute_external_cwd(self):
+        self._write_queue([self._item(cwd=str(self.root.parent))])
+
+        with self.assertRaisesRegex(ValueError, "沙箱策略"):
+            self._run(RecordingRunner([0]), sandbox="policy")
+
+    def test_sandbox_policy_is_recorded_outside_metrics(self):
+        self._write_queue([self._item()])
+
+        self._run(RecordingRunner([0]), sandbox="policy")
+
+        record = self._records()[0]
+        self.assertEqual(record["policy"]["sandbox"], "policy")
+        self.assertIsNone(record["metrics"])
+
+    def test_sandbox_env_drops_non_allowlisted_variables(self):
+        env = _sandbox_env(
+            {
+                "PATH": "path",
+                "SystemRoot": "root",
+                "OPENAI_API_KEY": "secret",
+                "HF_TOKEN": "secret2",
+            }
+        )
+
+        self.assertEqual(env["PATH"], "path")
+        self.assertEqual(env["SystemRoot"], "root")
+        self.assertNotIn("OPENAI_API_KEY", env)
+        self.assertNotIn("HF_TOKEN", env)
+        self.assertEqual(env["PYTHONNOUSERSITE"], "1")
+
 
 class TestDefaultRunner(QueueTests):
     def test_default_runner_uses_shell_false(self):
@@ -402,6 +656,53 @@ class TestDefaultRunner(QueueTests):
 
         self.assertIn("PARTIAL_STDOUT", stderr.getvalue())
         self.assertIn("PARTIAL_STDERR", stderr.getvalue())
+
+    def test_default_runner_stall_watchdog_kills_silent_child(self):
+        from ccfa.queue import _default_runner
+
+        script = (
+            "import time\n"
+            "print('READY', flush=True)\n"
+            "time.sleep(5)\n"
+        )
+        stderr = StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(QueueStalled):
+            _default_runner(
+                [sys.executable, "-c", script],
+                self.root,
+                10,
+                stall_timeout_s=0.3,
+            )
+
+        self.assertIn("READY", stderr.getvalue())
+
+    def test_default_runner_env_does_not_leak_non_allowlisted_values(self):
+        from ccfa.queue import _default_runner
+
+        env = _sandbox_env(
+            {
+                **os.environ,
+                "QUEUE_TEST_SECRET": "SHOULD_NOT_LEAK",
+            }
+        )
+        script = (
+            "import os\n"
+            "print(os.environ.get('QUEUE_TEST_SECRET', 'MISSING'))\n"
+        )
+        stderr = StringIO()
+
+        with redirect_stderr(stderr):
+            code = _default_runner(
+                [sys.executable, "-c", script],
+                self.root,
+                10,
+                env=env,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertIn("MISSING", stderr.getvalue())
+        self.assertNotIn("SHOULD_NOT_LEAK", stderr.getvalue())
 
 
 class TestRunLogIntegration(QueueTests):
@@ -494,6 +795,35 @@ class TestMain(QueueTests):
         self.assertIn("stdout 只输出 JSON", queue_module.__doc__)
         self.assertIn("子进程 stdout/stderr", queue_module.__doc__)
         self.assertIn("转发到 stderr", queue_module.__doc__)
+        self.assertIn("--gpu-budget", build_parser().format_help())
+        self.assertIn("stall_timeout_s", build_parser().format_help())
+        self.assertIn("不是 OS 隔离", build_parser().format_help())
+
+    def test_main_passes_long_task_safety_options(self):
+        self._write_queue([self._item()])
+        with mock.patch(
+            "ccfa.queue.run_queue",
+            return_value={"runs": [], "stopped": None},
+        ) as run:
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                code = main(
+                    [
+                        "queue",
+                        "run",
+                        "--queue",
+                        str(self.queue_path),
+                        "--log-dir",
+                        str(self.log_dir),
+                        "--gpu-budget-seconds",
+                        "12",
+                        "--sandbox",
+                        "policy",
+                    ]
+                )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_args.kwargs["gpu_budget_s"], 12)
+        self.assertEqual(run.call_args.kwargs["sandbox"], "policy")
 
     def test_main_success_zero_failure_one_and_invalid_two(self):
         self._write_queue([self._item()])

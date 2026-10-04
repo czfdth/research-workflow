@@ -515,6 +515,14 @@ CREATE VIRTUAL TABLE papers USING fts5(
 
 最后一条是要害。把失败的运行重试掉、只留下成功的那次，会直接制造不可复现的结果。失败必须留在 `experiments/log/` 里。
 
+**v1 落地边界（2026-10-04）：** `queue` 已实现同一 `log-dir` 独占锁、
+`nvidia-smi` 利用率采样的 GPU 秒预算、`stall_timeout_s` 无输出看门狗，以及
+`sandbox: policy`（cwd 必须留在队列根内 + 子进程环境白名单）。这里的
+`policy` **不是 OS 级沙箱**：不保证只读数据、不保证禁网、不隔离 GPU；
+需要这四类隔离时必须另接 Docker、WSL 或专用沙箱。help、计划与账本都按此
+边界陈述，不把策略层写成容器隔离。GPU 预算按设备利用率采样，不按 PID
+归属；它适合本机单卡的单用户队列，不能在共享 GPU 上替代调度器的配额。
+
 ## 10. 目录结构
 
 模板库：

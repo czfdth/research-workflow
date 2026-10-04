@@ -154,6 +154,19 @@ class TestRunCommand(BaseCase):
         self.assertNotIn("purpose", record)
         self.assertEqual(self._record(run_id)["run_id"], run_id)
 
+    def test_records_execution_policy_without_touching_metrics(self):
+        run, calls = self.runner(exit_code=0)
+        _, record = run_command(
+            ["python", "train.py"],
+            self.log_dir,
+            self.root,
+            policy={"sandbox": "policy"},
+            runner=run,
+        )
+
+        self.assertEqual(record["policy"], {"sandbox": "policy"})
+        self.assertIsNone(record["metrics"])
+
     def test_records_a_build_purpose(self):
         run, _ = self.runner(exit_code=0)
         _, record = run_command(

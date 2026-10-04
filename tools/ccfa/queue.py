@@ -10,6 +10,11 @@ Timeouts retry only when the manifest explicitly sets
 ``retry_on_timeout: true``. A cwd 不存在 is a runtime error: that attempt still
 gets a failed run-log record, then the queue raises ValueError and exits 2.
 
+Long-task safety v1 adds an exclusive lock per log directory, an nvidia-smi
+GPU-second budget, a no-output stall watchdog, and an optional policy sandbox.
+``sandbox=policy`` only constrains cwd containment and the child environment;
+it is not filesystem, network, or GPU isolation.
+
 For automation consumption, ``queue run`` stdout 只输出 JSON. Child output
 remains visible without corrupting the machine-readable result. This differs
 deliberately from ``run-log run``, which passes stdio through.
@@ -19,10 +24,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -31,6 +38,36 @@ from ccfa.cli import tool_error
 from ccfa.run_log import log_metrics, run_command
 
 QUEUE_VERSION = 1
+SANDBOX_MODES = ("none", "policy")
+GPU_UTILIZATION_THRESHOLD = 5
+GPU_SAMPLE_INTERVAL_S = 1.0
+SANDBOX_ENV_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "HOME",
+        "USERPROFILE",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONNOUSERSITE",
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+        "CUDA_VISIBLE_DEVICES",
+        "NVIDIA_VISIBLE_DEVICES",
+    }
+)
+
+
+class QueueStalled(TimeoutError):
+    """Raised when a child produced no output for the stall timeout."""
+
+
+class QueueLocked(ValueError):
+    """Raised when another queue instance owns the same log directory."""
 
 
 def _load_payload(path: Path) -> dict:
@@ -47,8 +84,8 @@ def _load_payload(path: Path) -> dict:
     return payload
 
 
-def load_queue(path: Path) -> list[dict]:
-    """Load and normalize a queue manifest."""
+def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
+    """Load queue items and queue-level options."""
     path = Path(path)
     payload = _load_payload(path)
     if payload.get("schema_version") != QUEUE_VERSION:
@@ -56,6 +93,19 @@ def load_queue(path: Path) -> list[dict]:
             f"队列 schema_version 必须是 {QUEUE_VERSION}: "
             f"{payload.get('schema_version')!r}"
         )
+    sandbox = payload.get("sandbox", "none")
+    if sandbox not in SANDBOX_MODES:
+        raise ValueError(
+            f"队列 sandbox 必须是 {' 或 '.join(SANDBOX_MODES)}: {sandbox!r}"
+        )
+    gpu_budget_s = payload.get("gpu_budget_s")
+    if gpu_budget_s is not None and (
+        isinstance(gpu_budget_s, bool)
+        or not isinstance(gpu_budget_s, (int, float))
+        or gpu_budget_s < 0
+    ):
+        raise ValueError("队列 gpu_budget_s 必须是非负数")
+
     items = None
     for key in ("queue", "items", "runs"):
         if key in payload:
@@ -88,6 +138,13 @@ def load_queue(path: Path) -> list[dict]:
             or timeout_s <= 0
         ):
             raise ValueError(f"队列第 {index} 项 timeout_s 必须是正数")
+        stall_timeout_s = item.get("stall_timeout_s")
+        if stall_timeout_s is not None and (
+            not isinstance(stall_timeout_s, (int, float))
+            or isinstance(stall_timeout_s, bool)
+            or stall_timeout_s <= 0
+        ):
+            raise ValueError(f"队列第 {index} 项 stall_timeout_s 必须是正数")
         retry_exit_codes = item.get("retry_exit_codes", [])
         if not isinstance(retry_exit_codes, list) or not all(
             type(code) is int for code in retry_exit_codes
@@ -100,6 +157,11 @@ def load_queue(path: Path) -> list[dict]:
             raise ValueError(
                 f"队列第 {index} 项 retry_on_timeout 必须是布尔值"
             )
+        retry_on_stall = item.get("retry_on_stall", False)
+        if not isinstance(retry_on_stall, bool):
+            raise ValueError(
+                f"队列第 {index} 项 retry_on_stall 必须是布尔值"
+            )
         max_attempts = item.get("max_attempts", 1)
         if type(max_attempts) is not int or max_attempts < 1:
             raise ValueError(f"队列第 {index} 项 max_attempts 必须是正整数")
@@ -109,17 +171,223 @@ def load_queue(path: Path) -> list[dict]:
                 "command": list(command),
                 "cwd": cwd,
                 "timeout_s": timeout_s,
+                "stall_timeout_s": stall_timeout_s,
                 "retry_exit_codes": list(retry_exit_codes),
                 "retry_on_timeout": retry_on_timeout,
+                "retry_on_stall": retry_on_stall,
                 "max_attempts": max_attempts,
             }
         )
-    return normalized
+    options = {"sandbox": sandbox, "gpu_budget_s": gpu_budget_s}
+    return normalized, options
 
 
-def _forward_stream(stream) -> None:
+def load_queue(path: Path) -> list[dict]:
+    """Load and normalize a queue manifest."""
+    items, _options = _load_queue_document(path)
+    return items
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+class QueueLock:
+    """A process lock for one queue log directory."""
+
+    def __init__(self, log_dir: Path, *, pid_alive=None):
+        self.path = Path(log_dir) / ".queue.lock"
+        self.pid = os.getpid()
+        self._pid_alive = pid_alive or _pid_alive
+
+    def _stale(self) -> bool:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        pid = payload.get("pid") if isinstance(payload, dict) else None
+        if type(pid) is not int:
+            return False
+        return not self._pid_alive(pid)
+
+    def __enter__(self):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f"无法创建队列锁目录 {self.path.parent}: {exc}") from exc
+        for _attempt in range(2):
+            try:
+                descriptor = os.open(
+                    self.path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                )
+            except FileExistsError:
+                if self._stale():
+                    try:
+                        self.path.unlink()
+                    except FileNotFoundError:
+                        pass
+                    continue
+                raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
+            except OSError as exc:
+                raise ValueError(f"无法创建队列锁 {self.path}: {exc}") from exc
+            try:
+                payload = json.dumps(
+                    {
+                        "pid": self.pid,
+                        "created_at": datetime.now(timezone.utc).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+                os.write(descriptor, payload.encode("utf-8"))
+            except OSError as exc:
+                try:
+                    self.path.unlink()
+                except OSError:
+                    pass
+                raise ValueError(f"无法写入队列锁 {self.path}: {exc}") from exc
+            finally:
+                os.close(descriptor)
+            return self
+        raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
+
+    def __exit__(self, _exc_type, _exc, _tb):
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        if isinstance(payload, dict) and payload.get("pid") == self.pid:
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+        return False
+
+
+def _nvidia_smi_utilization() -> int:
+    try:
+        completed = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"无法运行 nvidia-smi: {exc}") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise ValueError(f"nvidia-smi 退出码 {completed.returncode}: {detail}")
+    values: list[int] = []
+    for line in completed.stdout.splitlines():
+        value = line.strip()
+        if not value:
+            continue
+        try:
+            values.append(int(float(value)))
+        except ValueError as exc:
+            raise ValueError(f"nvidia-smi 返回了非数字利用率: {value!r}") from exc
+    if not values:
+        raise ValueError("nvidia-smi 未返回 GPU 利用率")
+    return max(values)
+
+
+class GpuMeter:
+    """Sample nvidia-smi and accumulate wall time while the GPU is busy."""
+
+    def __init__(
+        self,
+        *,
+        reader=None,
+        clock=None,
+        interval_s: float = GPU_SAMPLE_INTERVAL_S,
+        threshold: int = GPU_UTILIZATION_THRESHOLD,
+    ):
+        self._reader = reader or _nvidia_smi_utilization
+        self._clock = clock or time.monotonic
+        self._interval_s = max(0.01, float(interval_s))
+        self._threshold = int(threshold)
+        self._stop = threading.Event()
+        self._thread = None
+        self._last = None
+        self._busy_seconds = 0.0
+        self._samples = 0
+        self._errors = 0
+
+    def _sample(self) -> None:
+        if self._last is None:
+            self._last = self._clock()
+            return
+        now = self._clock()
+        elapsed = max(0.0, now - self._last)
+        self._last = now
+        try:
+            utilization = self._reader()
+        except ValueError:
+            self._errors += 1
+            return
+        self._samples += 1
+        if utilization >= self._threshold:
+            self._busy_seconds += elapsed
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self._interval_s):
+            self._sample()
+
+    def start(self) -> None:
+        # Validate the reader before the child starts. A missing nvidia-smi
+        # must be a tool error, not a silently uncounted GPU budget.
+        self._reader()
+        self._last = self._clock()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> dict:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self._interval_s * 2 + 1)
+            self._thread = None
+        self._sample()
+        return {
+            "seconds": round(self._busy_seconds, 6),
+            "samples": self._samples,
+            "errors": self._errors,
+        }
+
+
+def _sandbox_env(environ=None) -> dict[str, str]:
+    source = os.environ if environ is None else environ
+    filtered = {
+        key: value
+        for key, value in source.items()
+        if key.upper() in SANDBOX_ENV_ALLOWLIST
+    }
+    filtered.setdefault("PYTHONNOUSERSITE", "1")
+    return filtered
+
+
+def _forward_stream(stream, activity: list[float]) -> None:
     try:
         for line in stream:
+            activity[0] = time.monotonic()
             sys.stderr.write(line)
             flush = getattr(sys.stderr, "flush", None)
             if flush is not None:
@@ -128,11 +396,19 @@ def _forward_stream(stream) -> None:
         stream.close()
 
 
-def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
+def _default_runner(
+    argv: list[str],
+    cwd: Path,
+    timeout_s: float | None,
+    *,
+    stall_timeout_s: float | None = None,
+    env=None,
+) -> int:
     process = subprocess.Popen(
         list(argv),
         cwd=str(cwd),
         shell=False,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -140,23 +416,39 @@ def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
         errors="replace",
         bufsize=1,
     )
+    activity = [time.monotonic()]
     pumps = [
         threading.Thread(
             target=_forward_stream,
-            args=(process.stdout,),
+            args=(process.stdout, activity),
             daemon=True,
         ),
         threading.Thread(
             target=_forward_stream,
-            args=(process.stderr,),
+            args=(process.stderr, activity),
             daemon=True,
         ),
     ]
     for pump in pumps:
         pump.start()
+    deadline = None if timeout_s is None else time.monotonic() + float(timeout_s)
     try:
-        returncode = process.wait(timeout=timeout_s)
-    except subprocess.TimeoutExpired:
+        while True:
+            try:
+                returncode = process.wait(timeout=0.2)
+                break
+            except subprocess.TimeoutExpired:
+                now = time.monotonic()
+                if deadline is not None and now >= deadline:
+                    raise
+                if (
+                    stall_timeout_s is not None
+                    and now - activity[0] >= float(stall_timeout_s)
+                ):
+                    raise QueueStalled(
+                        f"子进程 {float(stall_timeout_s):g} 秒无输出"
+                    )
+    except (subprocess.TimeoutExpired, QueueStalled):
         try:
             process.kill()
         except OSError:
@@ -170,12 +462,26 @@ def _default_runner(argv: list[str], cwd: Path, timeout_s: float | None) -> int:
     return int(returncode)
 
 
-def _item_cwd(queue_root: Path, item: dict) -> Path:
+def _item_cwd(
+    queue_root: Path,
+    item: dict,
+    *,
+    sandbox: bool = False,
+) -> Path:
     cwd = item.get("cwd")
     if not cwd:
-        return queue_root
-    path = Path(cwd)
-    resolved = path if path.is_absolute() else queue_root / path
+        resolved = queue_root
+    else:
+        path = Path(cwd)
+        resolved = path if path.is_absolute() else queue_root / path
+        resolved = resolved.resolve()
+    if sandbox:
+        try:
+            resolved.relative_to(queue_root.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                f"沙箱策略拒绝队列项 {item.get('name')!r} 逃出队列根: {resolved}"
+            ) from exc
     return resolved.resolve()
 
 
@@ -186,101 +492,216 @@ def run_queue(
     runner=None,
     budget_s: float | None = None,
     clock=None,
+    gpu_budget_s: float | None = None,
+    gpu_meter_factory=None,
+    sandbox: str | None = None,
 ) -> dict:
-    """Run queue items in order and return per-run outcomes."""
+    """Run queue items in order and return per-run outcomes.
+
+    ``sandbox="policy"`` is a policy layer: the item cwd must stay under the
+    queue root and the default runner receives only the environment allowlist.
+    It is not filesystem, network, or GPU isolation.
+    """
     queue_path = Path(queue_path)
     queue_root = queue_path.parent
     log_dir = Path(log_dir)
     if budget_s is not None and budget_s < 0:
         raise ValueError("budget_s 必须是非负数")
+    items, options = _load_queue_document(queue_path)
+    sandbox_mode = options["sandbox"] if sandbox is None else sandbox
+    if sandbox_mode not in SANDBOX_MODES:
+        raise ValueError(
+            f"sandbox 必须是 {' 或 '.join(SANDBOX_MODES)}: {sandbox_mode!r}"
+        )
+    if gpu_budget_s is None:
+        gpu_budget_s = options.get("gpu_budget_s")
+    if gpu_budget_s is not None and gpu_budget_s < 0:
+        raise ValueError("gpu_budget_s 必须是非负数")
+
+    default_runner = runner is None or runner is _default_runner
     run = runner or _default_runner
     now = clock or time.monotonic
-    items = load_queue(queue_path)
+    gpu_meter_factory = gpu_meter_factory or GpuMeter
 
-    started = now()
-    runs: list[dict] = []
-    stopped: str | None = None
-    for index, item in enumerate(items):
-        if budget_s is not None and now() - started >= budget_s:
-            for skipped in items[index:]:
-                runs.append(
-                    {
-                        "name": skipped["name"],
-                        "attempts": 0,
-                        "status": "skipped-budget",
-                    }
-                )
-            stopped = "budget"
-            break
+    def invoke(argv, cwd, timeout_s, *, item, sandbox_env):
+        if default_runner:
+            return _default_runner(
+                list(argv),
+                Path(cwd),
+                timeout_s,
+                stall_timeout_s=item["stall_timeout_s"],
+                env=sandbox_env,
+            )
+        return int(run(list(argv), Path(cwd), timeout_s))
 
-        cwd = _item_cwd(queue_root, item)
-        attempts = 0
-        status = "failed"
-        while attempts < item["max_attempts"]:
-            attempts += 1
-            timed_out = False
-
-            def attempt_runner(argv, attempt_cwd):
-                nonlocal timed_out
-                try:
-                    code = run(
-                        list(argv),
-                        Path(attempt_cwd),
-                        item["timeout_s"],
+    with QueueLock(log_dir):
+        started = now()
+        gpu_total = 0.0
+        runs: list[dict] = []
+        stopped: str | None = None
+        for index, item in enumerate(items):
+            if gpu_budget_s is not None and gpu_total >= gpu_budget_s:
+                for skipped in items[index:]:
+                    runs.append(
+                        {
+                            "name": skipped["name"],
+                            "attempts": 0,
+                            "status": "skipped-gpu-budget",
+                        }
                     )
-                except (subprocess.TimeoutExpired, TimeoutError):
-                    timed_out = True
-                    return 124, ""
-                return int(code), ""
-
-            run_id, record = run_command(
-                item["command"],
-                log_dir,
-                cwd,
-                cwd=str(cwd),
-                runner=attempt_runner,
-            )
-            exit_code = record["exit_code"]
-            if timed_out:
-                log_metrics(
-                    log_dir,
-                    run_id,
-                    {"timeout": True, "timeout_s": item["timeout_s"]},
-                )
-            if exit_code == 0:
-                status = "complete"
+                stopped = "gpu-budget"
                 break
-            if timed_out:
-                status = "timeout"
-            else:
-                status = "failed"
-            retryable = (
-                exit_code in item["retry_exit_codes"]
-                or (timed_out and item["retry_on_timeout"])
+            if budget_s is not None and now() - started >= budget_s:
+                for skipped in items[index:]:
+                    runs.append(
+                        {
+                            "name": skipped["name"],
+                            "attempts": 0,
+                            "status": "skipped-budget",
+                        }
+                    )
+                stopped = "budget"
+                break
+
+            cwd = _item_cwd(
+                queue_root,
+                item,
+                sandbox=sandbox_mode == "policy",
             )
-            if retryable and attempts < item["max_attempts"]:
-                continue
-            if retryable and item["max_attempts"] > 1:
-                stopped = "retries"
-            break
+            sandbox_env = _sandbox_env() if sandbox_mode == "policy" else None
+            attempts = 0
+            status = "failed"
+            gpu_exhausted = False
+            while attempts < item["max_attempts"]:
+                attempts += 1
+                timed_out = False
+                stalled = False
+                meter = None
+                meter_reading = None
+                if gpu_budget_s is not None:
+                    meter = gpu_meter_factory()
+                    meter.start()
 
-        runs.append(
-            {
-                "name": item["name"],
-                "attempts": attempts,
-                "status": status,
-            }
-        )
-        if stopped == "retries":
-            break
+                def attempt_runner(argv, attempt_cwd):
+                    nonlocal timed_out, stalled
+                    try:
+                        return (
+                            invoke(
+                                argv,
+                                attempt_cwd,
+                                item["timeout_s"],
+                                item=item,
+                                sandbox_env=sandbox_env,
+                            ),
+                            "",
+                        )
+                    except QueueStalled:
+                        stalled = True
+                        return 124, ""
+                    except (subprocess.TimeoutExpired, TimeoutError):
+                        timed_out = True
+                        return 124, ""
 
-    return {"runs": runs, "stopped": stopped}
+                try:
+                    run_id, record = run_command(
+                        item["command"],
+                        log_dir,
+                        cwd,
+                        cwd=str(cwd),
+                        policy=(
+                            {"sandbox": "policy"}
+                            if sandbox_mode == "policy"
+                            else None
+                        ),
+                        runner=attempt_runner,
+                    )
+                finally:
+                    if meter is not None:
+                        meter_reading = meter.stop()
+
+                attempt_metrics: dict = {}
+                if timed_out:
+                    attempt_metrics.update(
+                        timeout=True,
+                        timeout_s=item["timeout_s"],
+                    )
+                if stalled:
+                    attempt_metrics.update(
+                        stalled=True,
+                        stall_timeout_s=item["stall_timeout_s"],
+                    )
+                if meter_reading is not None:
+                    gpu_total += float(meter_reading["seconds"])
+                    attempt_metrics.update(
+                        gpu_seconds=meter_reading["seconds"],
+                    )
+                    if meter_reading["errors"]:
+                        attempt_metrics["gpu_sampling_errors"] = meter_reading[
+                            "errors"
+                        ]
+                if attempt_metrics:
+                    log_metrics(log_dir, run_id, attempt_metrics)
+                if meter_reading is not None and meter_reading["errors"]:
+                    raise ValueError(
+                        "GPU 利用率采样失败，无法可靠执行 GPU 预算"
+                    )
+
+                exit_code = record["exit_code"]
+                if gpu_budget_s is not None and gpu_total >= gpu_budget_s:
+                    gpu_exhausted = True
+                if exit_code == 0:
+                    status = "complete"
+                    break
+                if stalled:
+                    status = "stalled"
+                elif timed_out:
+                    status = "timeout"
+                else:
+                    status = "failed"
+                retryable = (
+                    exit_code in item["retry_exit_codes"]
+                    or (timed_out and item["retry_on_timeout"])
+                    or (stalled and item["retry_on_stall"])
+                )
+                if retryable and attempts < item["max_attempts"]:
+                    if gpu_exhausted:
+                        break
+                    continue
+                if retryable and item["max_attempts"] > 1:
+                    stopped = "retries"
+                break
+
+            runs.append(
+                {
+                    "name": item["name"],
+                    "attempts": attempts,
+                    "status": status,
+                }
+            )
+            if gpu_exhausted and index + 1 < len(items):
+                for skipped in items[index + 1 :]:
+                    runs.append(
+                        {
+                            "name": skipped["name"],
+                            "attempts": 0,
+                            "status": "skipped-gpu-budget",
+                        }
+                    )
+                stopped = "gpu-budget"
+                break
+            if stopped == "retries":
+                break
+
+        return {"runs": runs, "stopped": stopped}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "顺序运行实验队列。超时仅在 retry_on_timeout=true 时重试；"
+            "stall_timeout_s 无输出即判卡死；--gpu-budget-seconds 按 "
+            "nvidia-smi 利用率累计 GPU 秒数；同一 log-dir 只允许一个队列；"
+            "sandbox=policy 只做 cwd 与环境白名单，不是 OS 隔离。"
             "cwd 不存在时该次尝试仍写 failed 记录，整体退出 2。"
             "stdout 只输出结果 JSON；子进程 stdout/stderr 流式转发到 stderr。"
         )
@@ -290,6 +711,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--queue", required=True)
     run.add_argument("--log-dir", required=True)
     run.add_argument("--budget-seconds", type=float)
+    run.add_argument("--gpu-budget-seconds", type=float)
+    run.add_argument("--sandbox", choices=SANDBOX_MODES)
     return parser
 
 
@@ -300,6 +723,8 @@ def main(argv: list[str]) -> int:
             Path(args.queue),
             log_dir=Path(args.log_dir),
             budget_s=args.budget_seconds,
+            gpu_budget_s=args.gpu_budget_seconds,
+            sandbox=args.sandbox,
         )
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))

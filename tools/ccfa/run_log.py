@@ -201,6 +201,7 @@ def run_command(
     seed: str | None = None,
     notes: str | None = None,
     purpose: str = "experiment",
+    policy: dict | None = None,
     runner=None,
 ) -> tuple[str, dict]:
     argv = list(argv)
@@ -236,6 +237,7 @@ def run_command(
         "metrics": None,
         "notes": notes,
         "declared_purpose": purpose,
+        "policy": _json_safe(policy) if policy is not None else None,
     }
     _save_record(record_path, record)
 
