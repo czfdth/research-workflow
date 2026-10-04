@@ -127,6 +127,15 @@ class TestCreateProject(unittest.TestCase):
         )
         self.assertEqual(policy["waivers"], [])
 
+    def test_claims_template_documents_matching_and_optional_line(self):
+        root = self._create()
+
+        text = (root / "data" / "claims.yaml").read_text(encoding="utf-8")
+
+        self.assertIn("claims-policy-unknown-section", text)
+        self.assertIn("命中", text)
+        self.assertIn("line", text)
+
     def test_checks_template_points_to_generated_coverage_report(self):
         root = self._create()
 

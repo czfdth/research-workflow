@@ -80,10 +80,15 @@ SEED_FILES = {
     "data/provenance.json": '{\n  "version": 1,\n  "files": {}\n}\n',
     "data/claims.yaml": (
         "version: 1\n"
+        "# 节名按标题文本匹配（大小写/空白归一化）；名字必须能在 manuscript\n"
+        "# 中找到标题，否则 final_check 报 claims-policy-unknown-section。\n"
         "protected_sections:\n"
         "  - abstract\n"
         "  - contributions\n"
         "  - results\n"
+        "# waiver 必填 file/line_text/reason/date/author；line_text 大小写不敏感、\n"
+        "# 空白归一化，命中同文件多处时全部豁免并在 advisory 中标注命中 N 处。\n"
+        "# 如需精确到单行，加可选 line: <1 起的行号>。\n"
         "waivers: []\n"
     ),
 }

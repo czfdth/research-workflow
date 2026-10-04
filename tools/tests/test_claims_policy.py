@@ -30,7 +30,7 @@ class BaseCase(unittest.TestCase):
     def write_policy(self, **overrides):
         payload = {
             "version": 1,
-            "protected_sections": ["abstract", "contributions", "results"],
+            "protected_sections": ["abstract"],
             "waivers": [],
         }
         payload.update(overrides)
@@ -126,6 +126,7 @@ class TestScanClaims(BaseCase):
         )
 
     def test_nonprotected_number_remains_advisory(self):
+        self.write_policy(protected_sections=["results"])
         self.write_main(
             "\\section{Introduction}\n"
             "Coding 43 works.\n"
@@ -168,7 +169,7 @@ class TestScanClaims(BaseCase):
             item for item in problems if item.code == "claims-policy-invalid"
         )
         self.assertTrue(invalid.path.endswith("claims.yaml"))
-        self.assertEqual(invalid.line, 11)
+        self.assertEqual(invalid.line, 9)
 
     def test_policy_version_must_be_one(self):
         self.write_policy(version=2)
@@ -187,7 +188,123 @@ class TestScanClaims(BaseCase):
 
         self.assertEqual(self.codes(problems), ["protected-untagged-number"])
 
+    def test_unknown_protected_section_is_a_problem(self):
+        self.write_policy(protected_sections=["resultz"])
+        self.write_main("\\section{Results}\nCoding 43 works.\n")
+
+        problems, _, _ = self.load_and_scan()
+
+        self.assertIn("claims-policy-unknown-section", self.codes(problems))
+        unknown = next(
+            item
+            for item in problems
+            if item.code == "claims-policy-unknown-section"
+        )
+        self.assertIn("resultz", unknown.message)
+        self.assertIn("未在 manuscript 中找到", unknown.message)
+
+    def test_all_matching_protected_sections_have_no_unknown_problem(self):
+        self.write_policy(
+            protected_sections=["abstract", "contributions", "results"]
+        )
+        self.write_main(
+            "\\begin{abstract}\n"
+            "\\end{abstract}\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n"
+            "\\dataval{stats.json:rows}{43}\n"
+        )
+
+        problems, _, _ = self.load_and_scan()
+
+        self.assertNotIn("claims-policy-unknown-section", self.codes(problems))
+
+    def test_waiver_line_text_matches_case_insensitively(self):
+        self.write_main(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+        )
+        self.write_policy(
+            waivers=[
+                {
+                    "file": "manuscript/main.tex",
+                    "line_text": "CODING 43 WORKS.",
+                    "reason": "protocol count",
+                    "date": "2026-10-04",
+                    "author": "Alice",
+                }
+            ]
+        )
+
+        problems, advisories, counts = self.load_and_scan()
+
+        self.assertEqual(problems, [])
+        self.assertEqual(self.codes(advisories), ["waived-number"])
+        self.assertEqual(counts["waived"], 1)
+
+    def test_waiver_reports_how_many_lines_it_hit(self):
+        self.write_main(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+        )
+        self.write_policy(
+            waivers=[
+                {
+                    "file": "manuscript/main.tex",
+                    "line_text": "Coding 43 works.",
+                    "reason": "protocol count",
+                    "date": "2026-10-04",
+                    "author": "Alice",
+                }
+            ]
+        )
+
+        problems, advisories, counts = self.load_and_scan()
+
+        self.assertEqual(problems, [])
+        self.assertEqual(
+            self.codes(advisories),
+            ["waived-number", "waived-number"],
+        )
+        for advisory in advisories:
+            self.assertIn("命中 2 处", advisory.message)
+        self.assertEqual(counts["waived"], 2)
+
+    def test_waiver_line_field_limits_the_exemption_to_one_line(self):
+        self.write_main(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+        )
+        self.write_policy(
+            waivers=[
+                {
+                    "file": "manuscript/main.tex",
+                    "line_text": "Coding 43 works.",
+                    "line": 3,
+                    "reason": "protocol count",
+                    "date": "2026-10-04",
+                    "author": "Alice",
+                }
+            ]
+        )
+
+        problems, advisories, counts = self.load_and_scan()
+
+        self.assertEqual(self.codes(problems), ["protected-untagged-number"])
+        self.assertEqual(problems[0].line, 2)
+        self.assertEqual(self.codes(advisories), ["waived-number"])
+        self.assertIn("命中 1 处", advisories[0].message)
+        self.assertEqual(advisories[0].line, 3)
+        self.assertEqual(counts["waived"], 1)
+        self.assertEqual(counts["unbound"], 1)
+
     def test_starred_subsection_boundary_protects_contributions(self):
+        self.write_policy(protected_sections=["contributions"])
         self.write_main(
             "\\section{Introduction}\n"
             "\\subsection*{Contributions}\n"
@@ -204,6 +321,7 @@ class TestScanClaims(BaseCase):
         self.assertEqual(advisories[0].line, 5)
 
     def test_subsection_does_not_end_a_protected_section(self):
+        self.write_policy(protected_sections=["results"])
         self.write_main(
             "\\section{Results}\n"
             "Before 43 works.\n"
@@ -265,6 +383,28 @@ class TestCoverageReport(BaseCase):
         self.assertEqual(json_report["unbound"], 1)
         self.assertIn("Protected total: 3", markdown)
         self.assertIn("Unbound: 1", markdown)
+        self.assertIn("命中", markdown)
+        self.assertIn("line", markdown)
+
+    def test_report_marks_unknown_protected_sections(self):
+        self.write_policy(protected_sections=["resultz"])
+        self.write_main("\\section{Results}\nCoding 43 works.\n")
+
+        report = claims_coverage_report(self.root)
+
+        self.assertIn(
+            "claims-policy-unknown-section",
+            [item["code"] for item in report["problems"]],
+        )
+        json_report = json.loads(
+            (self.root / "submission" / "claims-coverage.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "claims-policy-unknown-section",
+            [item["code"] for item in json_report["problems"]],
+        )
 
     def test_report_requires_a_policy(self):
         self.policy_path.unlink()

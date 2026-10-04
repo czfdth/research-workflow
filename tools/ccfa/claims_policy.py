@@ -20,7 +20,11 @@ POLICY_RELATIVE_PATH = Path("data") / "claims.yaml"
 REPORT_JSON_RELATIVE_PATH = Path("submission") / "claims-coverage.json"
 REPORT_MD_RELATIVE_PATH = Path("submission") / "claims-coverage.md"
 
-_WAIVER_FIELDS = frozenset({"file", "line_text", "reason", "date", "author"})
+_WAIVER_REQUIRED_FIELDS = frozenset(
+    {"file", "line_text", "reason", "date", "author"}
+)
+_WAIVER_OPTIONAL_FIELDS = frozenset({"line"})
+_WAIVER_FIELDS = _WAIVER_REQUIRED_FIELDS | _WAIVER_OPTIONAL_FIELDS
 _POLICY_FIELDS = frozenset({"version", "protected_sections", "waivers"})
 _HEADING = re.compile(r"\\(section|subsection)\*?\s*\{([^{}]*)\}")
 _ABSTRACT_BEGIN = re.compile(r"\\begin\{abstract\}")
@@ -34,6 +38,7 @@ class Waiver:
     reason: str
     date: str
     author: str
+    line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -54,7 +59,7 @@ def _normalise_file(value: str) -> str:
 
 
 def _normalise_line(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
+    return re.sub(r"\s+", " ", value).strip().casefold()
 
 
 def _invalid(path: Path, line: int | None, message: str) -> Problem:
@@ -207,9 +212,9 @@ def load_policy(paper_root: Path) -> tuple[ClaimsPolicy | None, list[Problem]]:
             )
             continue
         fields = set(raw_waiver)
-        if fields != _WAIVER_FIELDS:
-            missing = sorted(_WAIVER_FIELDS - fields)
-            extra = sorted(fields - _WAIVER_FIELDS)
+        missing = sorted(_WAIVER_REQUIRED_FIELDS - fields)
+        extra = sorted(fields - _WAIVER_FIELDS)
+        if missing or extra:
             details = []
             if missing:
                 details.append("缺少 " + ", ".join(missing))
@@ -225,7 +230,7 @@ def load_policy(paper_root: Path) -> tuple[ClaimsPolicy | None, list[Problem]]:
             continue
 
         invalid_field = None
-        for field in sorted(_WAIVER_FIELDS):
+        for field in sorted(_WAIVER_REQUIRED_FIELDS):
             if type(raw_waiver[field]) is not str:
                 invalid_field = field
                 break
@@ -238,6 +243,18 @@ def load_policy(paper_root: Path) -> tuple[ClaimsPolicy | None, list[Problem]]:
                 )
             )
             continue
+
+        if "line" in raw_waiver:
+            line_value = raw_waiver["line"]
+            if type(line_value) is not int or line_value < 1:
+                problems.append(
+                    _invalid(
+                        policy_path,
+                        _waiver_node_line(sequence_node, index, "line"),
+                        f"waivers[{index}].line 必须是 1 起的整数行号",
+                    )
+                )
+                continue
 
         if not all(
             raw_waiver[field].strip()
@@ -271,26 +288,32 @@ def load_policy(paper_root: Path) -> tuple[ClaimsPolicy | None, list[Problem]]:
                 raw_waiver["reason"].strip(),
                 raw_waiver["date"].strip(),
                 raw_waiver["author"].strip(),
+                raw_waiver.get("line"),
             )
         )
 
     return ClaimsPolicy(tuple(protected_sections), tuple(waivers)), problems
 
 
-def _protected_lines(path: Path, policy: ClaimsPolicy) -> set[int]:
+def _protected_lines(
+    path: Path,
+    policy: ClaimsPolicy,
+) -> tuple[set[int], set[str]]:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return set()
+        return set(), set()
 
     protected_sections = set(policy.protected_sections)
     protected: set[int] = set()
+    matched_sections: set[str] = set()
     in_abstract = False
     protected_section_level = 0
     for number, raw_line in enumerate(lines, start=1):
         line = strip_comment(raw_line)
         if _ABSTRACT_BEGIN.search(line):
             in_abstract = True
+            matched_sections.add("abstract")
         if _ABSTRACT_END.search(line):
             in_abstract = False
             continue
@@ -300,6 +323,8 @@ def _protected_lines(path: Path, policy: ClaimsPolicy) -> set[int]:
             kind = heading.group(1)
             title = _normalise_section(heading.group(2))
             matches_policy = title in protected_sections
+            if matches_policy:
+                matched_sections.add(title)
             if kind == "section":
                 protected_section_level = 1 if matches_policy else 0
             elif protected_section_level == 0:
@@ -309,7 +334,7 @@ def _protected_lines(path: Path, policy: ClaimsPolicy) -> set[int]:
 
         if in_abstract or protected_section_level:
             protected.add(number)
-    return protected
+    return protected, matched_sections
 
 
 def _path_relative_to(path: str | Path, paper_root: Path) -> str:
@@ -328,18 +353,21 @@ def _path_relative_to(path: str | Path, paper_root: Path) -> str:
 
 def _matching_waiver(
     item_path: str,
+    item_line: int,
     item_text: str,
     policy: ClaimsPolicy,
     paper_root: Path,
-) -> Waiver | None:
+) -> tuple[Waiver, int] | None:
     relative = _path_relative_to(item_path, paper_root)
     line_text = _normalise_line(item_text)
-    for waiver in policy.waivers:
-        if (
-            _normalise_file(waiver.file) == relative
-            and _normalise_line(waiver.line_text) == line_text
-        ):
-            return waiver
+    for index, waiver in enumerate(policy.waivers):
+        if _normalise_file(waiver.file) != relative:
+            continue
+        if _normalise_line(waiver.line_text) != line_text:
+            continue
+        if waiver.line is not None and waiver.line != item_line:
+            continue
+        return waiver, index
     return None
 
 
@@ -352,12 +380,44 @@ def scan_claims(
     manuscript = Path(manuscript)
     root = Path(paper_root) if paper_root is not None else manuscript.parent
     tex_files = iter_tex_files(manuscript)
-    protected_by_file = {
-        str(path): _protected_lines(path, policy) for path in tex_files
-    }
+    protected_by_file: dict[str, set[int]] = {}
+    matched_sections: set[str] = set()
+    for path in tex_files:
+        protected, matched = _protected_lines(path, policy)
+        protected_by_file[str(path)] = protected
+        matched_sections |= matched
 
     problems: list[Problem] = []
     advisories: list[Problem] = []
+    for section in policy.protected_sections:
+        if section not in matched_sections:
+            problems.append(
+                Problem(
+                    "claims-policy-unknown-section",
+                    str(root / POLICY_RELATIVE_PATH),
+                    None,
+                    f"protected_sections 条目 {section!r} "
+                    "未在 manuscript 中找到任何标题匹配",
+                )
+            )
+
+    hit_counts: dict[int, int] = {}
+    for path in tex_files:
+        protected = protected_by_file[str(path)]
+        for item in find_untagged(path):
+            if item.line not in protected:
+                continue
+            match = _matching_waiver(
+                item.path,
+                item.line,
+                item.text,
+                policy,
+                root,
+            )
+            if match is not None:
+                index = match[1]
+                hit_counts[index] = hit_counts.get(index, 0) + 1
+
     waived = 0
     unbound = 0
 
@@ -375,8 +435,14 @@ def scan_claims(
                 )
                 continue
 
-            waiver = _matching_waiver(item.path, item.text, policy, root)
-            if waiver is None:
+            match = _matching_waiver(
+                item.path,
+                item.line,
+                item.text,
+                policy,
+                root,
+            )
+            if match is None:
                 unbound += 1
                 problems.append(
                     Problem(
@@ -388,6 +454,7 @@ def scan_claims(
                 )
                 continue
 
+            waiver, index = match
             waived += 1
             advisories.append(
                 Problem(
@@ -395,7 +462,8 @@ def scan_claims(
                     item.path,
                     item.line,
                     "受保护区数字已豁免"
-                    f"（reason={waiver.reason}; date={waiver.date}; "
+                    f"（命中 {hit_counts[index]} 处；"
+                    f"reason={waiver.reason}; date={waiver.date}; "
                     f"author={waiver.author}）: {item.text}",
                 )
             )
@@ -445,6 +513,16 @@ def _render_markdown(report: dict[str, Any]) -> str:
                 location += f":{item['line']}"
             lines.append(f"- `{location}` {item['message']}")
         lines.append("")
+    lines.extend(
+        [
+            "## Notes",
+            "",
+            "- `waived-number` 消息会标注命中处数；如需精确到单行，"
+            "请在 `data/claims.yaml` 的 waiver 中加可选 "
+            "`line: <1 起行号>`。",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

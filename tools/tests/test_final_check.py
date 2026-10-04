@@ -48,6 +48,14 @@ class BaseCase(unittest.TestCase):
         self.reader = lambda path: CLEAN_TEXT
         self.policy_path = self.root / "data" / "claims.yaml"
         self.write_policy()
+        self.main = self.manuscript / "main.tex"
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "\\end{abstract}\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
+            encoding="utf-8",
+        )
 
     def run_check(self, **kwargs):
         kwargs.setdefault("reader", self.reader)
@@ -151,15 +159,25 @@ class TestCheck(BaseCase):
             self.run_check(manifest=manifest)
 
     def test_untagged_number_is_an_advisory(self):
-        (self.manuscript / "main.tex").write_text(
-            "Accuracy was 92.5 percent.\n", encoding="utf-8"
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "\\end{abstract}\n"
+            "\\section{Introduction}\n"
+            "Accuracy was 92.5 percent.\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
+            encoding="utf-8",
         )
         _, advisories = self.run_check()
         self.assertIn("untagged-number", self.codes(advisories))
 
     def test_protected_untagged_number_is_a_problem(self):
-        (self.manuscript / "main.tex").write_text(
-            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
             encoding="utf-8",
         )
         problems, advisories = self.run_check()
@@ -167,8 +185,12 @@ class TestCheck(BaseCase):
         self.assertEqual(advisories, [])
 
     def test_waiver_is_listed_as_advisory(self):
-        (self.manuscript / "main.tex").write_text(
-            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
             encoding="utf-8",
         )
         self.write_policy(
@@ -214,8 +236,12 @@ class TestCheck(BaseCase):
         self.assertIn("claims-policy-invalid", self.codes(problems))
 
     def test_protected_unbound_cli_exits_one(self):
-        (self.manuscript / "main.tex").write_text(
-            "\\begin{abstract}\nCoding 43 works.\n\\end{abstract}\n",
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "Coding 43 works.\n"
+            "\\end{abstract}\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
             encoding="utf-8",
         )
         stdout = io.StringIO()
@@ -239,9 +265,45 @@ class TestCheck(BaseCase):
             "protected-untagged-number",
         )
 
+    def test_all_protected_sections_matched_has_no_unknown_problem(self):
+        problems, _ = self.run_check()
+
+        self.assertEqual(problems, [])
+
+    def test_unknown_protected_section_cli_exits_one(self):
+        self.write_policy(protected_sections=["resultz"])
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("ccfa.final_check.extract_text", return_value=CLEAN_TEXT):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(
+                    [
+                        "final_check.py",
+                        "--manuscript",
+                        str(self.manuscript),
+                        "--pdf",
+                        str(self.pdf),
+                        "--paper-root",
+                        str(self.root),
+                    ]
+                )
+
+        self.assertEqual(code, 1, stderr.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertIn(
+            "claims-policy-unknown-section",
+            [problem["code"] for problem in payload["problems"]],
+        )
+        self.assertIn("resultz", stderr.getvalue())
+
     def test_nonprotected_unbound_cli_exits_zero(self):
-        (self.manuscript / "main.tex").write_text(
-            "\\section{Introduction}\nCoding 43 works.\n",
+        self.main.write_text(
+            "\\begin{abstract}\n"
+            "\\end{abstract}\n"
+            "\\section{Introduction}\n"
+            "Coding 43 works.\n"
+            "\\section{Contributions}\n"
+            "\\section{Results}\n",
             encoding="utf-8",
         )
         stdout = io.StringIO()
