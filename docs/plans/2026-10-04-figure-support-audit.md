@@ -31,11 +31,13 @@ figures:
 | --- | --- |
 | manifest 无交付图 | advisory `figure-support-not-needed` |
 | manifest 有交付图但台账缺失 | problem `figure-support-ledger-missing` |
+| manifest 条目缺 `name` 或图名重复 | problem `figure-support-manifest-invalid` |
 | 台账条目 `id` 不在 manifest | problem `figure-support-figure-missing` |
 | manifest 交付图没有台账条目 | problem `figure-support-missing` |
 | 证据图 `claim_ids` 为空/非法 | problem `figure-support-invalid-claims` |
 | `not-applicable` 却带 `claim_ids` | problem `figure-support-invalid-claims` |
 | claim id 未在 novelty-audit 声明 | problem `figure-support-unknown-claim` |
+| 有证据图但 novelty-audit 读不出 claims | problem `figure-support-claims-unavailable` |
 | `attributed_text` < 20 字符 | problem `figure-support-text-too-short` |
 | `attributed_text` 不在 `referenced_in` 指向的正文里 | problem `figure-support-text-not-found` |
 | manifest 缺合法 `referenced_in` | problem `figure-support-reference-missing` |

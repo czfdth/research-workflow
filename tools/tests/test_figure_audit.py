@@ -150,10 +150,7 @@ class FigureSupportAuditTests(unittest.TestCase):
 
         problems, advisories = self._run()
 
-        figure_codes = {
-            code for code in self._codes(problems) if code.startswith("figure-")
-        }
-        self.assertEqual(figure_codes, set())
+        self.assertEqual(problems, [])
         self.assertIn("figure-support-coverage", self._codes(advisories))
 
     def test_attributed_text_matches_across_wrapped_lines(self):
@@ -317,10 +314,21 @@ class FigureSupportAuditTests(unittest.TestCase):
 
         problems, _advisories = self._run()
 
-        figure_codes = {
-            code for code in self._codes(problems) if code.startswith("figure-")
-        }
-        self.assertEqual(figure_codes, set())
+        self.assertEqual(problems, [])
+
+    def test_not_applicable_does_not_need_a_claim_registry(self):
+        self._write_valid_manifest()
+        self._write_ledger(
+            self._valid_ledger(
+                verdict="not-applicable",
+                claim_ids="[]",
+                note="Architecture schematic; it makes no empirical claim.",
+            )
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertEqual(problems, [])
 
     # -- claim binding ---------------------------------------------------
 
@@ -342,16 +350,52 @@ class FigureSupportAuditTests(unittest.TestCase):
 
         self.assertIn("figure-support-invalid-claims", self._codes(problems))
 
-    def test_missing_novelty_ledger_is_an_advisory(self):
+    def test_missing_novelty_ledger_is_a_problem(self):
         self._write_valid_manifest()
         self._write_ledger(self._valid_ledger())
 
         problems, advisories = self._run()
 
         self.assertIn(
+            "figure-support-claims-unavailable", self._codes(problems)
+        )
+        self.assertNotIn(
             "figure-support-claims-unavailable", self._codes(advisories)
         )
         self.assertNotIn("figure-support-unknown-claim", self._codes(problems))
+
+    def test_malformed_novelty_claims_is_a_problem(self):
+        self._write_valid_manifest()
+        (self.root / "data" / "novelty-audit.yaml").write_text(
+            "version: 1\nclaims: C1\n", encoding="utf-8"
+        )
+        self._write_ledger(self._valid_ledger())
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-claims-unavailable", self._codes(problems)
+        )
+
+    def test_claims_unavailable_is_reported_once(self):
+        self._write_manifest(
+            self._manifest_entry(name="main-results")
+            + self._manifest_entry(name="ablation")
+        )
+        self._write_ledger(
+            "version: 1\nfigures:\n"
+            + self._entry_block(figure_id="main-results")
+            + self._entry_block(figure_id="ablation")
+        )
+
+        problems, _advisories = self._run()
+
+        reported = [
+            problem
+            for problem in problems
+            if problem.code == "figure-support-claims-unavailable"
+        ]
+        self.assertEqual(len(reported), 1)
 
     # -- attributed text ------------------------------------------------
 
@@ -428,6 +472,80 @@ class FigureSupportAuditTests(unittest.TestCase):
         self.assertIn(
             "figure-support-reference-invalid", self._codes(problems)
         )
+
+    def test_out_of_range_reference_line_is_a_problem(self):
+        self._write_manifest(
+            self._manifest_entry(referenced_in='["manuscript/main.tex:999999"]')
+        )
+        self._write_novelty()
+        self._write_ledger(self._valid_ledger())
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-reference-invalid", self._codes(problems)
+        )
+
+    def test_duplicate_manifest_name_is_a_problem(self):
+        self._write_manifest(
+            self._manifest_entry(name="dup") + self._manifest_entry(name="dup")
+        )
+        self._write_novelty()
+        self._write_ledger(self._valid_ledger(figure_id="dup"))
+
+        problems, _advisories = self._run()
+
+        self.assertIn(
+            "figure-support-manifest-invalid", self._codes(problems)
+        )
+
+    def test_unnamed_manifest_entry_is_a_problem(self):
+        self._write_manifest("- file: figures/anonymous.pdf\n")
+        self._write_novelty()
+        self._write_ledger(self._valid_ledger())
+
+        problems, advisories = self._run()
+
+        self.assertIn(
+            "figure-support-manifest-invalid", self._codes(problems)
+        )
+        self.assertNotIn("figure-support-not-needed", self._codes(advisories))
+
+    def test_irrelevant_verdict_is_a_problem(self):
+        self._write_valid_manifest()
+        self._write_novelty()
+        self._write_ledger(
+            self._valid_ledger(
+                verdict="irrelevant",
+                note="The figure shows a different metric entirely.",
+            )
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("figure-support-not-supporting", self._codes(problems))
+
+    def test_bool_ledger_version_is_a_problem(self):
+        self._write_valid_manifest()
+        self._write_novelty()
+        self._write_ledger(
+            self._valid_ledger().replace("version: 1", "version: true", 1)
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("argument-audit-invalid", self._codes(problems))
+
+    def test_float_ledger_version_is_a_problem(self):
+        self._write_valid_manifest()
+        self._write_novelty()
+        self._write_ledger(
+            self._valid_ledger().replace("version: 1", "version: 1.0", 1)
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("argument-audit-invalid", self._codes(problems))
 
     # -- CLI -------------------------------------------------------------
 

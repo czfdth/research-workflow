@@ -101,7 +101,8 @@ def _read_yaml(path: Path) -> tuple[object | None, list[Problem]]:
                 "台账顶层必须是映射",
             )
         ]
-    if payload.get("version") != 1:
+    version = payload.get("version")
+    if type(version) is not int or version != 1:
         return None, [
             _problem(
                 "argument-audit-invalid",
@@ -780,11 +781,17 @@ def _reference_corpus(
     if not resolved.is_file():
         return None, None, f"referenced_in 指向不存在的文件: {raw!r}"
     try:
-        corpus = _normalise_whitespace(
-            resolved.read_text(encoding="utf-8", errors="replace")
-        )
+        text = resolved.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         raise ValueError(f"无法读取 {resolved}: {exc}") from exc
+    line_count = len(text.splitlines())
+    if int(line_part) > line_count:
+        return (
+            None,
+            None,
+            f"referenced_in 行号越界（文件只有 {line_count} 行）: {raw!r}",
+        )
+    corpus = _normalise_whitespace(text)
     return resolved, corpus, None
 
 
@@ -809,19 +816,43 @@ def _check_figure_support(
         return problems, advisories, {"required": 0, "reviewed": 0}
 
     manifest_entries: dict[str, dict] = {}
-    for item in manifest:
+    manifest_scan_problems = False
+    for index, item in enumerate(manifest, start=1):
         name = item.get("name")
-        if isinstance(name, str) and name.strip():
-            manifest_entries[name.strip()] = item
-    if not manifest_entries:
-        advisories.append(
-            _problem(
-                "figure-support-not-needed",
-                manifest_path,
-                None,
-                "图表清单没有具名交付图，图表语义支持不适用",
+        if not isinstance(name, str) or not name.strip():
+            manifest_scan_problems = True
+            problems.append(
+                _problem(
+                    "figure-support-manifest-invalid",
+                    manifest_path,
+                    None,
+                    f"manifest 第 {index} 项缺非空 name，无法逐图审计",
+                )
             )
-        )
+            continue
+        name = name.strip()
+        if name in manifest_entries:
+            manifest_scan_problems = True
+            problems.append(
+                _problem(
+                    "figure-support-manifest-invalid",
+                    manifest_path,
+                    None,
+                    f"manifest 图名重复 {name!r}，无法把审计结论逐图对上",
+                )
+            )
+            continue
+        manifest_entries[name] = item
+    if not manifest_entries:
+        if not manifest_scan_problems:
+            advisories.append(
+                _problem(
+                    "figure-support-not-needed",
+                    manifest_path,
+                    None,
+                    "图表清单没有具名交付图，图表语义支持不适用",
+                )
+            )
         return problems, advisories, {"required": 0, "reviewed": 0}
 
     payload, read_problems = _read_yaml(ledger_path)
@@ -857,15 +888,7 @@ def _check_figure_support(
         }
 
     claims = _declared_claims(paper_root)
-    if not claims:
-        advisories.append(
-            _problem(
-                "figure-support-claims-unavailable",
-                NOVELTY_LEDGER_RELATIVE_PATH,
-                None,
-                "novelty-audit 未声明 claims，无法核对图表与 claim 的绑定",
-            )
-        )
+    claims_reported = False
 
     covered: set[str] = set()
     seen: set[str] = set()
@@ -988,6 +1011,17 @@ def _check_figure_support(
                     )
                 )
             continue
+
+        if not claims and not claims_reported:
+            claims_reported = True
+            problems.append(
+                _problem(
+                    "figure-support-claims-unavailable",
+                    NOVELTY_LEDGER_RELATIVE_PATH,
+                    None,
+                    "novelty-audit 未声明可用 claims，无法核对图表与 claim 的绑定",
+                )
+            )
 
         claim_ids = entry.get("claim_ids")
         if (
