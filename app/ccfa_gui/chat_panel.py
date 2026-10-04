@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from ccfa_core.engines.base import ChatMessage, EngineError
 from ccfa_core.engines.codex_exec import CodexExecEngine
 from ccfa_core.engines.openai_compat import OpenAICompatibleEngine
+from ccfa_core.http_tools import HttpToolRegistry, load_registry
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from ccfa_core.settings import load_settings
 from ccfa_core.tools_bridge import ToolBridge, openai_tools
@@ -109,6 +110,8 @@ class ChatPanel(QWidget):
         self._running = False
         self._in_flight_text = ""
         self._tool_bridge = None
+        self._project_root = None
+        self._registry_issue_codes = ()
         self.write_confirmer = self._ask_write_confirmation
         self._build_ui()
         self.reply_ready.connect(self._on_reply)
@@ -206,6 +209,7 @@ class ChatPanel(QWidget):
         except ValueError as exc:
             self._set_hint(f"设置读取失败: {exc}")
             return
+        registry_issue_codes = self._registry_codes(settings)
         provider = settings.provider
         if provider is None:
             self._set_hint("未配置 provider：请先在设置中填写 API 配置")
@@ -221,7 +225,17 @@ class ChatPanel(QWidget):
         if not isinstance(value, str) or not value.strip():
             self._set_hint("未配置 API key：请在设置中保存密钥")
             return
-        self._set_hint(f"Provider: {provider.name} / {provider.model}")
+        if registry_issue_codes:
+            self._set_hint(
+                "HTTP 工具注册表不可用: "
+                + ", ".join(registry_issue_codes)
+            )
+            return
+        tool_count = 0
+        if self._tool_bridge is not None:
+            tool_count = len(self._tool_bridge.openai_tools())
+        suffix = f" / tools={tool_count}" if tool_count else ""
+        self._set_hint(f"Provider: {provider.name} / {provider.model}{suffix}")
 
     def send_message(self) -> None:
         """Send the input box content through the selected engine."""
@@ -238,7 +252,7 @@ class ChatPanel(QWidget):
         if self._kind() == ENGINE_OPENAI and self._tool_bridge is not None:
             if hasattr(engine, "configure_tools"):
                 engine.configure_tools(self._tool_bridge.execute)
-            tools = openai_tools()
+            tools = self._tool_bridge.openai_tools()
         self._append_message("user", text)
         self._history.append(ChatMessage("user", text))
         self._in_flight_text = text
@@ -255,11 +269,16 @@ class ChatPanel(QWidget):
 
     def set_project(self, project_root, *, library_dir=None) -> None:
         """Attach the deterministic tools for one project (None clears them)."""
+        self._project_root = (
+            Path(project_root) if project_root is not None else None
+        )
         if project_root is None:
             self._tool_bridge = None
+            self._registry_issue_codes = ()
             return
         if library_dir is None:
             library_dir = self._library_dir
+        http_tools = self._load_http_tools()
         self._tool_bridge = ToolBridge(
             project_root,
             library_dir=library_dir,
@@ -268,6 +287,60 @@ class ChatPanel(QWidget):
                 arguments,
             ),
             on_call=self.tool_called.emit,
+            http_tools=http_tools,
+        )
+        self.refresh_status()
+
+    def reload_configuration(self) -> None:
+        """Reload settings and rebuild tools for the selected project."""
+        if self._project_root is not None:
+            self.set_project(self._project_root)
+        else:
+            self.refresh_status()
+
+    def _registry_path(self, configured: str) -> Path:
+        path = Path(configured)
+        if not path.is_absolute():
+            path = self._settings_path.parent / path
+        return path
+
+    def _registry_codes(self, settings) -> tuple[str, ...]:
+        if settings.http_tools_path is None:
+            self._registry_issue_codes = ()
+            return ()
+        _specs, issues = load_registry(
+            self._registry_path(settings.http_tools_path),
+            reserved_names=tuple(
+                item["function"]["name"] for item in openai_tools()
+            ),
+        )
+        codes = tuple(sorted({issue.code for issue in issues}))
+        self._registry_issue_codes = codes
+        return codes
+
+    def _load_http_tools(self) -> HttpToolRegistry | None:
+        try:
+            settings = load_settings(self._settings_path)
+        except ValueError:
+            self._registry_issue_codes = ("settings-invalid",)
+            return None
+        if settings.http_tools_path is None:
+            self._registry_issue_codes = ()
+            return None
+        specs, issues = load_registry(
+            self._registry_path(settings.http_tools_path),
+            reserved_names=tuple(
+                item["function"]["name"] for item in openai_tools()
+            ),
+        )
+        self._registry_issue_codes = tuple(
+            sorted({issue.code for issue in issues})
+        )
+        if issues:
+            return None
+        return HttpToolRegistry(
+            specs,
+            resolve_secret=self._secret_store.get,
         )
 
     def _ask_write_confirmation(self, name: str, arguments: dict) -> bool:

@@ -1,0 +1,313 @@
+# 科研工作流日常操作手册
+
+日期：2026-10-04
+
+这份手册回答一个问题：**打开仓库后，今天具体该做什么。**
+
+产品能力与边界见 `docs/research-workflow-intro.md`；工具的底层契约见
+`docs/design/2026-10-03-research-workflow-design.md`；本手册只保留日常操作路径。
+
+## 1. 心智模型
+
+每篇论文是一个独立 git 仓库。研究过程由三样东西组成：
+
+1. `ccfa.yaml`：现在处于哪个阶段，当前 gate 是什么。
+2. 论文目录中的证据文件：数据、运行日志、手稿、图表和人工复核账本。
+3. 根仓库中的工具：只检查或更新证据，不替研究者判断科学真伪。
+
+日常循环固定为：
+
+```text
+读状态 -> 处理当前 gate -> 运行定向检查 -> 人工复核 -> 提交论文仓库 -> 推进阶段
+```
+
+不要同时追求所有 gate 全绿。只处理当前阶段和下一阶段真正需要的材料。
+
+## 2. 首次准备
+
+在模板仓库根目录执行：
+
+```powershell
+python -m venv tools/.venv
+& tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.txt
+
+py -3.12 -m venv app/.venv
+& app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
+
+scripts/doctor.ps1
+```
+
+`doctor` 的 `found` 只表示命令可被发现；Docker daemon 会额外执行真实探测。
+准备使用所有可选能力时运行 `scripts/doctor.ps1 --strict`。
+
+工作流支持三个 readiness profile：`minimal` 用于构思和短稿，`standard` 用于普通会议论文，`high-assurance` 用于安全、医学、正式证明或高风险研究。默认是 `standard`，也可在 `ccfa.yaml` 写 `workflow.profile`。
+
+## 3. 创建论文
+
+```powershell
+scripts/new-paper.ps1 my-paper `
+    --venue NeurIPS --year 2027 --mode conference --title "My Paper"
+```
+
+默认目录是 `papers/my-paper/`。它会成为独立 git 仓库并包含初始提交。
+
+创建后立即确认：
+
+```powershell
+scripts/validate.ps1 papers/my-paper/ccfa.yaml
+scripts/milestones.ps1 stage --paper-root papers/my-paper
+git -C papers/my-paper status --short
+```
+
+期望结果：状态文件合法、stage 为 `idea`、论文仓库没有未预期改动。
+
+## 4. 每日开工
+
+把论文路径放进一个短变量，减少误操作：
+
+```powershell
+$paper = "papers/my-paper"
+scripts/milestones.ps1 stage --paper-root $paper
+scripts/readiness.ps1 --paper-root $paper --out reviews/readiness.md
+scripts/milestones.ps1 due --paper-root $paper
+git -C $paper status --short
+```
+
+然后只回答五个问题：
+
+1. 当前 stage 和 gate 是什么？
+2. readiness report 的 `schema-valid`、`evidence-present`、`independently-reviewed`、`scientifically-accepted`、`collaboration-ready` 各是什么状态？
+3. `due` 是否提示临近节点或缺口？
+4. 工作树里哪些改动是今天要继续的？
+5. 当前 gate 缺的是研究工作、人工判断，还是可机械修复的材料？
+
+`readiness` 只是汇总器：它可以说证据是否存在、人工审计是否仍标记为 pending、仓库是否脏、CI/remote 是否接好；它不会自动声称证明成立、引用真的支撑论断或论文已被科学接受。
+
+## 5. 阶段操作表
+
+### `idea`：定义问题
+
+必须产出：问题陈述、可检验假设、目标 venue。
+
+```powershell
+scripts/memory.ps1 --paper-root $paper check
+scripts/library.ps1 --dir library search "your topic"
+```
+
+先检索个人记忆和共享文献库，避免重复做已经放弃或已经完成的方向。
+
+### `grounded`：建立新颖性依据
+
+必须产出：检索范围、检索日期、至少三篇最近邻、重叠与逐 claim 差异。
+
+主要文件：`data/novelty-audit.yaml`、`manuscript/references.bib`。
+
+```powershell
+scripts/novelty.ps1 --paper-root $paper
+```
+
+这一步不能证明“世界上没人做过”，只能证明检索过程和差异判断已被记录。
+
+### `data-ready`：登记来源
+
+必须产出：每份数据的来源、分类和校验和。
+
+```powershell
+scripts/provenance.ps1 --store "$paper/data/provenance.json" `
+    --paper-root $paper check
+```
+
+敏感、无许可或来源不明的数据不要带入后续实验。
+
+### `experiment-design`：冻结设计
+
+必须产出：claim 到实验的映射、baseline、metric 和统计设计。
+
+主要文件：`data/claims.yaml`、`data/statistics-plan.yaml`。
+
+```powershell
+scripts/statistics.ps1 --paper-root $paper
+```
+
+涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
+
+### `experiments-running`：运行并留档
+
+每次运行都通过 run log 或实验队列执行，失败也必须保留。
+
+```powershell
+scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
+    --paper-root $paper run -- <command...>
+
+scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
+    --paper-root $paper check
+```
+
+长任务优先使用 `scripts/queue.ps1`。需要隔离时使用 Docker 沙箱，不要在 daemon
+不可用时静默改成宿主机执行。T-30 后的 build 豁免和脏树运行都必须写具体理由。
+
+### `results-ready`：把 claim 绑定到证据
+
+必须产出：每个 supported claim 对应具体源值；人工编码达到预设一致性门槛。
+
+```powershell
+scripts/trace-claims.ps1 --doc "$paper/manuscript/main.tex" `
+    --base-dir $paper --untagged
+```
+
+如果 venue 主文件不叫 `main.tex`，把路径替换为实际文件。无法支撑的 claim 应标为
+provisional 或 dropped，不要为了过 gate 修改源数据。
+
+### `writing`：完成可编译草稿
+
+必须产出：正文、图表、引用和符合 venue 的页数。
+
+```powershell
+scripts/citation-guard.ps1 `
+    --manuscript "$paper/manuscript" `
+    --bib "$paper/manuscript/references.bib" `
+    --ledger "$paper/data/citation-ledger.json"
+
+scripts/latex-check.ps1 `
+    --manuscript "$paper/manuscript" `
+    --bib "$paper/manuscript/references.bib" `
+    --compile
+```
+
+主文件位于子目录时，给 `latex-check` 增加 `--main <relative/path.tex>`。
+
+### `internal-review`：独立复核论证
+
+必须产出：证明、引用语义、图表语义的具名人工复核，以及无 blocking 项的评审记录。
+
+主要文件：
+
+- `data/proof-audit.yaml`
+- `data/citation-support.yaml`
+- `data/figure-support.yaml`
+- `reviews/*.json`
+
+```powershell
+scripts/argument-audit.ps1 --paper-root $paper
+scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
+    --strict-cross-family
+```
+
+人工复核应由真实的人完成。模型名字不能冒充 reviewer。跨族 provider 不可用时，
+同族 override 只能作为异常记录，不能当作独立评审。
+
+### `submission-check`：冻结投稿包
+
+必须产出：终稿检查、治理台账、复现环境和可实际验证的复现包。
+
+```powershell
+scripts/governance.ps1 --paper-root $paper
+scripts/repro-env.ps1 --paper-root $paper
+scripts/final-check.ps1 --paper-root $paper `
+    --manuscript "$paper/manuscript" `
+    --pdf "$paper/submission/final.pdf"
+scripts/repro-package.ps1 --paper-root $paper bundle `
+    --files <复现所需的论文内相对路径...> `
+    --command "{python} <入口脚本>" `
+    --requirements <依赖文件相对路径> `
+    --out "$paper/submission/repro"
+scripts/repro-package.ps1 --paper-root $paper verify `
+    --bundle "$paper/submission/repro"
+```
+
+在提交前检查匿名、页数、补充材料、AI 使用政策、预印本政策和一稿多投政策。
+
+### 投稿后
+
+会议：`submitted -> rebuttal -> camera-ready -> archived`。
+
+期刊：`submitted -> major-revision -> response-letter -> resubmitted -> accepted -> archived`。
+
+审稿意见逐条进入 revision ledger。最终归档终稿、复现包、来源文档和评审材料。
+
+## 6. 推进与回退
+
+所有检查通过并完成必要人工判断后，先提交论文仓库：
+
+```powershell
+git -C $paper status --short
+git -C $paper add <本阶段文件>
+git -C $paper commit -m "complete <stage> gate"
+```
+
+再推进状态：
+
+```powershell
+scripts/state.ps1 --paper-root $paper set-stage `
+    <next-stage> --reason "<具体完成事实>" --confirm
+```
+
+证据失效时应回退，而不是保留一个虚假的绿灯：
+
+```powershell
+scripts/state.ps1 --paper-root $paper rollback `
+    <earlier-stage> --reason "<触发回退的事实>" --confirm
+```
+
+准确参数以 `scripts/state.ps1 <subcommand> --help` 为准。
+
+## 7. 退出码处理
+
+| 退出码 | 含义 | 处理方式 |
+| --- | --- | --- |
+| `0` | 检查通过 | 继续人工复核或进入下一步 |
+| `1` | 发现材料或研究问题 | 阅读 JSON `problems`，修复证据，不要重装工具 |
+| `2` | 工具自身错误 | 检查参数、环境、文件格式或依赖；不能视为 gate 通过 |
+
+`advisory` 是待审阅事项，不自动改变退出码。对关键结论的 advisory 必须逐条处理，
+不能用一段笼统声明批量关闭。
+
+## 8. 版本与快照
+
+阶段完成后优先用普通 git commit。需要命名快照或比较版本时使用：
+
+```powershell
+scripts/research-version.ps1 --help
+```
+
+快照前必须确认命令指向论文自己的 git 仓库，且没有未解释的脏树改动。
+
+## 9. 桌面工作台
+
+启动：
+
+```powershell
+cd app
+$env:PYTHONPATH = (Resolve-Path ../tools).Path
+& .venv/Scripts/python.exe -m ccfa_gui.main
+```
+
+工作台适合查看项目、运行常用检查和与模型协作。模型只能调用白名单工具；写操作必须
+人工确认，`run-log run` 不对模型开放。
+
+设置页可配置 OpenAI-compatible provider 和 HTTP 工具注册表。注册表中的凭据写成
+`secret:<key_name>`，实际值只存系统 keyring。注册表保存后热重载，无需重启。
+
+## 10. 开发与测试
+
+修改工具后只运行新增、修改模块及直接消费者：
+
+```powershell
+rg -ln "<改动的符号或错误码>" tools/tests app/tests
+```
+
+然后用对应 venv 运行找到的测试模块。只有发布、状态机/公共契约大改或明确要求时，
+才运行全量套件。
+
+不要把测试生成物、临时复现输出或某篇论文的工作文件提交到模板仓库。
+
+## 11. 每日收工
+
+1. 运行今天改动对应的定向检查。
+2. 确认失败运行和人工判断都已经落盘。
+3. 查看 `git -C $paper status --short`，区分应提交材料与临时文件。
+4. 提交一个边界清楚的论文仓库 commit。
+5. 再运行 `milestones stage`，记录下一次从哪个 gate 继续。
+
+工作流的目标不是制造更多表格，而是让重要结论在两周后仍然能够回答：它来自哪里、
+谁复核过、哪次运行产生、在哪个版本被采用，以及什么事实会让它失效。

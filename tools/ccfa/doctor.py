@@ -5,12 +5,12 @@ toolchain, codex, Docker, nvidia-smi) and to two virtualenvs. When one is
 missing, the failure shows up later as a confusing crash inside an unrelated
 step, so this preflight names what is absent and which capability it disables.
 
-What a clean report does and does not mean: ``found`` is produced by looking the
-command up on ``PATH``; the virtualenv check only confirms an interpreter file
-exists. The one execution probe is the Docker daemon, because a Docker binary
-with no reachable daemon is the failure this workflow actually hits -- it is
-reported as ``found`` plus a separate ``doctor-daemon-down`` finding. This tool
-never installs anything and never writes files.
+The report uses explicit capability levels. ``installed`` only means a command
+is on ``PATH`` or a venv interpreter exists. ``reachable`` means a daemon or
+HTTP service answered. ``authenticated`` means it did not reject credentials.
+``functional`` means the service returned the minimum expected payload. The
+paper-specific ``ready`` level belongs to the readiness report, not this host
+preflight. This tool never installs anything and never writes files.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ import argparse
 import shutil
 import subprocess
 import sys
+import json
+import tomllib
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -37,6 +42,22 @@ class Venv(NamedTuple):
     key: str
     relative: str
     capability: str
+
+
+@dataclass(frozen=True)
+class Service:
+    key: str
+    url: str
+    capability: str
+    expected_model: str | None = None
+
+
+@dataclass(frozen=True)
+class ServiceResult:
+    reachable: bool
+    authenticated: bool
+    functional: bool
+    detail: str
 
 
 DEPENDENCIES: tuple[Dependency, ...] = (
@@ -81,6 +102,49 @@ _VENV_SUFFIXES = (
 )
 
 _DAEMON_TIMEOUT_S = 15
+_HTTP_TIMEOUT_S = 5
+
+_LOCAL_SERVICES = (
+    Service(
+        "workbuddy",
+        "http://127.0.0.1:8787/health",
+        "WorkBuddy converter",
+    ),
+    Service(
+        "zotero",
+        "http://127.0.0.1:23119/api/users/0/items?limit=1",
+        "Zotero Desktop API",
+    ),
+)
+
+
+def discover_services(config_path: Path) -> tuple[Service, ...]:
+    """Return read-only probes derived from Codex config plus local services."""
+    services = list(_LOCAL_SERVICES)
+    try:
+        payload = tomllib.loads(Path(config_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return tuple(services)
+    provider_name = payload.get("model_provider")
+    model = payload.get("model")
+    providers = payload.get("model_providers")
+    provider = (
+        providers.get(provider_name)
+        if isinstance(providers, dict) and isinstance(provider_name, str)
+        else None
+    )
+    base_url = provider.get("base_url") if isinstance(provider, dict) else None
+    if isinstance(base_url, str) and base_url.strip() and isinstance(model, str):
+        services.insert(
+            0,
+            Service(
+                "provider",
+                base_url.strip().rstrip("/") + "/models",
+                "配置模型的推理服务",
+                expected_model=model.strip(),
+            ),
+        )
+    return tuple(services)
 
 
 def _default_which(name: str) -> str | None:
@@ -111,6 +175,54 @@ def _default_run(argv: list[str]) -> int:
     return completed.returncode
 
 
+def _default_fetch(url: str, timeout: float) -> tuple[int, bytes]:
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "Accept-Encoding": "identity"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return int(response.status), response.read(200_000)
+    except urllib.error.HTTPError as exc:
+        return int(exc.code), exc.read(20_000)
+
+
+def _probe_http_service(
+    service: Service,
+    *,
+    fetch: Callable[[str, float], tuple[int, bytes]] | None = None,
+) -> ServiceResult:
+    fetch = fetch or _default_fetch
+    try:
+        status, body = fetch(service.url, _HTTP_TIMEOUT_S)
+    except Exception as exc:
+        return ServiceResult(False, False, False, type(exc).__name__)
+    if status in (401, 403):
+        return ServiceResult(True, False, False, f"HTTP {status}")
+    if status < 200 or status >= 300:
+        return ServiceResult(True, True, False, f"HTTP {status}")
+    if service.expected_model is None:
+        return ServiceResult(True, True, True, f"HTTP {status}")
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ServiceResult(True, True, False, "响应不是合法 JSON")
+    data = payload.get("data") if isinstance(payload, dict) else None
+    model_ids = {
+        item.get("id")
+        for item in data
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    } if isinstance(data, list) else set()
+    if service.expected_model not in model_ids:
+        return ServiceResult(
+            True,
+            True,
+            False,
+            "配置模型不在模型列表中",
+        )
+    return ServiceResult(True, True, True, "配置模型可用")
+
+
 def _venv_python(
     repo_root: Path,
     relative: str,
@@ -132,6 +244,8 @@ def check_environment(
     venvs: tuple[Venv, ...] = VENVS,
     strict: bool = False,
     run: Callable[[list[str]], int] | None = None,
+    services: tuple[Service, ...] = (),
+    service_probe: Callable[[Service], ServiceResult] | None = None,
 ) -> tuple[list[Problem], list[Problem], list[str]]:
     """Return (problems, advisories, human status lines)."""
     repo_root = Path(repo_root)
@@ -162,7 +276,7 @@ def check_environment(
                 break
         label = dependency.executables[0]
         if found:
-            statuses.append(f"found   {label:<12} {found}")
+            statuses.append(f"installed    {label:<12} {found}")
             if dependency.daemon_args is not None:
                 try:
                     reachable = run([found, *dependency.daemon_args]) == 0
@@ -177,8 +291,12 @@ def check_environment(
                         f"{dependency.capability} 不可用",
                         False,
                     )
+                else:
+                    statuses.append(
+                        f"reachable    {label:<12} daemon 可达"
+                    )
         else:
-            statuses.append(f"MISSING {label:<12} -")
+            statuses.append(f"MISSING      {label:<12} -")
             report(
                 "doctor-missing-command",
                 label,
@@ -190,15 +308,65 @@ def check_environment(
     for venv in venvs:
         python = _venv_python(repo_root, venv.relative, path_exists)
         if python is not None:
-            statuses.append(f"found   {venv.relative:<12} {python}")
+            statuses.append(f"installed    {venv.relative:<12} {python}")
         else:
-            statuses.append(f"MISSING {venv.relative:<12} -")
+            statuses.append(f"MISSING      {venv.relative:<12} -")
             report(
                 "doctor-missing-venv",
                 venv.relative,
                 f"缺少虚拟环境 {venv.relative}：{venv.capability} 不可用",
                 False,
             )
+
+    probe = service_probe or _probe_http_service
+    for service in services:
+        try:
+            result = probe(service)
+        except Exception as exc:
+            result = ServiceResult(
+                False,
+                False,
+                False,
+                type(exc).__name__,
+            )
+        if result.functional:
+            statuses.append(
+                f"functional   {service.key:<12} {result.detail}"
+            )
+            continue
+        if result.authenticated:
+            statuses.append(
+                f"authenticated {service.key:<12} {result.detail}"
+            )
+            report(
+                "doctor-service-not-functional",
+                service.key,
+                f"{service.key} 可连接但最小功能检查失败："
+                f"{service.capability} 尚不可用",
+                False,
+            )
+            continue
+        if result.reachable:
+            statuses.append(
+                f"reachable    {service.key:<12} 未通过身份验证"
+            )
+            report(
+                "doctor-service-unauthenticated",
+                service.key,
+                f"{service.key} 可连接但身份无效："
+                f"{service.capability} 尚不可用",
+                False,
+            )
+            continue
+        statuses.append(
+            f"UNREACHABLE  {service.key:<12} {result.detail}"
+        )
+        report(
+            "doctor-service-unreachable",
+            service.key,
+            f"{service.key} 不可达：{service.capability} 尚不可用",
+            False,
+        )
     return problems, advisories, statuses
 
 
@@ -210,6 +378,8 @@ def main(
     dependencies: tuple[Dependency, ...] = DEPENDENCIES,
     venvs: tuple[Venv, ...] = VENVS,
     run: Callable[[list[str]], int] | None = None,
+    services: tuple[Service, ...] | None = None,
+    service_probe: Callable[[Service], ServiceResult] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
         description="检查本地平台依赖：报告缺什么，以及缺它会禁用哪个能力"
@@ -224,11 +394,30 @@ def main(
         action="store_true",
         help="把可选依赖的缺失也算 problem（退 1），用于一次性装齐",
     )
+    parser.add_argument(
+        "--skip-services",
+        action="store_true",
+        help="只检查本地安装，不探测 provider/WorkBuddy/Zotero",
+    )
+    parser.add_argument(
+        "--codex-config",
+        default=str(Path.home() / ".codex" / "config.toml"),
+        help="Codex config.toml 路径，用于发现 provider 和配置模型",
+    )
     args = parser.parse_args(argv[1:])
     repo_root = (
         Path(args.repo_root)
         if args.repo_root
         else Path(__file__).resolve().parents[2]
+    )
+    selected_services = (
+        ()
+        if args.skip_services
+        else (
+            discover_services(Path(args.codex_config))
+            if services is None
+            else services
+        )
     )
     problems, advisories, statuses = check_environment(
         repo_root,
@@ -238,6 +427,8 @@ def main(
         venvs=venvs,
         strict=args.strict,
         run=run,
+        services=selected_services,
+        service_probe=service_probe,
     )
     for line in statuses:
         print(line, file=sys.stderr)

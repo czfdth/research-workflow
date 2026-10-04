@@ -2167,3 +2167,58 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 真机/内存探针：压缩编码 7 种取值全部在读体前拒绝；resolver 抛含 secret 的消息只回显类型名。
 - 最终代码 HEAD 为 `acddaf5`（其后仅本账本与文档提交）。
 - 未实现边界：GUI/设置接线与打包未做；名字启发式保守（可能要求无关头走 keyring）；`allow_compressed: true` 明确接受解压内存风险。
+
+## 自定义 HTTP 工具注册表工作台接线（2026-10-04，E84）
+
+- 目标：关闭 E83 留下的产品缺口，让声明式 HTTP 工具不再只停留在 `ToolBridge`
+  核心 API，而能从工作台设置加载并真正提供给聊天模型。
+- `Settings` schema v1 新增可选 `http_tools_path`；旧的 schema v1 文件没有该字段时
+  继续正常加载。空字符串和非字符串拒绝，相对路径按 `settings.json` 所在目录解析。
+- 设置页新增注册表路径与文件选择。保存前使用与运行时相同的验证器，并保留内置工具名；
+  任一条目无效时不保存设置，界面只显示去重后的错误代码，不回显 YAML 内容。
+- `ChatPanel` 在项目绑定时加载注册表，以现有 `SecretStore.get` 解析
+  `secret:<key_name>`，并把 `HttpToolRegistry` 注入 `ToolBridge`。模型收到
+  `bridge.openai_tools()`，因此内置与注册工具共用参数校验、风险分级、写确认和摘要审计。
+- 设置保存后调用 `reload_configuration()`，当前项目的工具桥立即重建，无需重启工作台。
+  无效注册表只禁用全部自定义 HTTP 工具，内置只读/写入工具仍可用，并在状态栏显示
+  非敏感错误代码。
+- TDD 判别：新增旧 schema 兼容、路径 round-trip、非法路径类型、注册工具到达模型、
+  非法注册表不泄密且 fail-closed、设置页拒绝非法注册表、保存后热重载等用例。
+- 定向验证：`test_settings`、`test_http_tools`、`test_tools_bridge`、`test_chat_panel`、
+  `test_gui_smoke`、`test_chat_e2e`、`test_workbench_e2e`、`test_docs_consistency`，共
+  **151 tests OK**。按用户要求未运行全量测试。
+- 剩余边界：HTTP 工具只提供给支持 function calling 的 OpenAI-compatible 聊天路径；
+  `codex exec` 路径保持现状。Windows launcher、快捷方式与 PyInstaller 自用包尚未完成。
+
+## 日常工作流整理与复现包路径对齐（2026-10-04，E85）
+
+- 目标：把功能密集但入口分散的仓库整理为研究者每天能直接执行的路径，减少在
+  README、设计文档、实施计划和 26 个 CLI 之间来回寻找下一步的成本。
+- 新增 `docs/workflow-guide.md`，固定日常循环为「读状态 -> 处理当前 gate -> 定向检查
+  -> 人工复核 -> 提交论文仓库 -> 推进阶段」，并按会议/期刊共用阶段说明产出、规范文件、
+  真实命令、退出码、推进/回退、版本、工作台与收工流程。
+- 根 README 改为产品入口，首屏按任务路由到安装、日常手册、能力边界、gate、设计和实施
+  账本；完整工具表保留为参考，不再承担唯一的新手引导职责。`app/README.md` 同步 P2
+  设置页加载与热重载现状。
+- 文档核验发现并修正两处命令错误：`state` 的目标 stage 是位置参数；
+  `repro-package verify` 必须显式给 `--bundle`。
+- 整理过程发现脚手架与打包器的真实冲突：新论文会预建空的 `submission/repro/`，但
+  `create_bundle` 原先拒绝所有已存在输出目录，导致规范路径首次打包必然失败。现在只允许
+  已存在的真实空目录；非空目录、文件和符号链接仍拒绝，`--force` 的显式覆盖语义不变。
+- 防漂移：文档一致性测试新增 README 必须指向日常手册、手册引用的每个 PowerShell
+  包装器必须真实存在；复现包新增预建空目录判别测试。
+- 定向验证：`test_repro_package`、`test_repro_package_e2e`、`test_create`、
+  `test_docs_consistency`，共 **87 tests OK**。按用户要求未运行全量测试。
+- 边界：手册提供默认操作顺序，不替代具体 CLI 的 `--help`；venue 主文件、引用台账、
+  复现文件清单和实验命令仍需按论文实际内容填写。
+
+## Provider provenance 与 readiness report（2026-10-04，E86）
+
+- 目标：关闭用户复审指出的两类缺口：跨模型评审不应继续依赖硬编码执行模型或自报模型身份；日常工作需要一页式入口，把结构通过、证据存在、独立复核和科学接受分开呈现。
+- `cross_review.py` 的运行路径继续从 Codex `config.toml` 解析执行模型、执行 provider、评审 provider、endpoint 哈希和 provider 配置哈希；本轮补齐 `check` 路径：家族判定改用记录中的 `model` 与 `execution_model` 重算，完整 provenance 必须包含 provider、execution_model、execution_provider、两个 endpoint sha256、provider_config_sha256 和 family_override。缺字段的旧记录保守报 `review-same-family`。
+- `cross-review check` 新增 `--codex-config`。当记录 provenance 完整时，`check` 会用当前 Codex 配置重算 provider、执行模型和哈希；任何差异报 `review-provider-config-drift`，要求重跑评审。endpoint 明文仍不写入记录。
+- 新增 `tools/ccfa/readiness.py` 与 `scripts/readiness.ps1`：读取 `ccfa.yaml`、当前 stage/gate、倒排 checkpoint、八类证据台账、Git dirty/commit/remote、`.github/workflows`，输出 JSON；可选 `--out` 写 Markdown 一页报告。
+- Readiness profile：`minimal`、`standard`、`high-assurance`。默认 `standard`，也可在 `ccfa.yaml` 的 `workflow.profile` 指定。`minimal` 只要求新颖性台账；`standard` 要求 citation/figure/novelty/statistics/repro-environment；`high-assurance` 要求 proof/citation/figure/governance/novelty/statistics/repro-environment/human-coding 全部存在。
+- 科学边界：readiness 只输出 `schema-valid`、`evidence-present`、`independently-reviewed`、`scientifically-accepted` 四维状态；`scientifically-accepted` 默认 `not-claimed`，除非存在外部人类接受台账。工具不会把“材料齐全”升格为“结论正确”。
+- 定向验证：`tools.tests.test_cross_review` **65 tests OK**，`tools.tests.test_readiness` **7 tests OK**。随后还需随 README/脚本清单更新跑 `test_docs_consistency` 与 `test_scripts`。
+- 边界：GitHub 私有仓库、branch protection、Actions、Zenodo/OSF 和第二机器复现没有被自动创建；这些是外部副作用，需用户明确确认后再接线。Readiness 只能检测本地是否已有 remote/workflows，不能证明远端策略已经配置正确。

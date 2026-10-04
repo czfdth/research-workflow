@@ -110,6 +110,14 @@ class TestCreateBundle(BaseCase):
             create_bundle(self.root, self.out, self.manifest())
         self.assertTrue((self.out / "KEEP").is_file())
 
+    def test_precreated_empty_bundle_directory_is_accepted(self):
+        self.out.mkdir(parents=True)
+
+        create_bundle(self.root, self.out, self.manifest())
+
+        self.assertTrue((self.out / MANIFEST_NAME).is_file())
+        self.assertTrue((self.out / "files" / "src" / "train.py").is_file())
+
     def test_force_rebuilds_the_bundle(self):
         create_bundle(self.root, self.out, self.manifest())
         (self.out / "KEEP").write_text("keep\n", encoding="utf-8")

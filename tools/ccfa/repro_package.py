@@ -149,11 +149,28 @@ def create_bundle(
 
     if out_dir.exists():
         if not force:
-            raise ValueError(f"bundle 目录已存在: {out_dir}（如需覆盖请显式使用 --force）")
-        try:
-            shutil.rmtree(out_dir)
-        except OSError as exc:
-            raise ValueError(f"无法删除已有 bundle 目录 {out_dir}: {exc}") from exc
+            try:
+                is_empty_dir = (
+                    out_dir.is_dir()
+                    and not out_dir.is_symlink()
+                    and next(out_dir.iterdir(), None) is None
+                )
+            except OSError as exc:
+                raise ValueError(
+                    f"无法检查已有 bundle 目录 {out_dir}: {exc}"
+                ) from exc
+            if not is_empty_dir:
+                raise ValueError(
+                    f"bundle 目录已存在且非空: {out_dir}"
+                    "（如需覆盖请显式使用 --force）"
+                )
+        else:
+            try:
+                shutil.rmtree(out_dir)
+            except OSError as exc:
+                raise ValueError(
+                    f"无法删除已有 bundle 目录 {out_dir}: {exc}"
+                ) from exc
 
     try:
         files_dir = out_dir / FILES_DIR_NAME

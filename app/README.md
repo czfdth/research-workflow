@@ -61,3 +61,7 @@ token/key/auth/secret/credential/password/session/cookie 的头都算敏感，�
 
 `ToolBridge(project_root, http_tools=HttpToolRegistry(...))` 会把注册的工具与内置
 工具合并：同一套参数校验、写操作确认与审计（只记参数摘要）。
+
+工作台设置页已经接入注册表：填写或选择 YAML 路径，保存时整份验证；相对路径按
+`settings.json` 所在目录解析。保存成功后当前项目的工具桥立即重建，无需重启。
+无效注册表只显示错误代码并整份拒载，不回显 YAML 内容。

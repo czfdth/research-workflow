@@ -10,6 +10,8 @@ import ccfa.doctor as doctor_module
 from ccfa.doctor import (
     DEPENDENCIES,
     Dependency,
+    Service,
+    ServiceResult,
     Venv,
     check_environment,
     main,
@@ -267,7 +269,142 @@ class DoctorTests(unittest.TestCase):
         _problems, _advisories, statuses = self._check(self._all_available())
 
         git_line = next(line for line in statuses if "git" in line)
-        self.assertTrue(git_line.startswith("found"))
+        self.assertTrue(git_line.startswith("installed"))
+
+    def test_reachable_service_without_functional_result_is_an_advisory(self):
+        service = Service(
+            key="provider",
+            url="http://127.0.0.1:15721/v1/models",
+            capability="模型调用",
+            expected_model="gpt-5.6",
+        )
+
+        problems, advisories, statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            services=(service,),
+            service_probe=lambda item: ServiceResult(
+                reachable=True,
+                authenticated=True,
+                functional=False,
+                detail="configured model is absent",
+            ),
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(
+            self._codes(advisories),
+            ["doctor-service-not-functional"],
+        )
+        self.assertTrue(
+            any(line.startswith("authenticated") for line in statuses)
+        )
+
+    def test_functional_service_reports_the_highest_verified_level(self):
+        service = Service(
+            key="zotero",
+            url="http://127.0.0.1:23119/api/users/0/items?limit=1",
+            capability="Zotero 本地文献接口",
+        )
+
+        problems, advisories, statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            services=(service,),
+            service_probe=lambda item: ServiceResult(
+                reachable=True,
+                authenticated=True,
+                functional=True,
+                detail="HTTP 200",
+            ),
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+        self.assertTrue(any(line.startswith("functional") for line in statuses))
+
+    def test_unreachable_service_is_promoted_by_strict_mode(self):
+        service = Service(
+            key="workbuddy",
+            url="http://127.0.0.1:8787/health",
+            capability="WorkBuddy converter",
+        )
+
+        problems, advisories, statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            services=(service,),
+            service_probe=lambda item: ServiceResult(
+                reachable=False,
+                authenticated=False,
+                functional=False,
+                detail="ConnectionRefusedError",
+            ),
+            strict=True,
+        )
+
+        self.assertEqual(
+            self._codes(problems),
+            ["doctor-service-unreachable"],
+        )
+        self.assertEqual(advisories, [])
+        self.assertTrue(any("UNREACHABLE" in line for line in statuses))
+
+    def test_provider_probe_requires_the_configured_model_in_models_list(self):
+        service = Service(
+            key="provider",
+            url="http://127.0.0.1:15721/v1/models",
+            capability="模型调用",
+            expected_model="gpt-5.6",
+        )
+
+        result = doctor_module._probe_http_service(
+            service,
+            fetch=lambda url, timeout: (
+                200,
+                json.dumps({"data": [{"id": "another-model"}]}).encode(),
+            ),
+        )
+
+        self.assertTrue(result.reachable)
+        self.assertTrue(result.authenticated)
+        self.assertFalse(result.functional)
+        self.assertNotIn("another-model", result.detail)
+
+    def test_discovers_provider_and_local_services_from_codex_config(self):
+        config = self.root / "config.toml"
+        config.write_text(
+            'model_provider = "custom"\n'
+            'model = "gpt-5.6"\n'
+            '[model_providers.custom]\n'
+            'base_url = "http://127.0.0.1:15721/v1"\n',
+            encoding="utf-8",
+        )
+
+        services = doctor_module.discover_services(config)
+
+        by_key = {service.key: service for service in services}
+        self.assertEqual(
+            by_key["provider"].url,
+            "http://127.0.0.1:15721/v1/models",
+        )
+        self.assertEqual(by_key["provider"].expected_model, "gpt-5.6")
+        self.assertIn("workbuddy", by_key)
+        self.assertIn("zotero", by_key)
+
+    def test_invalid_codex_config_still_discovers_fixed_local_services(self):
+        config = self.root / "config.toml"
+        config.write_text("not = [valid", encoding="utf-8")
+
+        services = doctor_module.discover_services(config)
+
+        self.assertEqual(
+            {service.key for service in services},
+            {"workbuddy", "zotero"},
+        )
 
     def test_default_path_check_rejects_an_empty_interpreter(self):
         venv = Venv(key="tools", relative="tools/.venv", capability="包装器")
@@ -317,6 +454,7 @@ class DoctorTests(unittest.TestCase):
                 dependencies=DEPENDENCIES,
                 venvs=(),
                 run=lambda argv: 0,
+                services=(),
             )
 
         self.assertEqual(code, 0)
@@ -343,6 +481,7 @@ class DoctorTests(unittest.TestCase):
                 dependencies=DEPENDENCIES,
                 venvs=(),
                 run=lambda argv: 0,
+                services=(),
             )
 
         self.assertEqual(code, 1)

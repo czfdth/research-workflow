@@ -127,6 +127,32 @@ class ArgumentAuditTests(unittest.TestCase):
 
         self.assertIn("proof-review-not-verified", self._codes(problems))
 
+    def test_pending_proof_placeholder_does_not_count_as_reviewed(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        self._write_proof_ledger(
+            "version: 1\n"
+            "status: pending-human-review\n"
+            "reviews:\n"
+            "  - id: prop:main\n"
+            "    reviewer: Human reviewer pending\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    method: line-by-line\n"
+            "    status: pending\n"
+        )
+
+        problems, advisories = self._run()
+
+        self.assertIn("proof-review-not-verified", self._codes(problems))
+        self.assertNotIn("proof-review-invalid-status", self._codes(problems))
+        coverage = next(
+            item for item in advisories if item.code == "proof-audit-coverage"
+        )
+        self.assertIn("0/1", coverage.message)
+
     def test_non_string_proof_fields_are_problems_not_crashes(self):
         self._write_tex(
             "\\begin{proposition}\\label{prop:main}\n"

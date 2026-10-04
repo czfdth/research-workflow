@@ -16,6 +16,7 @@ from newpaper.checklists import render_checklist
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README_PATH = REPO_ROOT / "README.md"
+WORKFLOW_GUIDE_PATH = REPO_ROOT / "docs" / "workflow-guide.md"
 CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 
 CLI_WRAPPERS = {
@@ -44,6 +45,7 @@ CLI_WRAPPERS = {
     "state": "scripts/state.ps1",
     "revision_ledger": "scripts/revision-ledger.ps1",
     "doctor": "scripts/doctor.ps1",
+    "readiness": "scripts/readiness.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"
@@ -76,6 +78,10 @@ GENERATED_README_PATH_PREFIXES = (
 
 def _readme_text():
     return README_PATH.read_text(encoding="utf-8")
+
+
+def _workflow_guide_text():
+    return WORKFLOW_GUIDE_PATH.read_text(encoding="utf-8")
 
 
 def _modules_with_main():
@@ -235,6 +241,29 @@ class TestReadmeInventory(unittest.TestCase):
 
 
 class TestReadmeWorkflowGuidance(unittest.TestCase):
+    def test_readme_points_to_the_daily_workflow_guide(self):
+        readme = _readme_text()
+        self.assertIn("docs/workflow-guide.md", readme)
+        self.assertIn(
+            "读状态 -> 处理当前 gate -> 定向检查 -> 人工复核 -> 提交论文仓库 -> 推进阶段",
+            readme,
+        )
+
+    def test_every_script_named_in_workflow_guide_exists(self):
+        scripts = set(
+            re.findall(
+                r"scripts/[A-Za-z0-9-]+\.ps1",
+                _workflow_guide_text(),
+            )
+        )
+        self.assertTrue(scripts, "日常操作手册没有引用任何脚本")
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertTrue(
+                    (REPO_ROOT / script).is_file(),
+                    f"日常操作手册引用了不存在的脚本: {script}",
+                )
+
     def test_stage_to_command_quick_reference_is_present(self):
         readme = _readme_text()
         for command in (
@@ -338,7 +367,7 @@ class TestReadmeCommonCommands(unittest.TestCase):
 
     def test_common_commands_have_valid_argparse_shapes(self):
         lines = _common_command_lines()
-        self.assertEqual(len(lines), 7, lines)
+        self.assertEqual(len(lines), 8, lines)
         wrapper_modules = {
             wrapper: module for module, wrapper in CLI_WRAPPERS.items()
         }

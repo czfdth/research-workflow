@@ -15,6 +15,29 @@ RUN_LOG = TOOLS_ROOT / "ccfa" / "run_log.py"
 class TestRunLogEndToEnd(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
+        self.paper_root = self.root / "paper"
+        self.paper_root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=self.paper_root, check=True)
+        (self.paper_root / "README.md").write_text(
+            "# isolated run-log fixture\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "add", "-A"], cwd=self.paper_root, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Run Log Test",
+                "-c",
+                "user.email=run-log-test@localhost",
+                "commit",
+                "-q",
+                "-m",
+                "fixture",
+            ],
+            cwd=self.paper_root,
+            check=True,
+        )
         self.log_dir = self.root / "experiments" / "log"
 
     def _run(self, *args):
@@ -27,7 +50,7 @@ class TestRunLogEndToEnd(unittest.TestCase):
                 "--log-dir",
                 str(self.log_dir),
                 "--paper-root",
-                str(REPO_ROOT),
+                str(self.paper_root),
                 *args,
             ],
             capture_output=True,

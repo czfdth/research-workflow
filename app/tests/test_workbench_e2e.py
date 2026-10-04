@@ -147,12 +147,15 @@ class WorkbenchEndToEnd(unittest.TestCase):
         self.assertIn("bad", self.window.stage_label.text())
 
     def test_settings_dialog_saves_provider_without_key_plaintext(self):
+        registry = self.root / "http-tools.yaml"
+        registry.write_text("version: 1\ntools: []\n", encoding="utf-8")
         dialog = SettingsDialog(self.settings_path, self.secrets)
         dialog.name_edit.setText("local")
         dialog.base_url_edit.setText("https://api.example.test/v1")
         dialog.model_edit.setText("gpt-test")
         dialog.timeout_spin.setValue(30)
         dialog.key_edit.setText(FAKE_KEY)
+        dialog.http_tools_path_edit.setText(registry.name)
 
         self.assertTrue(dialog.save())
 
@@ -162,7 +165,24 @@ class WorkbenchEndToEnd(unittest.TestCase):
         payload = json.loads(raw.decode("utf-8"))
         self.assertEqual(payload["provider"]["name"], "local")
         self.assertEqual(payload["provider"]["model"], "gpt-test")
+        self.assertEqual(payload["http_tools_path"], registry.name)
         self.assertEqual(dialog.key_status_label.text(), "已配置")
+        dialog.deleteLater()
+
+    def test_settings_dialog_rejects_invalid_http_tool_registry(self):
+        registry = self.root / "invalid-tools.yaml"
+        registry.write_text("version: 1\ntools: nope\n", encoding="utf-8")
+        dialog = SettingsDialog(self.settings_path, self.secrets)
+        dialog.name_edit.setText("local")
+        dialog.base_url_edit.setText("https://api.example.test/v1")
+        dialog.model_edit.setText("gpt-test")
+        dialog.key_edit.setText(FAKE_KEY)
+        dialog.http_tools_path_edit.setText(registry.name)
+
+        self.assertFalse(dialog.save())
+
+        self.assertIn("registry-invalid", dialog.error_label.text())
+        self.assertFalse(self.settings_path.exists())
         dialog.deleteLater()
 
 

@@ -34,6 +34,7 @@ class SettingsTests(unittest.TestCase):
         settings = load_settings(self.path)
         self.assertEqual(settings.schema_version, 1)
         self.assertIsNone(settings.provider)
+        self.assertIsNone(settings.http_tools_path)
 
     def test_empty_file_returns_default_without_provider(self):
         self.path.write_text("", encoding="utf-8")
@@ -42,9 +43,45 @@ class SettingsTests(unittest.TestCase):
     def test_round_trip_provider(self):
         provider = self._provider()
 
-        save_settings(self.path, Settings(provider=provider))
+        save_settings(
+            self.path,
+            Settings(provider=provider, http_tools_path="tools.yaml"),
+        )
 
-        self.assertEqual(load_settings(self.path).provider, provider)
+        loaded = load_settings(self.path)
+        self.assertEqual(loaded.provider, provider)
+        self.assertEqual(loaded.http_tools_path, "tools.yaml")
+
+    def test_loads_legacy_schema_v1_without_http_tools_path(self):
+        self.path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "provider": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        settings = load_settings(self.path)
+
+        self.assertIsNone(settings.http_tools_path)
+
+    def test_rejects_empty_or_non_string_http_tools_path(self):
+        for value in ("", "   ", 12, [], {}):
+            with self.subTest(value=value):
+                self.path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "provider": None,
+                            "http_tools_path": value,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    load_settings(self.path)
 
     def test_saved_file_is_schema_v1_utf8_without_bom_and_atomic(self):
         save_settings(self.path, Settings(provider=self._provider()))

@@ -1,0 +1,88 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tools-targeted:
+    name: tools targeted tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            tools/requirements.txt
+            app/requirements.txt
+
+      - name: Install tool dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tools/requirements.txt
+
+      - name: Compile changed core modules
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "tools"
+          python -m py_compile `
+            tools/ccfa/cross_review.py `
+            tools/ccfa/doctor.py `
+            tools/ccfa/readiness.py `
+            tools/ccfa/repro_package.py
+
+      - name: Run targeted tool tests
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "tools"
+          python -m unittest `
+            tools.tests.test_cross_review `
+            tools.tests.test_doctor `
+            tools.tests.test_readiness `
+            tools.tests.test_repro_package `
+            tools.tests.test_run_log_e2e `
+            tools.tests.test_docs_consistency `
+            tools.tests.test_github_workflows `
+            tools.tests.test_scripts
+
+  app-targeted:
+    name: app targeted tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/requirements.txt
+
+      - name: Install app dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r app/requirements.txt
+
+      - name: Run targeted app tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $env:PYTHONPATH = "app;tools"
+          python -m unittest `
+            app.tests.test_settings `
+            app.tests.test_chat_panel `
+            app.tests.test_workbench_e2e

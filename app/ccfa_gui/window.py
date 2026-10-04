@@ -261,4 +261,4 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._update_credential_status()
-            self.chat_panel.refresh_status()
+            self.chat_panel.reload_configuration()

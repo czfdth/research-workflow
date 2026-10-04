@@ -26,6 +26,7 @@ class ProviderSettings:
 class Settings:
     schema_version: int = SCHEMA_VERSION
     provider: ProviderSettings | None = None
+    http_tools_path: str | None = None
 
 
 def _text(field: str, value: Any) -> str:
@@ -66,7 +67,9 @@ def _settings_from_payload(payload: Any) -> Settings:
         return Settings()
     if not isinstance(payload, dict):
         raise ValueError("settings.json 顶层必须是对象")
-    unknown = sorted(set(payload) - {"schema_version", "provider"})
+    unknown = sorted(
+        set(payload) - {"schema_version", "provider", "http_tools_path"}
+    )
     if unknown:
         raise ValueError(f"settings.json 含未知字段: {', '.join(unknown)}")
     version = payload.get("schema_version")
@@ -74,9 +77,17 @@ def _settings_from_payload(payload: Any) -> Settings:
         raise ValueError(
             f"settings.json schema_version 必须是 {SCHEMA_VERSION}: {version!r}"
         )
+    http_tools_path = payload.get("http_tools_path")
+    if http_tools_path is not None and (
+        not isinstance(http_tools_path, str) or not http_tools_path.strip()
+    ):
+        raise ValueError("http_tools_path 必须是非空字符串或 null")
     return Settings(
         schema_version=SCHEMA_VERSION,
         provider=_provider_from_payload(payload.get("provider")),
+        http_tools_path=(
+            http_tools_path.strip() if http_tools_path is not None else None
+        ),
     )
 
 
@@ -125,6 +136,11 @@ def save_settings(
             "timeout_s": settings.provider.timeout_s,
         }
     )
+    http_tools_path = settings.http_tools_path
+    if http_tools_path is not None and (
+        not isinstance(http_tools_path, str) or not http_tools_path.strip()
+    ):
+        raise ValueError("http_tools_path 必须是非空字符串或 null")
     payload = {
         "schema_version": SCHEMA_VERSION,
         "provider": None
@@ -136,6 +152,9 @@ def save_settings(
             "key_name": provider.key_name,
             "timeout_s": provider.timeout_s,
         },
+        "http_tools_path": (
+            http_tools_path.strip() if http_tools_path is not None else None
+        ),
     }
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     save_text_atomically(path, text, description="设置")

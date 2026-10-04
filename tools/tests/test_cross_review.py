@@ -1,5 +1,4 @@
 import hashlib
-import hashlib
 import json
 import tempfile
 import unittest
@@ -34,6 +33,16 @@ class CrossReviewTests(unittest.TestCase):
         }
         (self.paper_root / "ccfa.yaml").write_text(
             yaml.safe_dump(state, sort_keys=False),
+            encoding="utf-8",
+        )
+        self.codex_config = self.paper_root / "config.toml"
+        self.codex_config.write_text(
+            'model_provider = "deepseek-provider"\n'
+            'model = "deepseek-v4-flash"\n'
+            '[model_providers.deepseek-provider]\n'
+            'base_url = "https://deepseek.example.test/v1"\n'
+            '[model_providers.other-provider]\n'
+            'base_url = "https://openai.example.test/v1"\n',
             encoding="utf-8",
         )
 
@@ -82,6 +91,7 @@ class CrossReviewTests(unittest.TestCase):
             ),
             "stage": "internal-review",
             "paths": [Path("manuscript/main.tex")],
+            "codex_config": self.codex_config,
         }
         values.update(overrides)
         return run_review(self.paper_root, runner=runner, **values)
@@ -152,6 +162,32 @@ class TestRunReview(CrossReviewTests):
         self.assertTrue(self._record_path().is_file())
         self.assertTrue((self.paper_root / "reviews" / "cross-review.md").is_file())
         self.assertEqual(result["model"], "deepseek-v4-pro")
+        self.assertEqual(result["execution_model"], "deepseek-v4-flash")
+        self.assertEqual(result["execution_provider"], "deepseek-provider")
+        self.assertRegex(result["provider_endpoint_sha256"], r"^sha256:[0-9a-f]{64}$")
+        self.assertNotIn("deepseek.example.test", json.dumps(result))
+
+    def test_missing_codex_config_fails_closed_before_running(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        with self.assertRaisesRegex(ValueError, "Codex 配置"):
+            self._run(
+                runner,
+                codex_config=self.paper_root / "missing.toml",
+            )
+
+        self.assertEqual(runner.calls, [])
+
+    def test_unknown_review_provider_fails_closed_before_running(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        with self.assertRaisesRegex(ValueError, "provider"):
+            self._run(
+                runner,
+                provider="not-configured",
+            )
+
+        self.assertEqual(runner.calls, [])
 
     def test_same_family_requires_explicit_override(self):
         runner = self._runner(payload=self._payload("pass"))
@@ -584,7 +620,7 @@ class TestCheckReview(CrossReviewTests):
             [],
         )
 
-    def test_foreign_execution_model_is_not_complete_provenance(self):
+    def test_edited_execution_model_recomputes_family_and_detects_drift(self):
         runner = self._runner(payload=self._payload())
         self._run(
             runner,
@@ -600,11 +636,67 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertEqual(
             [problem.code for problem in problems],
+            [
+                "review-provider-config-drift",
+                "review-family-mismatch",
+                "review-same-family",
+            ],
+        )
+        self.assertEqual(
+            [
+                problem.code
+                for problem in check_review(
+                    self.paper_root,
+                    allow_same_family=True,
+                )
+            ],
+            ["review-provider-config-drift", "review-family-mismatch"],
+        )
+
+    def test_missing_endpoint_hash_makes_provenance_incomplete(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("provider_endpoint_sha256", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
             ["review-same-family"],
         )
         self.assertEqual(
             check_review(self.paper_root, allow_same_family=True),
             [],
+        )
+
+    def test_config_change_invalidates_complete_review(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+        )
+        self.codex_config.write_text(
+            'model_provider = "deepseek-provider"\n'
+            'model = "deepseek-v4-flash"\n'
+            '[model_providers.deepseek-provider]\n'
+            'base_url = "https://changed.example.test/v1"\n'
+            '[model_providers.other-provider]\n'
+            'base_url = "https://openai.example.test/v1"\n',
+            encoding="utf-8",
+        )
+
+        problems = check_review(self.paper_root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-provider-config-drift"],
         )
 
     def test_mismatch_survives_incomplete_provenance_and_allow_flag(self):
@@ -1012,16 +1104,25 @@ class TestCheckReview(CrossReviewTests):
 
 
 class TestMainAndHelp(CrossReviewTests):
-    def test_help_states_same_family_different_scale_not_cross_family(self):
+    def test_help_states_config_based_provenance_and_no_execution_model_flag(self):
         stdout = StringIO()
         with redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
             main(["cross-review", "--help"])
 
         self.assertEqual(raised.exception.code, 0)
         text = stdout.getvalue()
-        self.assertIn("同族不同规模", text)
-        self.assertIn("非跨族", text)
+        self.assertIn("Codex", text)
+        self.assertIn("provenance", text)
         self.assertNotIn("--execution-model", text)
+
+    def test_run_and_check_help_expose_codex_config(self):
+        for command in ("run", "check"):
+            stdout = StringIO()
+            with redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
+                main(["cross-review", command, "--help"])
+
+            self.assertEqual(raised.exception.code, 0)
+            self.assertIn("--codex-config", stdout.getvalue())
 
     def test_main_run_pass_zero_blocking_one_and_oserror_two(self):
         pass_runner = self._runner(payload=self._payload("pass"))

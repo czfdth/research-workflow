@@ -119,6 +119,49 @@ class ChatPanelTests(unittest.TestCase):
         if key is not None:
             self.secrets.set(key_name, key)
 
+    def _configure_http_tool(self, *, risk="read"):
+        registry = self.root / "http-tools.yaml"
+        registry.write_text(
+            "\n".join(
+                [
+                    "version: 1",
+                    "tools:",
+                    "  - name: paper_lookup",
+                    "    description: Look up a paper",
+                    f"    risk: {risk}",
+                    "    method: GET",
+                    "    url: https://api.example.test/papers/{paper_id}",
+                    "    headers:",
+                    "      Authorization: secret:paper-api",
+                    "    parameters:",
+                    "      type: object",
+                    "      properties:",
+                    "        paper_id:",
+                    "          type: string",
+                    "      required: [paper_id]",
+                    "      additionalProperties: false",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        save_settings(
+            self.settings_path,
+            Settings(
+                provider=ProviderSettings(
+                    name="local",
+                    base_url=BASE_URL,
+                    model="gpt-test",
+                    key_name="local",
+                    timeout_s=30.0,
+                ),
+                http_tools_path=registry.name,
+            ),
+        )
+        self.secrets.set("local", FAKE_KEY)
+        self.secrets.set("paper-api", "paper-secret")
+        return registry
+
     def _factory(self, engines=None):
         created = {}
 
@@ -199,6 +242,82 @@ class ChatPanelTests(unittest.TestCase):
         self.assertFalse(panel.send_button.isEnabled())
         self.assertTrue(panel.stop_button.isHidden())
         self.assertTrue(panel.input_edit.isEnabled())
+
+    def test_registered_http_tool_is_advertised_from_the_project_bridge(self):
+        self._configure_http_tool()
+        engine = FakeEngine(reply_text="with registry")
+        panel = self._panel(engines={"openai": engine})
+        panel.set_project(write_project(self.root, "http-tools"))
+
+        self._send(panel, "find a paper")
+        self.assertTrue(self._wait_until(lambda: len(engine.calls) == 1))
+
+        names = {
+            item["function"]["name"] for item in engine.calls[0]["tools"]
+        }
+        self.assertIn("paper_lookup", names)
+        self.assertIn("milestones_due", names)
+
+    def test_reload_configuration_activates_a_new_registry_without_restart(self):
+        self._configure_provider()
+        panel = self._panel(engines={"openai": FakeEngine()})
+        panel.set_project(write_project(self.root, "reload-http-tools"))
+        before = {
+            item["function"]["name"]
+            for item in panel._tool_bridge.openai_tools()
+        }
+        self.assertNotIn("paper_lookup", before)
+
+        self._configure_http_tool()
+        panel.reload_configuration()
+
+        after = {
+            item["function"]["name"]
+            for item in panel._tool_bridge.openai_tools()
+        }
+        self.assertIn("paper_lookup", after)
+        self.assertIn("tools=11", panel.hint_label.text())
+
+    def test_invalid_registry_fails_closed_without_leaking_file_content(self):
+        self._configure_provider()
+        leak = "sk-REGISTRY-PLAINTEXT-DO-NOT-SHOW"
+        registry = self.root / "bad-tools.yaml"
+        registry.write_text(
+            "version: 1\ntools:\n  - name: leaked_tool\n"
+            "    description: broken\n    method: GET\n    risk: read\n"
+            "    url: https://example.test\n"
+            f"    headers:\n      Authorization: {leak}\n"
+            "    parameters:\n      type: object\n"
+            "      properties: {value: {type: string}}\n"
+            "      additionalProperties: false\n",
+            encoding="utf-8",
+        )
+        loaded = Settings(
+            provider=ProviderSettings(
+                name="local",
+                base_url=BASE_URL,
+                model="gpt-test",
+                key_name="local",
+                timeout_s=30.0,
+            ),
+            http_tools_path=registry.name,
+        )
+        save_settings(self.settings_path, loaded)
+        engine = FakeEngine()
+        panel = self._panel(engines={"openai": engine})
+        panel.set_project(write_project(self.root, "invalid-http-tools"))
+
+        panel.refresh_status()
+
+        self.assertIn("HTTP 工具注册表不可用", panel.hint_label.text())
+        self.assertIn("registry-literal-secret", panel.hint_label.text())
+        self.assertNotIn(leak, panel.hint_label.text())
+        names = {
+            item["function"]["name"]
+            for item in panel._tool_bridge.openai_tools()
+        }
+        self.assertNotIn("leaked_tool", names)
+        self.assertIn("milestones_due", names)
 
     def test_ctrl_enter_shortcut_sends_the_message(self):
         self._configure_provider()

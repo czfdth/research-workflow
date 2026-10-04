@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import time
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,6 +43,14 @@ REVIEW_SCHEMA = {
 
 DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_EXECUTION_MODEL = "deepseek-v4-flash"
+_REQUIRED_PROVENANCE_FIELDS = (
+    "provider",
+    "execution_model",
+    "execution_provider",
+    "provider_endpoint_sha256",
+    "execution_endpoint_sha256",
+    "provider_config_sha256",
+)
 _MODEL_FAMILIES = (
     ("deepseek-", "deepseek"),
     ("gpt-", "openai"),
@@ -225,6 +234,55 @@ def _quote_is_cited(evidence: str, corpus: str) -> bool:
 
 def _sha256_text(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+    )
+
+
+def _load_model_provenance(
+    config_path: Path,
+    review_provider: str | None,
+) -> dict:
+    """Resolve model/provider identity from Codex config, failing closed."""
+    path = Path(config_path)
+    try:
+        raw = path.read_bytes()
+        payload = tomllib.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"无法读取 Codex 配置 {path}: {type(exc).__name__}") from None
+    execution_model = payload.get("model")
+    execution_provider = payload.get("model_provider")
+    providers = payload.get("model_providers")
+    if not isinstance(execution_model, str) or not execution_model.strip():
+        raise ValueError("Codex 配置缺少有效 model")
+    if not isinstance(execution_provider, str) or not execution_provider.strip():
+        raise ValueError("Codex 配置缺少有效 model_provider")
+    if not isinstance(providers, dict):
+        raise ValueError("Codex 配置缺少 model_providers")
+    selected_review_provider = review_provider or execution_provider
+
+    def endpoint(name: str) -> str:
+        entry = providers.get(name)
+        value = entry.get("base_url") if isinstance(entry, dict) else None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Codex 配置未定义 provider {name!r} 的 base_url")
+        return value.strip().rstrip("/")
+
+    execution_endpoint = endpoint(execution_provider)
+    review_endpoint = endpoint(selected_review_provider)
+    return {
+        "execution_model": execution_model.strip(),
+        "execution_provider": execution_provider.strip(),
+        "provider": selected_review_provider,
+        "execution_endpoint_sha256": _sha256_text(execution_endpoint),
+        "provider_endpoint_sha256": _sha256_text(review_endpoint),
+        "provider_config_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "codex_config_path": str(path.resolve()),
+    }
 
 
 def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
@@ -422,6 +480,7 @@ def run_review(
     timeout: float = 600,
     out_dir: Path | None = None,
     force: bool = False,
+    codex_config: Path | None = None,
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root)
@@ -429,7 +488,12 @@ def run_review(
         raise ValueError(
             "评审输入不能为空：跨模型评审至少要有一个 --path"
         )
-    execution_model = DEFAULT_EXECUTION_MODEL
+    provenance = _load_model_provenance(
+        codex_config or (Path.home() / ".codex" / "config.toml"),
+        provider,
+    )
+    execution_model = provenance["execution_model"]
+    provider = provenance["provider"]
     family = _family_judgement(model, execution_model)
     if family != "cross-family" and not allow_same_family:
         raise ValueError(
@@ -498,6 +562,7 @@ def run_review(
             "status": "failed",
             "model": model,
             "provider": provider,
+            **provenance,
             "execution_model": execution_model,
             "family_judgement": family,
             "family_override": allow_same_family,
@@ -534,6 +599,7 @@ def run_review(
             "status": "malformed",
             "model": model,
             "provider": provider,
+            **provenance,
             "execution_model": execution_model,
             "family_judgement": family,
             "family_override": allow_same_family,
@@ -560,6 +626,7 @@ def run_review(
         "status": "complete",
         "model": model,
         "provider": provider,
+        **provenance,
         "execution_model": execution_model,
         "family_judgement": family,
         "family_override": allow_same_family,
@@ -589,6 +656,7 @@ def check_review(
     *,
     allow_same_family: bool = False,
     strict_cross_family: bool = False,
+    codex_config: Path | None = None,
 ) -> list[Problem]:
     """Audit the stored review record against current inputs."""
     paper_root = Path(paper_root)
@@ -638,20 +706,69 @@ def check_review(
 
     problems: list[Problem] = []
     model = record.get("model")
+    execution_model = record.get("execution_model")
+    family_recomputable = isinstance(model, str) and isinstance(execution_model, str)
     computed_family = (
-        _family_judgement(model, DEFAULT_EXECUTION_MODEL)
-        if isinstance(model, str)
+        _family_judgement(model, execution_model)
+        if family_recomputable
         else "unknown"
     )
     stored_family = record.get("family_judgement")
     provenance_complete = (
         isinstance(stored_family, str)
         and stored_family in {"same-family", "cross-family", "unknown"}
-        and record.get("execution_model") == DEFAULT_EXECUTION_MODEL
         and isinstance(record.get("family_override"), bool)
-        and "provider" in record
+        and all(
+            isinstance(record.get(field), str) and record.get(field).strip()
+            for field in _REQUIRED_PROVENANCE_FIELDS
+        )
+        and _is_sha256(record.get("provider_endpoint_sha256"))
+        and _is_sha256(record.get("execution_endpoint_sha256"))
+        and _is_sha256(record.get("provider_config_sha256"))
     )
+    current_provenance: dict | None = None
+    config_path = codex_config or record.get("codex_config_path")
     if (
+        provenance_complete
+        and isinstance(config_path, (str, Path))
+        and str(config_path).strip()
+    ):
+        try:
+            current_provenance = _load_model_provenance(
+                Path(config_path),
+                record.get("provider") if isinstance(record.get("provider"), str) else None,
+            )
+        except ValueError as exc:
+            problems.append(
+                Problem(
+                    "review-provider-config-unavailable",
+                    str(path),
+                    None,
+                    f"无法验证当前 provider 配置: {exc}",
+                )
+            )
+        else:
+            for field in (
+                "execution_model",
+                "execution_provider",
+                "provider",
+                "execution_endpoint_sha256",
+                "provider_endpoint_sha256",
+                "provider_config_sha256",
+            ):
+                if record.get(field) != current_provenance.get(field):
+                    problems.append(
+                        Problem(
+                            "review-provider-config-drift",
+                            str(path),
+                            None,
+                            f"评审 provenance 字段 {field} 与当前 Codex 配置不一致；必须重跑评审",
+                        )
+                    )
+                    break
+    if (
+        family_recomputable
+        and
         isinstance(stored_family, str)
         and stored_family != computed_family
     ):
@@ -695,7 +812,8 @@ def check_review(
         if not provenance_complete:
             detail = (
                 "评审记录缺少完整跨族 provenance"
-                "（provider/execution_model/family_override）"
+                "（provider/execution_model/execution_provider/endpoint hashes/"
+                "provider_config_sha256/family_override）"
             )
         else:
             detail = (
@@ -863,9 +981,9 @@ def check_review(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "用独立模型执行 gate 评审。默认 deepseek-v4-pro 与执行模型 "
-            "deepseek-v4-flash 同族不同规模，非跨族；默认拒绝写入同族 pass，"
-            "除非显式 --allow-same-family。"
+            "用独立模型执行 gate 评审。执行模型和 provider 从 Codex 配置"
+            "解析并写入 provenance；默认拒绝写入同族 pass，除非显式 "
+            "--allow-same-family。"
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -884,11 +1002,19 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout", type=float, default=600)
     run.add_argument("--out-dir")
     run.add_argument("--force", action="store_true")
+    run.add_argument(
+        "--codex-config",
+        help="Codex config.toml 路径；默认读取用户目录，用于解析真实执行模型和 provider",
+    )
 
     check = subparsers.add_parser("check", help="审计已有评审记录")
     check.add_argument("--paper-root", default=".")
     check.add_argument("--out-dir", default="reviews")
     check.add_argument("--allow-same-family", action="store_true")
+    check.add_argument(
+        "--codex-config",
+        help="Codex config.toml 路径；提供后会检查评审 provenance 是否已随配置变化而 stale",
+    )
     check.add_argument(
         "--strict-cross-family",
         action="store_true",
@@ -907,6 +1033,7 @@ def main(argv: list[str]) -> int:
                     out_dir=Path(args.out_dir),
                     allow_same_family=args.allow_same_family,
                     strict_cross_family=args.strict_cross_family,
+                    codex_config=Path(args.codex_config) if args.codex_config else None,
                 )
             )
         record = run_review(
@@ -920,6 +1047,7 @@ def main(argv: list[str]) -> int:
             timeout=args.timeout,
             out_dir=Path(args.out_dir) if args.out_dir else None,
             force=args.force,
+            codex_config=Path(args.codex_config) if args.codex_config else None,
         )
         print(json.dumps(record, ensure_ascii=False, sort_keys=True))
         if record.get("verdict") == "pass":

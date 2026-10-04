@@ -1,10 +1,38 @@
-# paper-template
+# 一站式科研工作流
 
-论文工作流模板库。每篇论文从 venue 模板派生一份独立目录，状态、检查与归档都以仓库内的确定性脚本为准。
+面向个人科研的本地论文工作流。每篇论文从 venue 模板派生为独立 git 仓库，
+状态、检查、证据和归档都以确定性脚本与结构化账本为准。
 
-设计文档、实施计划、裁定账本与研究评估都已入库，入口是 `docs/`：
-`docs/design/`（设计 v6）、`docs/plans/`（17 份实施计划）、
-`docs/sdd/`（E1–E52 裁定与评审记录的正式留档）、`docs/research/`、`docs/evaluations/`。
+## 从这里开始
+
+| 你现在要做的事 | 阅读或执行 |
+| --- | --- |
+| 第一次安装 | 本页「从零搭建」，然后运行 `scripts/doctor.ps1` |
+| 创建或继续一篇论文 | `docs/workflow-guide.md` |
+| 接入 GitHub 私有仓库、CI 和 release | `docs/github-setup.md` |
+| 了解产品能力和不能保证什么 | `docs/research-workflow-intro.md` |
+| 查一个具体 CLI | 本页「工具一览」或运行 `scripts/<tool>.ps1 --help` |
+| 查看会议/期刊 gate | `checklists/conference.md` / `checklists/journal.md` |
+| 理解架构与判定契约 | `docs/design/2026-10-03-research-workflow-design.md` |
+| 追溯实施与评审历史 | `docs/sdd/2026-10-03-evidence-tracking-progress.md` |
+
+日常使用只记住这一条循环：
+
+```text
+读状态 -> 处理当前 gate -> 定向检查 -> 人工复核 -> 提交论文仓库 -> 推进阶段
+```
+
+最常用的三个命令：
+
+```powershell
+$paper = "papers/my-paper"
+scripts/milestones.ps1 stage --paper-root $paper
+scripts/readiness.ps1 --paper-root $paper --out reviews/readiness.md
+scripts/milestones.ps1 due --paper-root $paper
+git -C $paper status --short
+```
+
+不要一开始运行全部工具，也不要为了让检查全绿而填写虚假的占位账本。
 
 ## 目录约定
 
@@ -13,6 +41,7 @@
 | `ccfa.yaml.template` | 新项目状态文件模板 |
 | `checklists/` | gate 清单，由 `tools/newpaper/checklists.py` 从 `tools/ccfa/stages.py` 生成 |
 | `docs/` | 设计文档、实施计划、裁定账本与研究评估的正式留档 |
+| `docs/workflow-guide.md` | 面向研究者的日常操作手册和逐阶段命令 |
 | `library/` | 共享 BibTeX 与 PDF 原件 |
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
 | `papers/<slug>/` | 派生论文项目的默认目标目录，已在 `.gitignore` 中忽略 |
@@ -52,6 +81,7 @@
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
+| `tools/ccfa/readiness.py` | 生成一页式 readiness report，区分结构通过、证据存在、独立复核与科学接受，且不自动声称结论正确 | `scripts/readiness.ps1` |
 
 ## 阶段到命令速查
 
@@ -61,6 +91,7 @@
 | --- | --- | --- |
 | 任意阶段的状态校验 | `scripts/validate.ps1` | 校验状态文件结构与 stage/gate 合法性 |
 | 任意阶段（开始前） | `scripts/doctor.ps1` | 预检平台依赖；默认只把必需的 `git` 缺失判为 problem，`--strict` 把可选缺失也判为 problem；只有 Docker 会真正执行探测，daemon 不可达报 `doctor-daemon-down` |
+| 任意阶段（开始前） | `scripts/readiness.ps1` | 生成一页式 readiness report；支持 `--profile minimal|standard|high-assurance`，输出结构、证据、人工复核、科学接受与协作就绪五个维度 |
 | 读取当前阶段 | `scripts/milestones.ps1` | 调用 `stage` 子命令输出 `current`、`gate`、`updated_at` |
 | 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-90、T-60、T-30、T-21、T-14、T-7、T-3、T-1 与 gate 缺口；T-30 之后出现新实验运行会报 `t30-new-experiment`，只声明 `build` 但没写 `purpose_reason` 会报 `t30-unjustified-build-run` |
 | `idea`、`grounded` | `scripts/library.ps1` | 索引和检索共享文献库，支撑近邻工作与新颖性核对 |
@@ -72,7 +103,7 @@
 | `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
 | `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |
-| `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项；`check` 因输入变化报 `review-stale`，因评审指令（gate 判据/stage 提示）变化报 `review-prompt-drift`，缺指令摘要报 `review-prompt-unknown`，无评审输入报 `review-malformed` |
+| `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项；执行模型、provider 与 endpoint 哈希从 Codex 配置解析并写入 provenance；`check` 因输入变化报 `review-stale`，因评审指令变化报 `review-prompt-drift`，因 provider 配置变化报 `review-provider-config-drift` |
 | `results-ready`、`internal-review` | `scripts/argument-audit.ps1` | 检查人工证明复核、引用语义支持与图表语义支持台账；未复核即 problem |
 | `experiment-design`、`results-ready` | `scripts/human-coding.ps1` | 对人工双编码表计算一致率与 Cohen's kappa 置信区间 |
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
@@ -87,6 +118,7 @@
 ```powershell
 scripts/milestones.ps1 due --paper-root <paper-root>
 scripts/milestones.ps1 stage --paper-root <paper-root>
+scripts/readiness.ps1 --paper-root <paper-root> --out reviews/readiness.md
 scripts/library.ps1 --dir <library-dir> search "keyword"
 scripts/memory.ps1 --paper-root <paper-root> check
 scripts/run-log.ps1 --log-dir <log-dir> --paper-root <paper-root> run -- <command...>
@@ -208,7 +240,12 @@ tools:
 
 接入方式：`ToolBridge(project_root, http_tools=HttpToolRegistry(specs, resolve_secret=...))`；注册的工具与内置工具走同一套参数校验、风险分级、写操作确认与审计日志（只记参数摘要）。
 
-P2 边界（如实）：注册表到 `ToolBridge` 的核心链路已通并有测试；把它接到设置界面与聊天面板（一个 `http_tools` 设置项 + 启动时加载）与 P3 的打包安装仍未做。
+工作台接线：设置页可选择注册表文件并在保存前完整验证；相对路径按
+`settings.json` 所在目录解析。保存后当前项目的 `ToolBridge` 会立即重建，聊天面板
+广播内置工具与注册工具的合并清单，无需重启。任一注册项非法时整份注册表拒载，
+界面只显示错误代码，不回显可能含凭据的 YAML 内容。
+
+P2 边界（如实）：HTTP 工具注册表已接入设置与聊天路径；P3 的 Windows 打包安装仍未做。
 
 ## 从零搭建
 

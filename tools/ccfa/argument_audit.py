@@ -38,7 +38,7 @@ PROOF_METHODS = frozenset(
         "formal-proof",
     }
 )
-PROOF_STATUSES = frozenset({"verified", "refuted", "uncertain"})
+PROOF_STATUSES = frozenset({"pending", "verified", "refuted", "uncertain"})
 SUPPORT_VERDICTS = frozenset({"supports", "partial", "contradicts", "irrelevant"})
 FIGURE_VERDICTS = frozenset(
     {"supports", "partial", "contradicts", "irrelevant", "not-applicable"}
@@ -423,7 +423,14 @@ def _check_proofs(
                 f"{review_id!r} 不对应任何当前定理类环境",
             )
         )
-    reviewed = sum(1 for item in environments if item["id"] in by_id)
+    reviewed = sum(
+        1
+        for item in environments
+        if by_id.get(item["id"], {}).get("status") == "verified"
+        and _human_reviewer(by_id[item["id"]].get("reviewer"))
+        and _valid_date(by_id[item["id"]].get("reviewed_at"))
+        and by_id[item["id"]].get("method") in PROOF_METHODS
+    )
     return problems, advisories, {
         "required": len(environments),
         "reviewed": reviewed,
