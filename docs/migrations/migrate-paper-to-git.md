@@ -7,7 +7,8 @@ git 操作都要校验 `rev-parse --show-toplevel` 等于论文目录本身，�
 
 ## 前置检查
 
-1. 论文目录存在且内容已备份（迁移不改内容，只新增 `.git/` 与 `.gitignore`）。
+1. 论文目录存在且内容已备份（迁移不改内容，只新增 `.git/`、`.gitignore`
+   与 `.gitattributes`）。
 2. `git --version` 可用；`git config user.name` 与 `git config user.email`
    至少在有全局配置时可用。缺失时下方提交命令用 `-c` 传一次性身份，
    **不写全局配置**。
@@ -48,6 +49,12 @@ __pycache__/
 !manuscript/figs/**/*.pdf
 ```
 
+   同时写入论文级 `.gitattributes`，固定 fresh clone 的文本换行：
+
+```gitattributes
+* text=auto eol=lf
+```
+
 2. 初始化独立仓库并做首次提交：
 
 ```powershell
@@ -56,6 +63,17 @@ git init -q
 git add -A
 git commit -q -m "chore: initialize paper repository"
 ```
+
+   如果论文此前已经以 CRLF 工作树存在，先让 Git 按属性重规范化索引：
+
+```powershell
+git add --renormalize .
+git status --porcelain
+git commit -q -m "chore: normalize line endings"
+```
+
+   这里的重点是提交属性与索引一致；`cross_review._sha256` 已对文本
+   CRLF/LF 做等价归一，二进制文件仍按原始字节哈希。
 
 若 git 提示 `Please tell me who you are`，改用一次性身份（不会写入任何配置）：
 
@@ -81,12 +99,13 @@ git status --porcelain
 
 ## 回退
 
-迁移不修改论文内容，只新增 `.git/` 与 `.gitignore`。在尚未打 tag、尚未推送的
+迁移不修改论文内容，只新增 `.git/`、`.gitignore` 与 `.gitattributes`。在尚未打 tag、尚未推送的
 前提下，删除这两个新增物即可回到迁移前状态：
 
 ```powershell
 Remove-Item -LiteralPath <仓库根>/papers/<slug>/.git -Recurse -Force
 Remove-Item -LiteralPath <仓库根>/papers/<slug>/.gitignore -Force
+Remove-Item -LiteralPath <仓库根>/papers/<slug>/.gitattributes -Force
 ```
 
 如果已经打过 `paper-v<N>` 标签或推送到远端，先确认没有需要保留的版本证据，
