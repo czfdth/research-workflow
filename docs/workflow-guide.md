@@ -161,6 +161,10 @@ scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
     --paper-root $paper check
 scripts/run-ledger.ps1 sync --paper-root $paper
 scripts/run-ledger.ps1 check --paper-root $paper
+scripts/passport-ledger.ps1 check --paper-root $paper
+scripts/citation-calibration.ps1 `
+    --gold data/citation-gold.jsonl `
+    --predictions data/citation-predictions.jsonl
 scripts/experiment-loop.ps1 next --paper-root $paper
 ```
 

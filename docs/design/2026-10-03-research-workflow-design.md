@@ -916,6 +916,30 @@ talk contract：
 这些 pipeline 做确定性 guardrail，不替代真正的文本润色、视觉 polish 或
 adversarial review。
 
+### 9.20 源码对齐第十切片：passport ledger 与 citation calibration
+
+按 academic-research-skills 的 passport run ledger 与 citation calibration，
+v6.1 新增：
+
+- `tools/ccfa/passport_ledger.py` / `scripts/passport-ledger.ps1`
+- `tools/ccfa/citation_calibration.py` / `scripts/citation-calibration.ps1`
+
+passport ledger：
+
+- 以 `ccfa-workfiles/passport/run-ledger.yaml` 单独保存 initial
+  instructions、checkpoint opened/closed、partial answer、tool receipt、
+  progress 和 file reference；
+- 每条 entry 有 seq、kind、at、data、prev_hash、hash；
+- `check` 检测 seq、prev_hash、entry hash、kind 和 kind-specific 必填字段；
+- `render` 生成 human-readable passport timeline。
+
+citation calibration：
+
+- gold 与 prediction 使用 JSONL；
+- 计算 TP/FP/TN/FN、FNR、FPR；
+- 默认阈值 FNR≤0.15、FPR≤0.10，缺失或非法 prediction 一律 fail closed；
+- 该工具测量 citation judge，不替代真实 claim-support 审核。
+
 ## 10. 目录结构
 
 模板库：

@@ -29,6 +29,7 @@ from ccfa import (
     governance,
     latex_check,
     novelty,
+    passport_ledger,
     post_submission,
     proof_orchestrator,
     repro_package,
@@ -355,6 +356,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         specs["resubmit-pipeline"] = lambda: resubmit_pipeline.check(paper_root)
     if (paper_root / "data" / "talk-plan.yaml").is_file():
         specs["talk-pipeline"] = lambda: talk_pipeline.check(paper_root)
+    if (
+        paper_root / "ccfa-workfiles" / "passport" / "run-ledger.yaml"
+    ).is_file():
+        specs["passport-ledger"] = lambda: passport_ledger.check_ledger(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

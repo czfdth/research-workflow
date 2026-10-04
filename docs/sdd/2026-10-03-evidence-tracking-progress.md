@@ -2560,3 +2560,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   并可 render 汇报 outline。
 - readiness 在对应 plan 存在时执行可选 resubmit/talk gate。
 - 新增 resubmit 5 条、talk 4 条测试；scripts/docs/CI/test-impact 同步。
+
+## 源码对齐第十切片：passport ledger 与 citation calibration（2026-10-05）
+
+- 按 academic-research-skills 的 passport run ledger，新增
+  `passport_ledger.py` / `passport-ledger.ps1`，保存 initial instructions、
+  checkpoints、partial answers、tool receipts、progress 与 file references。
+- entry 使用 seq、data、prev_hash、hash 的 append-only hash chain；check 检测
+  链断、字段缺失与非法 kind。
+- 按 citation calibration，新增 `citation_calibration.py` /
+  `citation-calibration.ps1`，从 gold/prediction JSONL 计算 TP/FP/TN/FN、
+  FNR/FPR，并按阈值 fail closed。
+- readiness 在 passport ledger 存在时执行可选 gate。
+- 新增 passport 4 条、calibration 2 条测试；scripts/docs/CI/test-impact 同步。

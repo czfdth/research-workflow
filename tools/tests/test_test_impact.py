@@ -185,6 +185,24 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_talk_pipeline", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_passport_and_calibration_select_their_focused_tests(self):
+        passport = select_tests(
+            ["tools/ccfa/passport_ledger.py"],
+            suite="tools",
+        )
+        calibration = select_tests(
+            ["tools/ccfa/citation_calibration.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_passport_ledger", passport.tests)
+        self.assertIn(
+            "tools.tests.test_citation_calibration",
+            calibration.tests,
+        )
+        self.assertFalse(passport.full)
+        self.assertFalse(calibration.full)
+
     def test_dashboard_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/dashboard.py"],

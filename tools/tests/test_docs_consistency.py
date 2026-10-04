@@ -27,6 +27,8 @@ CLI_WRAPPERS = {
     "provenance": "scripts/provenance.ps1",
     "run_log": "scripts/run-log.ps1",
     "run_ledger": "scripts/run-ledger.ps1",
+    "passport_ledger": "scripts/passport-ledger.ps1",
+    "citation_calibration": "scripts/citation-calibration.ps1",
     "repro_package": "scripts/repro-package.ps1",
     "friction_log": "scripts/friction-log.ps1",
     "research_version": "scripts/research-version.ps1",

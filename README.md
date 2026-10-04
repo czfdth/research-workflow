@@ -67,6 +67,8 @@ git -C $paper status --short
 | `tools/ccfa/provenance.py` | 登记数据来源、分类与校验和，并可导出人读来源文档 | `scripts/provenance.ps1` |
 | `tools/ccfa/run_log.py` | 记录每次运行的配置、种子、commit、退出码与指标 | `scripts/run-log.ps1` |
 | `tools/ccfa/run_ledger.py` | 在 run-log 旁维护 append-only、hash-chained peer ledger，检测缺失、篡改、链断与记录更新 | `scripts/run-ledger.ps1` |
+| `tools/ccfa/passport_ledger.py` | 保存 initial instructions、checkpoint、tool receipt、file reference 等 handoff-critical 事件的 hash chain | `scripts/passport-ledger.ps1` |
+| `tools/ccfa/citation_calibration.py` | 从 gold set 与预测计算 citation support 的 FNR/FPR 并按阈值 fail closed | `scripts/citation-calibration.ps1` |
 | `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |
 | `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
 | `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |

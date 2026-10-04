@@ -48,6 +48,7 @@ jobs:
             tools/ccfa/artifact_badge.py `
             tools/ccfa/artifact_store.py `
             tools/ccfa/cross_review.py `
+            tools/ccfa/citation_calibration.py `
             tools/ccfa/dashboard.py `
             tools/ccfa/doctor.py `
             tools/ccfa/experiment_loop.py `
@@ -64,6 +65,7 @@ jobs:
             tools/ccfa/resubmit_pipeline.py `
             tools/ccfa/review_loop.py `
             tools/ccfa/rigor.py `
+            tools/ccfa/passport_ledger.py `
             tools/ccfa/run_ledger.py `
             tools/ccfa/test_impact.py
             tools/ccfa/talk_pipeline.py

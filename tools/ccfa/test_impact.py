@@ -114,6 +114,14 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_talk_pipeline",
     ),
+    "tools/ccfa/passport_ledger.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_passport_ledger",
+    ),
+    "tools/ccfa/citation_calibration.py": (
+        "tools.tests.test_citation_calibration",
+        "tools.tests.test_docs_consistency",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

@@ -29,7 +29,8 @@ hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已�
 第六切片；academic-research-skills risk capability matrix 与 data flows 已完成
 第七切片；open-science immutable artifact store 与 `.science` package 已完成
 第八切片；ARIS resubmit/talk pipeline guardrails 已完成第九切片。其余来源仍
-按下表分级。
+按下表分级；academic-research-skills passport ledger 与 citation calibration
+已完成第十切片。
 
 ## 1. AI-Research-SKILLs
 
@@ -129,8 +130,9 @@ guardrails 已对齐；自动 fix/re-review 仍未对齐。**
   和 `DATA_FLOWS.md` 生成；完整 ARS passport 与 calibration 仍未完成。
 - Citation semantic support 仍是人工台账，没有 FNR/FPR calibration gold set。
 
-结论：**人在环、run ledger、hash-chain、risk capability matrix、data-flow map、
-governance 的概念已吸收；完整 passport ledger 和 citation calibration 未完成。**
+结论：**人在环、hash-chain run ledger、完整 passport ledger、citation
+calibration、risk capability matrix、data-flow map、governance 已吸收；
+仍未在本机用真实 gold set 跑出 live calibration 数据。**
 
 ## 4. ARA paperbench
 
@@ -219,7 +221,7 @@ governance 的概念已吸收；完整 passport ledger 和 citation calibration 
 | --- | --- | --- |
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft/full compiler contract 已对齐；自动语义提取前端仍缺 |
 | ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state、resubmit/talk guardrails 已对齐；自动 fix/re-review 仍未对齐 |
-| academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk capability matrix、data-flow map 已对齐；完整 passport/calibration 未对齐 |
+| academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、完整 passport ledger、risk capability matrix、data-flow map、citation calibration 工具已对齐；live calibration 数据未产生 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench、immutable artifacts、`.science` package 已对齐；完整 execution graph 与 session replay 未实现 |
 | NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge 已实现；官方 checklist fixture 未固化 |
@@ -239,8 +241,8 @@ governance 的概念已吸收；完整 passport ledger 和 citation calibration 
 2. 继续对齐 ARIS 的自动 fix/re-review；review loop state、proof run
    directory、notation/derivation gate、typed graph wiki、resubmit/talk
    guardrails 已完成。
-3. 继续把 academic-research-skills 的完整 passport run ledger 与 citation
-   calibration 纳入治理层；risk matrix、data flows、hash-chain 已完成。
+3. 用真实 citation gold set 产生 live FNR/FPR 证据；passport ledger、
+   risk matrix、data flows、hash-chain 已完成。
 4. 继续把 open-science 的 execution history graph 与 session replay 接入
    workbench；immutable artifact store 与 `.science` package 已完成。
 

@@ -21,6 +21,8 @@ CCFA_WRAPPERS = {
     "provenance": "provenance.ps1",
     "run_log": "run-log.ps1",
     "run_ledger": "run-ledger.ps1",
+    "passport_ledger": "passport-ledger.ps1",
+    "citation_calibration": "citation-calibration.ps1",
     "repro_package": "repro-package.ps1",
     "friction_log": "friction-log.ps1",
     "research_version": "research-version.ps1",
