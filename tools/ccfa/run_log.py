@@ -44,11 +44,22 @@ def _dirty_tree_findings(
     a dirty tree cannot be reproduced from its commit whether or not it has
     finished yet.
     """
+    dirty = record.get("git_dirty")
+    if dirty is not None and not isinstance(dirty, bool):
+        return (
+            Problem(
+                "run-log-malformed",
+                str(path),
+                None,
+                f"git_dirty 必须是布尔值或 null，无法判断该运行是否可复现: {dirty!r}",
+            ),
+            None,
+        )
+    if dirty is not True:
+        return None, None
     has_repo_field = "git_repo" in record
     repo = record.get("git_repo")
     if not (not has_repo_field or repo == "self"):
-        return None, None
-    if record.get("git_dirty") is not True:
         return None, None
     waiver = _exemption_reason(record.get("dirty_waiver"))
     if len(waiver) < _MIN_EXEMPTION_REASON:

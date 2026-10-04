@@ -647,6 +647,31 @@ class TestCheckRuns(BaseCase):
         self.assertEqual(problems, [])
         self.assertEqual(advisories, [])
 
+    def test_non_boolean_git_dirty_is_malformed(self):
+        self._write_record("a", self._base(git_dirty=1))
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-malformed"])
+        self.assertEqual(advisories, [])
+
+    def test_legacy_record_without_repo_field_can_still_be_dirty(self):
+        record = self._base(git_dirty=True)
+        del record["git_repo"]
+        self._write_record("a", record)
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-dirty-tree"])
+        self.assertEqual(
+            self._codes(advisories), ["run-log-git-repo-unknown"]
+        )
+
+    def test_dirty_foreign_repo_is_not_reported_as_the_paper_tree(self):
+        self._write_record(
+            "a",
+            self._base(git_repo="foreign", git_commit=None, git_dirty=True),
+        )
+        problems, advisories = check_runs(self.log_dir)
+        self.assertEqual(self._codes(problems), ["run-log-foreign-repo"])
+        self.assertEqual(advisories, [])
+
     def test_stale_running_record_is_a_problem(self):
         self._write_record("a", self._base(status="running", metrics=None))
         problems, _ = check_runs(
