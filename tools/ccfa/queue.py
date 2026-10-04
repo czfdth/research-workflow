@@ -34,6 +34,16 @@ from pathlib import Path
 
 import yaml
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None
+
 from ccfa.cli import tool_error
 from ccfa.run_log import log_metrics, log_resource_usage, run_command
 
@@ -41,7 +51,6 @@ QUEUE_VERSION = 1
 SANDBOX_MODES = ("none", "policy")
 GPU_UTILIZATION_THRESHOLD = 5
 GPU_SAMPLE_INTERVAL_S = 1.0
-LOCK_WRITE_GRACE_S = 5.0
 SANDBOX_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -189,120 +198,112 @@ def load_queue(path: Path) -> list[dict]:
     return items
 
 
-def _pid_alive(pid: int) -> bool:
-    if pid == os.getpid():
-        return True
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
 class QueueLock:
-    """A process lock for one queue log directory."""
+    """A process lock for one queue log directory.
 
-    def __init__(self, log_dir: Path, *, pid_alive=None):
+    The lock is an OS file lock (``fcntl.flock`` on POSIX, ``msvcrt.locking``
+    on Windows), so process death releases it automatically. The file keeps
+    diagnostic metadata but no stale-PID recovery protocol is needed.
+    """
+
+    def __init__(self, log_dir: Path):
         self.path = Path(log_dir) / ".queue.lock"
         self.pid = os.getpid()
-        self._pid_alive = pid_alive or _pid_alive
+        self._fd = None
 
-    def _stale(self) -> bool:
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    @staticmethod
+    def _try_lock(descriptor: int) -> bool:
+        if fcntl is not None:
             try:
-                age = max(0.0, time.time() - self.path.stat().st_mtime)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError:
-                return True
-            return age > LOCK_WRITE_GRACE_S
-        pid = payload.get("pid") if isinstance(payload, dict) else None
-        if type(pid) is not int:
-            try:
-                age = max(0.0, time.time() - self.path.stat().st_mtime)
-            except OSError:
-                return True
-            return age > LOCK_WRITE_GRACE_S
-        return not self._pid_alive(pid)
-
-    def _recover_stale(self) -> bool:
-        quarantine = self.path.with_name(
-            f"{self.path.name}.stale.{self.pid}.{time.time_ns()}"
-        )
-        try:
-            os.replace(self.path, quarantine)
-        except FileNotFoundError:
+                return False
             return True
-        except OSError:
-            return False
+        if msvcrt is not None:
+            try:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            except OSError:
+                return False
+            return True
+        raise ValueError("当前平台没有可用的文件锁实现")
+
+    @staticmethod
+    def _unlock(descriptor: int) -> None:
+        if fcntl is not None:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+        elif msvcrt is not None:
+            try:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+
+    def _metadata(self) -> dict:
         try:
-            quarantine.unlink()
+            data = self.path.read_bytes()
         except OSError:
-            pass
-        return True
+            return {}
+        if len(data) <= 1:
+            return {}
+        try:
+            payload = json.loads(data[1:].decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
 
     def __enter__(self):
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise ValueError(f"无法创建队列锁目录 {self.path.parent}: {exc}") from exc
-        for _attempt in range(5):
-            try:
-                descriptor = os.open(
-                    self.path,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+        try:
+            descriptor = os.open(self.path, os.O_CREAT | os.O_RDWR)
+        except OSError as exc:
+            raise ValueError(f"无法打开队列锁 {self.path}: {exc}") from exc
+        try:
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+            if not self._try_lock(descriptor):
+                metadata = self._metadata()
+                owner = metadata.get("pid", "unknown")
+                raise QueueLocked(
+                    f"另一个队列正在运行 (pid={owner})，锁文件: {self.path}"
                 )
-            except FileExistsError:
-                if self._stale() and self._recover_stale():
-                    continue
-                raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
-            except OSError as exc:
-                raise ValueError(f"无法创建队列锁 {self.path}: {exc}") from exc
-            try:
-                payload = json.dumps(
-                    {
-                        "pid": self.pid,
-                        "created_at": datetime.now(timezone.utc).strftime(
-                            "%Y-%m-%dT%H:%M:%SZ"
-                        ),
-                    },
-                    ensure_ascii=False,
-                )
-                os.write(descriptor, payload.encode("utf-8"))
-            except OSError as exc:
-                try:
-                    os.close(descriptor)
-                except OSError:
-                    pass
-                descriptor = None
-                try:
-                    self.path.unlink()
-                except OSError:
-                    pass
-                raise ValueError(f"无法写入队列锁 {self.path}: {exc}") from exc
-            finally:
-                if descriptor is not None:
-                    try:
-                        os.close(descriptor)
-                    except OSError:
-                        pass
-            return self
-        raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
+            payload = json.dumps(
+                {
+                    "pid": self.pid,
+                    "created_at": datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            os.lseek(descriptor, 1, os.SEEK_SET)
+            os.ftruncate(descriptor, 1)
+            os.write(descriptor, payload)
+        except QueueLocked:
+            self._unlock(descriptor)
+            os.close(descriptor)
+            raise
+        except OSError as exc:
+            self._unlock(descriptor)
+            os.close(descriptor)
+            raise ValueError(f"无法初始化队列锁 {self.path}: {exc}") from exc
+        self._fd = descriptor
+        return self
 
     def __exit__(self, _exc_type, _exc, _tb):
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return False
-        if isinstance(payload, dict) and payload.get("pid") == self.pid:
+        if self._fd is not None:
+            self._unlock(self._fd)
             try:
-                self.path.unlink()
-            except FileNotFoundError:
+                os.close(self._fd)
+            except OSError:
                 pass
+            self._fd = None
         return False
 
 

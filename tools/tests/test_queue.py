@@ -408,49 +408,47 @@ class TestRunQueue(QueueTests):
     def test_second_queue_is_refused_until_the_lock_is_released(self):
         self._write_queue([self._item()])
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        (self.log_dir / ".queue.lock").write_text(
-            json.dumps({"pid": os.getpid(), "created_at": "now"}),
-            encoding="utf-8",
-        )
+        holder = QueueLock(self.log_dir)
+        holder.__enter__()
+        try:
+            with self.assertRaises(QueueLocked):
+                self._run(RecordingRunner([0]))
+        finally:
+            holder.__exit__(None, None, None)
 
-        with self.assertRaises(QueueLocked):
-            self._run(RecordingRunner([0]))
-
-    def test_stale_queue_lock_is_replaced(self):
+    def test_unlocked_persisted_lock_file_is_reacquired(self):
         self.log_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.log_dir / ".queue.lock"
         lock_path.write_text(
-            json.dumps({"pid": 999999, "created_at": "old"}),
+            "\0" + json.dumps({"pid": 999999, "created_at": "old"}),
             encoding="utf-8",
         )
-
-        lock = QueueLock(self.log_dir, pid_alive=lambda _pid: False)
-        with lock:
-            self.assertTrue(lock_path.is_file())
-
-        self.assertFalse(lock_path.exists())
-
-    def test_malformed_lock_is_recovered_after_grace(self):
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = self.log_dir / ".queue.lock"
-        lock_path.write_text("", encoding="utf-8")
-        old = time.time() - 10
-        os.utime(lock_path, (old, old))
 
         lock = QueueLock(self.log_dir)
         with lock:
             self.assertTrue(lock_path.is_file())
 
-        self.assertFalse(lock_path.exists())
-
-    def test_recent_malformed_lock_is_refused(self):
+    def test_malformed_metadata_does_not_block_a_free_os_lock(self):
         self.log_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.log_dir / ".queue.lock"
-        lock_path.write_text("", encoding="utf-8")
+        lock_path.write_text("\0not-json", encoding="utf-8")
 
-        with self.assertRaises(QueueLocked):
-            with QueueLock(self.log_dir):
-                pass
+        lock = QueueLock(self.log_dir)
+        with lock:
+            self.assertTrue(lock_path.is_file())
+
+    def test_held_os_lock_is_refused(self):
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.log_dir / ".queue.lock"
+        first = QueueLock(self.log_dir)
+        second = QueueLock(self.log_dir)
+        first.__enter__()
+        try:
+            with self.assertRaises(QueueLocked):
+                second.__enter__()
+        finally:
+            first.__exit__(None, None, None)
+        self.assertTrue(lock_path.is_file())
 
     def test_queue_lock_is_released_after_run(self):
         self._write_queue([self._item()])
@@ -458,7 +456,8 @@ class TestRunQueue(QueueTests):
         self._run(RecordingRunner([0]))
         self._run(RecordingRunner([0]))
 
-        self.assertFalse((self.log_dir / ".queue.lock").exists())
+        with QueueLock(self.log_dir):
+            pass
 
     def test_gpu_budget_stops_before_next_item(self):
         self._write_queue([self._item("first"), self._item("second")])
