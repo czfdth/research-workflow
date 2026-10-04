@@ -2012,4 +2012,5 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 
 - 独立只读评审（`deepseek-v4-pro`，`os-sandbox-review.json`）判 **fail**，4 条 finding：清单 `sandbox: docker` 可被 CLI `--sandbox none|policy` 静默降级为主机执行（high）；Docker argv 校验错误发生在 `run_command` 写入 `running` 之后，会留下永久 `running` 记录（medium）；docker 模式允许注入 runner 冒充 Docker（medium）；symlink 与 Windows drive-relative `docker_output` 缺判别测试（low）。
 - 修复：新增 `allow_sandbox_downgrade`（CLI `--allow-sandbox-downgrade`），清单声明 docker 时降级到 none/policy 默认拒绝；新增 `allow_injected_runner`，policy/docker 默认拒绝注入 runner，测试或高级调用必须显式开启；`_docker_argv` 移到 `run_command` 之前构造，校验失败不再留下 `running`；补 symlink 逃逸不留记录、Windows drive-relative 拒绝、降级与注入 runner 判别用例。
-- 修复后全量：tools **987 tests OK**，app（offscreen）**141 tests OK**。第二轮独立只读评审确认后更新结论。
+- 第二轮独立只读评审（`os-sandbox-review-2.json`）判 **pass**：四条 finding 均关闭；发现一条低非阻塞回归——`_docker_argv` 构造失败时 GPU meter 线程已启动但不会 stop。随后把 `meter.start()` 移到 Docker argv 构造成功之后，并新增“构造失败不启动 meter”判别用例。
+- 最终全量：tools **988 tests OK**，app（offscreen）**141 tests OK**。Docker 后端代码 HEAD 为本账本提交前的最新修复提交。

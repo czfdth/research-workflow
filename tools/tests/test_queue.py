@@ -954,6 +954,30 @@ class TestDockerSandbox(QueueTests):
 
         self.assertEqual(self._records(), [])
 
+    def test_docker_argv_failure_does_not_start_the_gpu_meter(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        link = self.root / "runs"
+        try:
+            link.symlink_to(outside.name, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("当前平台不允许创建目录 symlink")
+        self._docker_queue()
+        meter = FakeGpuMeter([1])
+
+        with mock.patch("ccfa.queue._docker_available"):
+            with self.assertRaisesRegex(ValueError, "逃出"):
+                self._run(
+                    RecordingRunner([0]),
+                    sandbox="docker",
+                    gpu_budget_s=10,
+                    gpu_meter_factory=lambda: meter,
+                    allow_injected_runner=True,
+                )
+
+        self.assertEqual(meter.starts, 0)
+        self.assertEqual(meter.stops, 0)
+
     def test_main_docker_unavailable_exits_two_without_a_record(self):
         self._docker_queue()
         stdout = StringIO()

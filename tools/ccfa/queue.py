@@ -834,9 +834,6 @@ def run_queue(
                 stalled = False
                 meter = None
                 meter_reading = None
-                if gpu_budget_s is not None:
-                    meter = gpu_meter_factory()
-                    meter.start()
 
                 container_name = None
                 docker_argv = None
@@ -854,6 +851,10 @@ def run_queue(
                         env={},
                         name=container_name,
                     )
+
+                if gpu_budget_s is not None:
+                    meter = gpu_meter_factory()
+                    meter.start()
 
                 def attempt_runner(argv, attempt_cwd):
                     nonlocal timed_out, stalled
