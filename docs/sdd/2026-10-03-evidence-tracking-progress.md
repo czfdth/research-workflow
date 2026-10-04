@@ -2006,7 +2006,8 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - **环境边界**：容器只收到 `HOME=/tmp`、`CCFA_WORKSPACE=/workspace`、`CCFA_OUTPUT_DIR=/outputs` 与显式 `env`；宿主 `QUEUE_TEST_SECRET` 不出现在容器 argv。run-log 的 `policy` 记录镜像、网络、GPU、输出目录与容器内 `workdir`，`command` 仍是原始队列命令。Docker CLI 自身继承宿主环境，这是 CLI 连接 daemon 所需；它不把宿主环境注入容器。
 - **清理**：每个 attempt 生成独立 `ccfa-` 容器名；超时/卡死 kill Docker CLI 后，`finally` 执行 best-effort `docker rm -f`，避免容器继续占 GPU。宿主进程被强杀或断电后仍可能残留容器，需要 `docker ps` 人工清理。
 - **测试**：`tools/tests/test_queue.py` 新增精确 argv（只读根、只读 `/workspace`、可写 `/outputs`、`--network none`、`--workdir`、镜像与命令顺序）、docker_output 逃逸/根目录/逗号路径拒绝、daemon 失败前置、CLI 退 2 且不写 run-log、policy 记录、宿主环境不泄漏、超时清理、Docker cwd containment 等用例。
-- **真实验证**：本机 Docker Desktop 的 `dockerDesktopLinuxEngine` 管道当前不可达。真实 CLI 冒烟按预期输出 `工具错误: Docker daemon 不可用...`，退 2，`LOG_JSON=0`，没有回退执行，也没有伪造 run-log。daemon 可达后的真实容器只读/可写/禁网冒烟留待下一次环境可用时补；当前证据只能证明“不可用时不回退”这条安全性质。
+- **真实验证（fail-closed）**：Docker daemon 关闭时，真实 CLI 冒烟输出 `工具错误: Docker daemon 不可用...`，退 2，`LOG_JSON=0`，没有回退执行，也没有伪造 run-log。
+- **真实验证（daemon 可用）**：启动 Docker Desktop（`ServerVersion 29.8.1`），用真实 `python:3.12-slim` 容器跑 `sandbox: docker` 队列：退出 0，容器内 `SMOKE_OK`；`/outputs/probe.txt` 可写并落到宿主 `runs/probe.txt`；`/workspace/probe.txt` 与 `/workspace/runs/probe2.txt` 均写入失败；`socket.create_connection(("1.1.1.1", 80))` 被 `--network none` 阻断。run-log `status=completed`、`policy.sandbox=docker`、`command[0]=python`；`docker ps -a --filter name=ccfa-` 为空，无残留容器。
 
 ### 评审与修复
 
@@ -2014,4 +2015,4 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 修复：新增 `allow_sandbox_downgrade`（CLI `--allow-sandbox-downgrade`），清单声明 docker 时降级到 none/policy 默认拒绝；新增 `allow_injected_runner`，policy/docker 默认拒绝注入 runner，测试或高级调用必须显式开启；`_docker_argv` 移到 `run_command` 之前构造，校验失败不再留下 `running`；补 symlink 逃逸不留记录、Windows drive-relative 拒绝、降级与注入 runner 判别用例。
 - 第二轮独立只读评审（`os-sandbox-review-2.json`）判 **pass**：四条 finding 均关闭；发现一条低非阻塞回归——`_docker_argv` 构造失败时 GPU meter 线程已启动但不会 stop。随后把 `meter.start()` 移到 Docker argv 构造成功之后，并新增“构造失败不启动 meter”判别用例。
 - 第三轮定向复核（`os-sandbox-review-3.json`，HEAD `48189ed`）判 **pass，findings 为空**；确认 meter leak 已关闭，前四条 finding 未回归。
-- 最终全量：tools **988 tests OK**，app（offscreen）**141 tests OK**；Docker 后端最终代码 HEAD 为 `48189ed`（其后仅本账本说明）。
+- 最终全量：tools **988 tests OK**，app（offscreen）**141 tests OK**；Docker 后端最终代码 HEAD 为 `48189ed`（其后仅本账本说明与真实验证记录）。
