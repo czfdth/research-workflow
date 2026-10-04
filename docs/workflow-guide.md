@@ -36,6 +36,7 @@ py -3.12 -m venv app/.venv
 & app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
 
 scripts/doctor.ps1
+scripts/dashboard.ps1 --papers-root papers
 ```
 
 `doctor` 的 `found` 只表示命令可被发现；Docker daemon 会额外执行真实探测。

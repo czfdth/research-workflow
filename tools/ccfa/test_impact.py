@@ -82,6 +82,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_research_wiki",
     ),
+    "tools/ccfa/dashboard.py": (
+        "tools.tests.test_dashboard",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_readiness",
+    ),
     "tools/ccfa/cross_review.py": (
         "tools.tests.test_automation_e2e",
         "tools.tests.test_cross_review",

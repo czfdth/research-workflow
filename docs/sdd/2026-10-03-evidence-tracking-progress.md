@@ -2437,3 +2437,12 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   子串搜索；Markdown 是 source of truth，索引可重建。
 - 新增 `tools/tests/test_research_wiki.py` 8 条覆盖；scripts/docs/test-impact
   测试同步。
+
+## 跨论文 dashboard（2026-10-05）
+
+- 新增 `tools/ccfa/dashboard.py` 与 `scripts/dashboard.ps1`，扫描 `papers/`
+  下所有含 `ccfa.yaml` 的独立论文仓库，复用 readiness 报告生成一页总览。
+- 汇总 ready/blocked、人工 pending、dirty worktree、remote/CI 状态，并把第一条
+  blocking 作为 next_action；支持 Markdown/JSON 与不覆盖落盘。
+- 新增 `tools/tests/test_dashboard.py` 3 条覆盖；scripts/docs/test-impact/
+  readiness 相关测试同步。

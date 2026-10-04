@@ -46,6 +46,7 @@ jobs:
           tools/.venv/Scripts/python.exe -m py_compile `
             tools/ccfa/artifact_badge.py `
             tools/ccfa/cross_review.py `
+            tools/ccfa/dashboard.py `
             tools/ccfa/doctor.py `
             tools/ccfa/experiment_loop.py `
             tools/ccfa/meta_optimize.py `

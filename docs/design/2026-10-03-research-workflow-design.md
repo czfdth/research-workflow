@@ -730,6 +730,20 @@ v6.1 新增 `data/artifact-badge.yaml`、`tools/ccfa/artifact_badge.py` 与
   大小写不敏感的确定性子串搜索；Markdown 是 source of truth，索引可重建。
 - 该层不自动创造结论，也不替代每篇论文的 claim/proof/experiment 台账。
 
+### 9.10 跨论文 dashboard
+
+为避免使用者在 20 多条命令之间来回切换，v6.1 新增
+`tools/ccfa/dashboard.py` 与 `scripts/dashboard.ps1`。它扫描 `papers/` 下每个
+含 `ccfa.yaml` 的独立仓库，复用 `readiness.build_report`，输出一页跨论文
+Markdown/JSON：
+
+- 阶段、profile、ready/blocked 状态；
+- 第一条阻塞项作为 `next_action`；
+- 人工复核 pending、git dirty、remote 和 workflows 状态；
+- 总计 ready/blocked/human-pending/dirty 数量。
+
+它不是新的科学 gate，只是把已有 gate 结果汇总成可操作的控制台。
+
 ## 10. 目录结构
 
 模板库：

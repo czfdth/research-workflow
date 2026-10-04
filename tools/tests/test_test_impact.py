@@ -104,6 +104,16 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_research_wiki", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_dashboard_selects_readiness_integration_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/dashboard.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_dashboard", selection.tests)
+        self.assertIn("tools.tests.test_readiness", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_test_module_selects_itself(self):
         selection = select_tests(
             ["tools/tests/test_research_ledgers.py"],
