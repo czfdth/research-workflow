@@ -487,6 +487,33 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("docker", stdout.getvalue())
 
+    def test_main_advisory_summary_warns_about_strict_submission_gate(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            stderr
+        ):
+            code = main(
+                ["doctor", "--repo-root", str(self.root)],
+                which=_locator({}),
+                path_exists=lambda path: False,
+                dependencies=(
+                    Dependency(
+                        "docker",
+                        ("docker",),
+                        False,
+                        "sandbox",
+                    ),
+                ),
+                venvs=(),
+                run=lambda argv: 0,
+                services=(),
+            )
+
+        self.assertEqual(code, 0)
+        self.assertIn("0 problems", stderr.getvalue())
+        self.assertIn("1 advisory", stderr.getvalue())
+        self.assertIn("--strict", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

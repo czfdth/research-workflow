@@ -2250,3 +2250,24 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   65 tests OK、`tools.tests.test_statistics` 9 tests OK。真实论文 readiness 现在
   `gate-verified=problem`，明确列出 proof/citation/figure 人工审计未完成与旧
   cross-review provenance/stale/prompt-hash 问题。
+
+## CI 参数契约、governance 占位值与 bundle 重建（2026-10-05，E88）
+
+- 复现并修复 `paper-check` 的 P0 错误：两个 workflow 原先用 `--paper-root` 调用
+  `citation_guard` / `trace_claims`，两者都退 2。现在分别使用真实参数；
+  `trace_claims` 新增 `--manuscript`，一次扫描目录下全部 `.tex`。
+- `tools/tests/test_github_workflows.py` 新增 workflow↔CLI 守护：实际执行 workflow
+  中的每条 `python -m ccfa.*`，发现 argparse 的 unrecognized/required/invalid-choice
+  即失败。
+- `governance` 新增 `governance-placeholder`，拒绝 pending/TBD/todo/placeholder/
+  to-be-determined 占位文本。论文现有 COI、查重工具与披露联系人因此正确报 3 problems。
+- `cross_review run` 删除 `DEFAULT_MODEL` 与 `DEFAULT_EXECUTION_MODEL`；评审模型
+  `--model` 必填，执行模型/provider 仍从 Codex config 解析。缺少 provenance 的旧记录
+  fail closed。
+- `readiness` 现在执行 `repro_package.verify_bundle`。论文 `submission/repro` 已重建：
+  60 个文件哈希刷新，`requirements` 从 `null` 改为指向 `requirements.txt` 并记录 SHA-256。
+  `repro_package verify` 当前 0 problems，只保留“无容器隔离”的 advisory。
+- `doctor` 现在始终输出 problem/advisory 汇总，并提示投稿前使用 `--strict`。
+- 定向验证：workflow 8 tests、governance 10 tests、trace-claims 16 tests、
+  cross-review 66 tests、readiness 12 tests 均通过；真实 `repro_package verify`
+  0 problems。

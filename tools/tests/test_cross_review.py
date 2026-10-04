@@ -152,6 +152,15 @@ class TestPromptAndArgv(CrossReviewTests):
 
 
 class TestRunReview(CrossReviewTests):
+    def test_review_model_must_be_explicit(self):
+        runner = self._runner(payload=self._payload())
+
+        with self.assertRaisesRegex(ValueError, "--model"):
+            self._run(runner, model=None)
+
+        self.assertEqual(runner.calls, [])
+        self.assertFalse(self._record_path().exists())
+
     def test_pass_writes_json_and_markdown_records(self):
         runner = self._runner(payload=self._payload("pass"))
 
@@ -1171,8 +1180,10 @@ class TestMainAndHelp(CrossReviewTests):
                             str(self.paper_root),
                             "--stage",
                             "internal-review",
-                            "--path",
-                            "manuscript/main.tex",
+                        "--path",
+                        "manuscript/main.tex",
+                        "--model",
+                        "deepseek-v4-pro",
                         ]
                     ),
                     0,
@@ -1189,8 +1200,10 @@ class TestMainAndHelp(CrossReviewTests):
                             str(self.paper_root),
                             "--stage",
                             "internal-review",
-                            "--path",
-                            "manuscript/main.tex",
+                        "--path",
+                        "manuscript/main.tex",
+                        "--model",
+                        "deepseek-v4-pro",
                         ]
                     ),
                     1,
@@ -1210,8 +1223,10 @@ class TestMainAndHelp(CrossReviewTests):
                             str(self.paper_root),
                             "--stage",
                             "internal-review",
-                            "--path",
-                            "manuscript/main.tex",
+                        "--path",
+                        "manuscript/main.tex",
+                        "--model",
+                        "deepseek-v4-pro",
                         ]
                     ),
                     2,

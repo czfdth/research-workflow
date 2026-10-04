@@ -9,6 +9,7 @@ the submission gate can pass.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,19 @@ REQUIRED_TOP = (
 AUTHOR_FIELDS = ("name", "affiliation", "roles", "corresponding")
 CONFLICT_FIELDS = ("name", "declared")
 ETHICS_FIELDS = ("human_subjects", "data_license")
+_PLACEHOLDER = re.compile(
+    r"(?<![a-z0-9])("
+    r"pending|tbd|todo|placeholder|to[ -]be[ -]determined"
+    r")(?![a-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def _placeholder(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and _PLACEHOLDER.search(" ".join(value.casefold().split())) is not None
+    )
 
 
 def _check_authors(path: Path, authors: object) -> tuple[list, set[str]]:
@@ -195,6 +209,15 @@ def _check_conflicts(path: Path, conflicts: object, authors: set[str]) -> list:
                     f"{name}: declared 必须是非空字符串（无利益冲突写 none）",
                 )
             )
+        elif _placeholder(conflict.get("declared")):
+            problems.append(
+                problem(
+                    "governance-placeholder",
+                    path,
+                    None,
+                    f"{name}: 利益冲突声明仍是 pending/placeholder 文本",
+                )
+            )
     for name in sorted(authors - seen):
         problems.append(
             problem(
@@ -307,6 +330,15 @@ def _check_plagiarism(path: Path, plagiarism: object) -> list:
                 "plagiarism.tool 必须是非空字符串",
             )
         )
+    elif _placeholder(plagiarism.get("tool")):
+        problems.append(
+            problem(
+                "governance-placeholder",
+                path,
+                None,
+                "plagiarism.tool 仍是 pending/placeholder 文本",
+            )
+        )
     if not is_iso_date(plagiarism.get("date")):
         problems.append(
             problem(
@@ -346,6 +378,15 @@ def _check_disclosure(path: Path, disclosure: object) -> list:
                 path,
                 None,
                 "responsible_disclosure.disclosure_contact 必须是非空字符串",
+            )
+        )
+    elif _placeholder(disclosure.get("disclosure_contact")):
+        problems.append(
+            problem(
+                "governance-placeholder",
+                path,
+                None,
+                "responsible_disclosure.disclosure_contact 仍是 pending/placeholder 文本",
             )
         )
     if not is_nonempty_str(disclosure.get("notes")):

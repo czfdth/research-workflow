@@ -432,7 +432,15 @@ def main(
     )
     for line in statuses:
         print(line, file=sys.stderr)
-    return emit(problems, advisories)
+    code = emit(problems, advisories)
+    advisory_label = "advisory" if len(advisories) == 1 else "advisories"
+    print(
+        f"doctor summary: {len(problems)} problems, "
+        f"{len(advisories)} {advisory_label}; "
+        "run `scripts/doctor.ps1 --strict` before the submission gate",
+        file=sys.stderr,
+    )
+    return code
 
 
 if __name__ == "__main__":

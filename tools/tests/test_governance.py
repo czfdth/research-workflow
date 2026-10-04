@@ -138,6 +138,30 @@ class GovernanceTests(unittest.TestCase):
                     {problem.code for problem in problems},
                 )
 
+    def test_pending_placeholder_text_is_a_problem(self):
+        replacements = {
+            "declared: none": (
+                "declared: pending final author-specific COI disclosure"
+            ),
+            "tool: iThenticate": (
+                "tool: manual self-check pending institutional similarity tool"
+            ),
+            "disclosure_contact: security@example.org": (
+                "disclosure_contact: anonymous-submission-contact-pending"
+            ),
+        }
+        for old, new in replacements.items():
+            with self.subTest(field=old):
+                self.path.write_text(
+                    VALID.replace(old, new),
+                    encoding="utf-8",
+                )
+                problems, _advisories = check(self.root)
+                self.assertIn(
+                    "governance-placeholder",
+                    self._codes(problems),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

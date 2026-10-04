@@ -208,6 +208,33 @@ class ReadinessTests(unittest.TestCase):
         )
         self.assertEqual(report["dimensions"]["gate-verified"], "problem")
 
+    def test_repro_bundle_verification_is_part_of_gate_verified(self):
+        self._touch_ledgers(
+            [
+                "citation-support",
+                "figure-support",
+                "novelty",
+                "statistics",
+                "repro-environment",
+            ]
+        )
+        bundle = self.paper_root / "submission" / "repro"
+        bundle.mkdir(parents=True)
+        (bundle / "MANIFEST.json").write_text(
+            '{"version": 1}\n',
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="standard")
+
+        repro_bundle = next(
+            item
+            for item in report["gate_results"]
+            if item["name"] == "repro-package"
+        )
+        self.assertEqual(repro_bundle["status"], "problem")
+        self.assertEqual(report["dimensions"]["gate-verified"], "problem")
+
     def test_high_assurance_requires_all_ledgers(self):
         self._touch_ledgers(["novelty"])
 

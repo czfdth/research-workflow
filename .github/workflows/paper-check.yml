@@ -78,8 +78,13 @@ jobs:
         run: |
           $env:PYTHONPATH = "tools"
           python -m ccfa.validate "_paper/ccfa.yaml"
-          python -m ccfa.citation_guard --paper-root "_paper"
-          python -m ccfa.trace_claims --paper-root "_paper"
+          python -m ccfa.citation_guard `
+            --manuscript "_paper/manuscript" `
+            --bib "_paper/manuscript/references.bib" `
+            --ledger "_paper/data/citation-ledger.json"
+          python -m ccfa.trace_claims `
+            --manuscript "_paper/manuscript" `
+            --base-dir "_paper"
           python -m ccfa.novelty --paper-root "_paper"
           python -m ccfa.stats_plan --paper-root "_paper"
           python -m ccfa.governance --paper-root "_paper"

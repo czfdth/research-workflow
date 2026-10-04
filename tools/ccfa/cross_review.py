@@ -41,7 +41,6 @@ REVIEW_SCHEMA = {
     "additionalProperties": False,
 }
 
-DEFAULT_MODEL = "deepseek-v4-pro"
 _REQUIRED_PROVENANCE_FIELDS = (
     "provider",
     "execution_model",
@@ -469,7 +468,7 @@ def _default_runner(argv, cwd, timeout, prompt):
 def run_review(
     paper_root: Path,
     *,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     provider: str | None = None,
     allow_same_family: bool = False,
     override_reason: str | None = None,
@@ -487,6 +486,12 @@ def run_review(
         raise ValueError(
             "评审输入不能为空：跨模型评审至少要有一个 --path"
         )
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError(
+            "跨模型评审必须显式提供 --model；"
+            "工作流不再替调用方选择评审模型"
+        )
+    model = model.strip()
     provenance = _load_model_provenance(
         codex_config or (Path.home() / ".codex" / "config.toml"),
         provider,
@@ -995,7 +1000,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--paper-root", default=".")
     run.add_argument("--stage", required=True)
     run.add_argument("--path", action="append", required=True)
-    run.add_argument("--model", default=DEFAULT_MODEL)
+    run.add_argument(
+        "--model",
+        required=True,
+        help="显式指定独立评审模型；不提供默认值",
+    )
     run.add_argument("--provider")
     run.add_argument("--allow-same-family", action="store_true")
     run.add_argument(

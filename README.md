@@ -57,7 +57,7 @@ git -C $paper status --short
 | --- | --- | --- |
 | `tools/newpaper/create.py` | 按 venue、年份、会议或期刊模式派生完整论文目录 | `scripts/new-paper.ps1` |
 | `tools/ccfa/citation_guard.py` | 检查引用台账、DOI 存在性与正文悬空引用 | `scripts/citation-guard.ps1` |
-| `tools/ccfa/trace_claims.py` | 将正文数字标记与 JSON、CSV、YAML 源值机械比对 | `scripts/trace-claims.ps1` |
+| `tools/ccfa/trace_claims.py` | 将正文数字标记与 JSON、CSV、YAML 源值机械比对；`--manuscript` 可一次扫描目录下全部 `.tex` | `scripts/trace-claims.ps1` |
 | `tools/ccfa/latex_check.py` | 检查 LaTeX 结构、引用、图片，并可按 `--main` 指定主文件编译 | `scripts/latex-check.ps1` |
 | `tools/ccfa/final_check.py` | 对终稿执行未解析标记、图表与声明完整性检查 | `scripts/final-check.ps1` |
 | `tools/ccfa/revision_ledger.py` | 检查审稿意见矩阵的七列契约与承诺风险一致性 | `scripts/revision-ledger.ps1` |
@@ -69,7 +69,7 @@ git -C $paper status --short
 | `tools/ccfa/library.py` | 索引和全文检索共享文献库 | `scripts/library.ps1` |
 | `tools/ccfa/memory.py` | 管理选题记忆与反重复 dead-end 记录 | `scripts/memory.ps1` |
 | `tools/ccfa/milestones.py` | 读取 stage 并检查投稿倒排 checkpoint 与 gate 缺口 | `scripts/milestones.ps1` |
-| `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵，阻止 blocking 项漏过；评审记录绑定输入哈希与指令摘要 | `scripts/cross-review.ps1` |
+| `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵；`run --model` 必填，记录绑定输入哈希、指令摘要与真实 provider provenance | `scripts/cross-review.ps1` |
 | `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |

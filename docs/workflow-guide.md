@@ -151,7 +151,7 @@ scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
 必须产出：每个 supported claim 对应具体源值；人工编码达到预设一致性门槛。
 
 ```powershell
-scripts/trace-claims.ps1 --doc "$paper/manuscript/main.tex" `
+scripts/trace-claims.ps1 --manuscript "$paper/manuscript" `
     --base-dir $paper --untagged
 ```
 

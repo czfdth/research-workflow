@@ -142,7 +142,8 @@ Git dirty 状态、remote 和 GitHub Actions 是否存在。
 报告明确分成六个维度：`schema-valid`、`evidence-present`、`gate-verified`、
 `independently-reviewed`、`scientifically-accepted`、`collaboration-ready`。
 `evidence-present` 只判断文件是否存在；`gate-verified` 真正执行 profile 对应的
-novelty、statistics、repro-env、argument-audit、governance、cross-review 等检查器。
+novelty、statistics、repro-env、repro-package、argument-audit、governance、
+cross-review 等检查器。
 任一 gate 有 problem 时 `ready=false`。`standard` 与 `high-assurance` 还要求论文仓库
 已有 remote 和 GitHub Actions；`high-assurance` 会把明确标记为 pending 的证明、引用、
 图表与真人双编码台账继续视为阻塞。科学接受默认是 `not-claimed`，不会把“材料齐全”

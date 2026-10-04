@@ -25,6 +25,7 @@ from ccfa import (
     governance,
     latex_check,
     novelty,
+    repro_package,
     repro_env,
     stats_plan,
     trace_claims,
@@ -312,6 +313,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
                 strict_cross_family=profile == "high-assurance",
             ),
             [],
+        )
+    if (paper_root / "submission" / "repro" / "MANIFEST.json").is_file():
+        specs["repro-package"] = lambda: repro_package.verify_bundle(
+            paper_root / "submission" / "repro"
         )
     return list(specs.items())
 

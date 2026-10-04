@@ -20,6 +20,7 @@ from ccfa.datasource import (
 )
 from ccfa.dataval import Tag, find_tags, find_untagged
 from ccfa.datavalue import values_match
+from ccfa.texscan import iter_tex_files
 
 _TAG_ERRORS = (SourceError, OSError, ValueError, KeyError, IndexError, TypeError)
 
@@ -97,7 +98,11 @@ def check(
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="核验正文数字与源数据一致")
-    parser.add_argument("--doc", action="append", required=True, dest="docs")
+    parser.add_argument("--doc", action="append", dest="docs")
+    parser.add_argument(
+        "--manuscript",
+        help="手稿目录；等价于对该目录下所有 .tex 逐个传 --doc",
+    )
     parser.add_argument("--base-dir")
     parser.add_argument("--tolerance", type=float, default=1e-9)
     parser.add_argument("--rel-tolerance", type=float, default=0.0)
@@ -105,7 +110,15 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
 
     try:
-        docs = _documents(args.docs)
+        if bool(args.docs) == bool(args.manuscript):
+            raise ValueError("--doc 与 --manuscript 必须二选一")
+        if args.manuscript:
+            manuscript = Path(args.manuscript)
+            if not manuscript.is_dir():
+                raise ValueError(f"手稿目录不存在或不是目录: {manuscript}")
+            docs = list(iter_tex_files(manuscript))
+        else:
+            docs = _documents(args.docs)
         base_dir = Path(args.base_dir) if args.base_dir else None
         if base_dir is not None and not base_dir.is_dir():
             raise ValueError(f"--base-dir 不存在或不是目录: {base_dir}")

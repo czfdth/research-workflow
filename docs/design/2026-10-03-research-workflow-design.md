@@ -313,6 +313,11 @@ problem（`run-log-dirty-tree`），因为仅凭 commit 无法复现；记录里
 报告新增 `gate-verified` 维度；`evidence-present` 与 `gate-verified` 分离，任一
 下游检查器返回 problem 时 `ready=false`。
 
+第四轮补记：readiness 同时执行 `repro_package.verify_bundle`，因此 bundle 内文件哈希
+或 requirements 陈旧时不再假绿。`trace-claims` 增加 `--manuscript`，CI 不再需要自行
+枚举全部 `.tex`。`cross-review run --model` 改为必填，不再隐式选择评审模型。
+`governance` 对 pending/TBD/placeholder 文本报 `governance-placeholder`。
+
 ### 6.2 终稿确定性检查项
 
 基线是渲染后的 PDF，不是编译日志。

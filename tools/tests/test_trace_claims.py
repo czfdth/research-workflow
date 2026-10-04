@@ -88,6 +88,23 @@ class TestMain(BaseCase):
         code, _, _ = self.run_main()
         self.assertEqual(code, 0)
 
+    def test_manuscript_flag_scans_all_tex_files(self):
+        self.write_doc("\\dataval{results.json:summary.lcoe}{0.143}")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(
+                [
+                    "trace_claims.py",
+                    "--manuscript",
+                    str(self.root),
+                    "--base-dir",
+                    str(self.root),
+                ]
+            )
+
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertEqual(json.loads(out.getvalue())["problem_count"], 0)
+
     def test_mismatch_exits_one(self):
         self.write_doc("\\dataval{results.json:summary.lcoe}{0.5}")
         code, _, _ = self.run_main()
