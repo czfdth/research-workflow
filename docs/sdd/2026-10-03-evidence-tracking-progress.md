@@ -2096,3 +2096,25 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 按用户裁定只跑受影响模块：`test_milestones`、`test_run_log`、`test_queue`、`test_docs_consistency`、`test_evidence_integrity_e2e`，共 **201 tests OK**（约 35 秒；全量 1115 条约 150 秒）。未跑全量，也未跑 app 侧（本轮未触碰 app 代码）。
 - 最终代码 HEAD 为 `e17f18e`（其后仅本账本提交）。
 - 未实现边界：声明仍可能不实；脚本不判断运行真的是 build，也不判断脏树为什么可接受。
+
+## 跨族评审绑定指令摘要（2026-10-04，E81）
+
+- 目标：处理审计缺点表里的 #7「LLM 评审不可复现」。`cross-review` 原先存了输入文件哈希（`input_hashes`）与评审模型的原始输出，`check` 能报 `review-stale`，但没有任何东西把评审记录绑定到**产生它的指令**：`build_prompt` 里嵌着 `stages.py` 的 gate 判据与 stage 提示，改了这些文本，旧评审就是在另一套指令下产生的，却仍然通过。
+- **E81 `prompt_sha256`**：`cross-review run` 把发送给评审模型的 prompt 的 sha256 写进记录的三种形态（complete/malformed/failed）。`check` 用记录里的 `stage` 与 `input_hashes` 键重建同一段 prompt 并比对：缺字段、缺/空 stage、或重建失败（`ccfa.yaml` 不可读、mode/stage 未知）报 `review-prompt-unknown`；摘要不一致报 `review-prompt-drift`。两者都是 problem，处置都是重跑评审。
+- **规范化**：prompt 的文件清单排序并去重，`--path` 的顺序与重复都不影响摘要；重建不 stat 输入文件，输入被删仍由 `review-stale` 负责；`input_hashes` 条目本身非法（`review-record-invalid`）时跳过指令比对，避免噪音。
+- **空评审输入**：`run` 传空 `--path` 直接 `ValueError`（CLI 退 2）；`check` 遇到空 `input_hashes` 报 `review-malformed`。没有输入的跨模型评审不成立。
+- 边界：这证明「评审是在当前指令下产生的」，不证明评审结论正确；LLM 采样本身仍不可复现；整份 JSON 被重写仍可伪造（既有信任边界，未变）。
+
+### 实现与评审
+
+- `b2b3731 feat: bind cross-review records to the instructions they used`：`build_prompt` 抽出 `_render_prompt`；记录 `prompt_sha256`；`check` 重建比对；+5 条用例（对 `56c6b96` 全部判别失败）。
+- 自审发现、RED 证实并修复 `975018f fix: canonicalise the review file list before hashing`：`--path` 传重复路径时 `build_prompt` 列两次而 `check` 从哈希字典键重建只列一次，会产生永久 `review-prompt-drift`；`_render_prompt` 改为排序 + 去重，补 1 条判别用例（对 `b2b3731` 失败）。
+- 第一轮独立只读评审（`prompt-drift-review.json`）判 **needs-fixes**，2 条：`check_review` 接受空 `input_hashes` 可零退出、`run_review` 在 API 层接受空 `paths`（important）；缺 stage/空 stage/空输入分支无测试（minor）。
+- 修复 `0df6f05 fix: reject a cross-review with no inputs`：空 `input_hashes` 报 `review-malformed` 并跳过指令比对；`run_review` 在写盘前拒绝空输入清单；补 4 条用例（空输入与空 paths 两条对 `975018f` 判别失败）。
+- 第二轮定向复核（`prompt-drift-review-2.json`，HEAD `0df6f05`）判 **pass，findings 为空**：确认空输入不再零退出、非字符串键/单文件缺失/异文件集摘要都按预期报错、`hashes_usable` 只在已报 `review-record-invalid` 后为假不会掩盖有效记录的 drift、排序去重对 `./` 前缀/反斜杠/绝对路径/重复/乱序都归一一致、既有 `review-stale`/`review-blocking`/`review-uncited-blocking`/`review-same-family`/`review-override-reason-missing` 未回归。
+
+### 验证
+
+- 按用户裁定只跑受影响模块：`test_cross_review`、`test_docs_consistency`、`test_scripts`、`test_automation_e2e`、`test_evidence_integrity_e2e`，共 **147 tests OK**（约 42 秒）。未跑全量，也未跑 app 侧（本轮未触碰 app 代码）。
+- 最终代码 HEAD 为 `0df6f05`（其后仅本账本与文档提交）。
+- 未实现边界：证明「评审在什么指令下产生」，不证明评审结论正确；LLM 采样仍不可复现；整份 JSON 被重写仍可伪造。

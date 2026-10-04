@@ -70,7 +70,7 @@
 | `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
 | `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |
-| `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项；`check` 会因输入变化报 `review-stale`、因评审指令（gate 判据/stage 提示）变化报 `review-prompt-drift` |
+| `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项；`check` 因输入变化报 `review-stale`，因评审指令（gate 判据/stage 提示）变化报 `review-prompt-drift`，缺指令摘要报 `review-prompt-unknown`，无评审输入报 `review-malformed` |
 | `results-ready`、`internal-review` | `scripts/argument-audit.ps1` | 检查人工证明复核、引用语义支持与图表语义支持台账；未复核即 problem |
 | `experiment-design`、`results-ready` | `scripts/human-coding.ps1` | 对人工双编码表计算一致率与 Cohen's kappa 置信区间 |
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
