@@ -1916,3 +1916,13 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   - 偏离：`test_automation_e2e.py` 的 blocking fixture 换成真实引文（否则全量必红），属必要适配；计划里"gate 证据化"未做（本次规格只要求 T-30 可见化），留待后续。
 - **小收尾 `c09601d`**：非 ASCII 路径守护用例（`<tmp>/论文`，locale 回退时 `'foreign' != 'self'` 失败）；显式 `git_repo: null` 只报 malformed、不再叠加 missing-commit；台账 `status=failed` 保存 `detail`（legacy 兼容）。判别力三条实测。tools 915 OK。
 - 评审（`Kierkegaard`，两节）与 **Task 4** 已派：迁移 `papers/rag-attack-defense` 为独立仓库 + 真实 run-log（`git_repo=self`）+ 覆盖率报告 + `checks.md` 换机器产物 + `test_evidence_integrity_e2e.py`；commit `feat: migrate the example paper and publish its coverage report`。
+
+## Task 3b / 收尾评审（均 Approved）与 Task 4 落地
+
+- **Task 3b `723735a`（`Kierkegaard`）**：**Approved**。独立矩阵：写侧只有 `declared_purpose`；T-30 的 declared build → advisory（含 run id/日期/"不构成证据"）、experiment/无声明 → problem、legacy `purpose: build` 同路径（declared 优先、不能反向伪造）；引文闸门双向空白归一、19/20 字符中英文同口径、多 blocking 独立、非字符串 evidence → malformed；清单外改 `test_automation_e2e.py` 判定为**合理**（原 fixture 用文件名当引文，本就该被拒）。判别力三条独立复现；干净 worktree 908 OK。
+  - 新 Minor（性能）：引文闸门每项跑 SequenceMatcher（195KB×10 项≈2.5s）→ 已修（见下）。
+- **收尾 `c09601d`（`Kierkegaard`）**：**Approved**。非 ASCII 路径判别力成立（locale 回退 → `'foreign' != 'self'`）；显式 null 只报 malformed（反向变异可复现）；台账 failed 保存 `detail` 且 legacy 兼容。干净 worktree 915 OK。
+- **性能收尾 `4b37c68`**（`Confucius`）：`_quote_is_cited` 先做 `evidence in corpus` 短路径，未命中才走最长公共子串；用**注入调用计数**判别（整串命中 0 次调用、跨换行 1 次），不依赖墙钟。tools 923 OK。
+- **Task 4 `23d9020`**（`Confucius`）：`papers/rag-attack-defense` 已成独立仓库（首提交 `d98340b`）；论文内 run-log 记录 `git_repo=self` + 论文 HEAD；`data/claims.yaml` + `submission/claims-coverage.{json,md}` 生成（protected=8/bound=7/unbound=1，未绑定 `main.tex:58 Coding 43`）；`checks.md` 手写声明改为指向机器报告；新增 `test_evidence_integrity_e2e.py`（6 条）。
+  - **控制器发现**：迁移后论文仓库仍是脏的（44 项：报告/checks/被重跑的验证输出；`exports/` 13.9MB 生成物）——已派收尾：论文 `.gitignore` 加 `/exports/`，并把当前真实状态提交为论文仓库第二个 commit（不动模板仓库）。
+- 评审（`Kierkegaard`：Task 4 + 性能两节）与论文仓库收尾（`Confucius`）在飞；随后 evidence-integrity 最终全分支评审（base `fb46fa7` → 最终 HEAD）。
