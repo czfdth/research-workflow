@@ -75,7 +75,7 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | experiments-running | results_recorded | `experiments/log/` 逐次运行留有配置、种子、commit、退出码、指标 |
 | results-ready | claims_supported | 每个 claim 指到具体数值，且该数值通过行内标记脚本核对；无支撑项标记待验证或删除 |
 | writing | draft_complete | 正文、图表、引用齐备；页数符合 venue；所有引用条目来自检索期已核验的条目 |
-| internal-review | review_cleared | 跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过；人工证明复核与引用语义支持台账无未复核项 |
+| internal-review | review_cleared | 跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过；人工证明复核、引用语义支持与图表语义支持台账无未复核项 |
 | submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；repro-environment 记录 lockfile 哈希与系统工具版本证据；governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露） |
 
 会议尾部：
@@ -237,7 +237,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | `research-version` | 自动编号的版本快照与任意两版之间的真实 diff，替代手工 `v2` / `final-final` |
 | `final-check` | 终稿确定性检查，见 6.2 |
 | `friction-log` | 记录工具缺陷与指令缺口，跨论文聚合 |
-| `argument-audit`（v6 补记） | 审计人工证明复核与引用语义支持台账；缺记录、非人类 reviewer、refuted/uncertain/contradicts 均报 problem |
+| `argument-audit`（v6 补记） | 审计人工证明复核、引用语义支持与图表语义支持台账；缺记录、非人类 reviewer、refuted/uncertain/contradicts/irrelevant 均报 problem |
 | `human-coding`（v6 补记） | 对两张人工编码表计算一致率、Cohen's kappa 与 bootstrap 置信区间；低 κ 先修编码手册 |
 | `novelty`（v6 补记） | 检查检索范围/日期、≥3 篇近邻、逐 claim 差异；禁止未支撑的没人做过式表述 |
 | `statistics`（v6 补记） | 检查预注册统计设计：alpha、功效、样本量、多重比较、种子、停止规则、缺失数据处理 |
@@ -270,6 +270,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 - **引用语义支持**（`data/citation-support.yaml`）：受保护章节中的每个 `\cite{}` 必须有 `reviewer`、`reviewed_at`、`verdict`、`claim_text`、`support_quote`、`citations`、`source_path`。`contradicts`/`irrelevant` 是 problem，`partial` 是 advisory；脚本核对 `claim_text` 是否出现在该引用所在的受保护章节中，并核对 `support_quote` 是否真的出现在 `source_path` 中。脚本不判断证明和语义本身，只强制这些判断有人做过、可追责、可复核。
 - **人工编码一致性**（`human-coding`）：两张人工编码表按 item id join，计算 observed agreement、Cohen's kappa 与 95% bootstrap CI；`--min-kappa` 以下退 1。模型辅助审计不能替代这一步。
 - **同族评审 override**：`cross-review run --allow-same-family` 现在必须同时提供 `--override-reason`（≥20 字符），原因写入记录；`check --strict-cross-family` 会把任何同族 override 报成 problem。真正的 gate 仍然要求不同 family 的 provider。
+- **图表语义支持**（`data/figure-support.yaml`，v6 补记）：`figures/manifest.yaml` 里的每张交付图必须有一条具名人工判断，记录 `claim_ids`（必须来自 `novelty-audit` 的 claim 注册表）、`attributed_text`（≥20 字符，必须逐字出现在该图 `referenced_in` 指向的正文文件里）、`verdict`（`supports` / `partial` / `contradicts` / `irrelevant` / `not-applicable`）、人员、日期与理由。非证据图（示意图/架构图）用 `not-applicable` 并写明理由，且不得绑定 claim。`contradicts`/`irrelevant` 是 problem，`partial` 是 advisory，非 `supports` 判定必须写理由。脚本不看图、不判断图与结论本身是否一致，只强制这个判断有人做过、绑定到 claim 与正文原句、且非同意的结论不会被静默放过；v1 只做文件级原文匹配，不做段落级定位。
 
 ### 6.1.3 治理、统计与新颖性 gate（v6 补记）
 
@@ -326,6 +327,8 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 
 1. 交付的图必须由脚本生成，字节格式与扩展名一致。手工编辑过的导出图不得直接交付。
 2. 若确实需要手工修图（排版遮挡、标注修正），必须在 `manifest.yaml` 里注明并写明改了什么。静默修图属于学术诚信问题，不是格式问题。
+
+**语义支持（v6 补记）：** manifest 只能证明图的来源与字节，不能证明图支撑了正文用它所主张的结论。因此每张交付图必须在 `data/figure-support.yaml` 里有一条具名人工判断（§6.1.2），把结论绑定到 claim id 与正文原句。证据图必须声明 `referenced_in`，否则图-结论的绑定没有可复核的落点；`final-check` 的 `unreferenced-figure` 仍是 advisory，这条硬要求只在提出图表语义断言时生效。
 
 ### 6.4 数字溯源契约（trace-claims）
 

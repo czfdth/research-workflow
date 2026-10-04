@@ -41,7 +41,7 @@
 | `tools/ccfa/memory.py` | 管理选题记忆与反重复 dead-end 记录 | `scripts/memory.ps1` |
 | `tools/ccfa/milestones.py` | 读取 stage 并检查投稿倒排 checkpoint 与 gate 缺口 | `scripts/milestones.ps1` |
 | `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵，阻止 blocking 项漏过 | `scripts/cross-review.ps1` |
-| `tools/ccfa/argument_audit.py` | 审计人工证明复核与引用语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
+| `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
@@ -71,7 +71,7 @@
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
 | `writing`、`internal-review` | `scripts/citation-guard.ps1` | 检查引用可信性、DOI 与悬空引用 |
 | `internal-review` | `scripts/cross-review.ps1` | 运行评审矩阵并检查 blocking 项 |
-| `results-ready`、`internal-review` | `scripts/argument-audit.ps1` | 检查人工证明复核与引用语义支持台账；未复核即 problem |
+| `results-ready`、`internal-review` | `scripts/argument-audit.ps1` | 检查人工证明复核、引用语义支持与图表语义支持台账；未复核即 problem |
 | `experiment-design`、`results-ready` | `scripts/human-coding.ps1` | 对人工双编码表计算一致率与 Cohen's kappa 置信区间 |
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
 | `submission-check`、`camera-ready` | `scripts/final-check.ps1` | 对终稿或渲染 PDF 执行确定性检查 |

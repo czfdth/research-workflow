@@ -137,6 +137,12 @@ SEED_FILES = {
         "lockfile_sha256: ''\n"
         "system_tools: []\n"
     ),
+    "data/figure-support.yaml": (
+        "version: 1\n"
+        "# 完成后填写；结构见 "
+        "docs/plans/2026-10-04-figure-support-audit.md。\n"
+        "figures: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

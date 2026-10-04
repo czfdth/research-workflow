@@ -1,10 +1,11 @@
-"""Audit human review of proofs and citation-to-claim support.
+"""Audit human review of proofs, citations, and figures.
 
-This tool cannot decide whether a proof is valid or whether a citation
-semantically supports a sentence. It enforces the next best thing: those
-human judgments must exist as structured records before the paper can pass
-the gate, and missing, non-human, contradictory, or unverifiable records are
-reported as problems instead of disappearing into prose.
+This tool cannot decide whether a proof is valid, whether a citation
+semantically supports a sentence, or whether a figure shows what the text
+claims with it. It enforces the next best thing: those human judgments must
+exist as structured records before the paper can pass the gate, and missing,
+non-human, contradictory, or unverifiable records are reported as problems
+instead of disappearing into prose.
 """
 
 from __future__ import annotations
@@ -20,11 +21,15 @@ import yaml
 
 from ccfa.claims_policy import load_policy
 from ccfa.cli import Problem, emit, tool_error
+from ccfa.figure_manifest import load_manifest
 from ccfa.texcomment import strip_comment
 from ccfa.texscan import iter_tex_files
 
 PROOF_LEDGER_RELATIVE_PATH = Path("data") / "proof-audit.yaml"
 CITATION_LEDGER_RELATIVE_PATH = Path("data") / "citation-support.yaml"
+FIGURE_LEDGER_RELATIVE_PATH = Path("data") / "figure-support.yaml"
+FIGURE_MANIFEST_RELATIVE_PATH = Path("figures") / "manifest.yaml"
+NOVELTY_LEDGER_RELATIVE_PATH = Path("data") / "novelty-audit.yaml"
 PROOF_METHODS = frozenset(
     {
         "line-by-line",
@@ -35,6 +40,13 @@ PROOF_METHODS = frozenset(
 )
 PROOF_STATUSES = frozenset({"verified", "refuted", "uncertain"})
 SUPPORT_VERDICTS = frozenset({"supports", "partial", "contradicts", "irrelevant"})
+FIGURE_VERDICTS = frozenset(
+    {"supports", "partial", "contradicts", "irrelevant", "not-applicable"}
+)
+FIGURE_NOT_SUPPORTING_VERDICTS = frozenset({"contradicts", "irrelevant"})
+FIGURE_NOTE_VERDICTS = frozenset(
+    {"partial", "contradicts", "irrelevant", "not-applicable"}
+)
 THEOREM_ENVIRONMENTS = ("theorem", "proposition", "lemma", "corollary")
 _ENV_BEGIN = re.compile(
     r"\\begin\{(" + "|".join(THEOREM_ENVIRONMENTS) + r")\}"
@@ -55,6 +67,7 @@ _MODEL_REVIEWER = re.compile(
     r"grok|sonnet|haiku|opus|nova|command|phi|o[134])\b"
 )
 _MIN_QUOTE = 20
+_MIN_NOTE = 20
 
 
 def _normalise_section(value: str) -> str:
@@ -699,6 +712,406 @@ def _check_citation_support(
     }
 
 
+def _declared_claims(paper_root: Path) -> set[str]:
+    """Return the claim ids declared by the novelty audit, if any.
+
+    The novelty ledger owns the canonical claim registry; a figure that
+    asserts evidence must bind to one of those ids, otherwise the binding is
+    just a free-form string that no other gate understands.
+    """
+    path = Path(paper_root) / NOVELTY_LEDGER_RELATIVE_PATH
+    if not path.is_file():
+        return set()
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+    raw = payload.get("claims")
+    if not isinstance(raw, list):
+        return set()
+    return {
+        item.strip()
+        for item in raw
+        if isinstance(item, str) and item.strip()
+    }
+
+
+def _load_figure_manifest(
+    manifest_path: Path,
+) -> tuple[list[dict] | None, list[Problem]]:
+    if not manifest_path.is_file():
+        return None, []
+    try:
+        return load_manifest(manifest_path), []
+    except ValueError as exc:
+        return None, [
+            _problem(
+                "argument-audit-invalid",
+                manifest_path,
+                None,
+                f"无法读取图表清单: {exc}",
+            )
+        ]
+
+
+def _reference_corpus(
+    paper_root: Path,
+    reference: str,
+) -> tuple[Path | None, str | None, str | None]:
+    """Parse one ``path:line`` reference and return its normalised text.
+
+    Returns ``(resolved_path, corpus, error)``. Exactly one of ``corpus`` and
+    ``error`` is set when the reference parses; both are ``None`` only when the
+    reference resolves to a readable file with no text.
+    """
+    raw = reference.strip()
+    relative, separator, line_part = raw.rpartition(":")
+    if not separator or not relative:
+        return None, None, f"referenced_in 条目必须是 <相对路径>:<行号>: {raw!r}"
+    if not line_part.isdigit() or int(line_part) < 1:
+        return None, None, f"referenced_in 行号必须是 >=1 的整数: {raw!r}"
+    resolved = (paper_root / relative).resolve()
+    try:
+        resolved.relative_to(paper_root.resolve())
+    except ValueError:
+        return None, None, f"referenced_in 逃出 paper_root: {raw!r}"
+    if not resolved.is_file():
+        return None, None, f"referenced_in 指向不存在的文件: {raw!r}"
+    try:
+        corpus = _normalise_whitespace(
+            resolved.read_text(encoding="utf-8", errors="replace")
+        )
+    except OSError as exc:
+        raise ValueError(f"无法读取 {resolved}: {exc}") from exc
+    return resolved, corpus, None
+
+
+def _check_figure_support(
+    paper_root: Path,
+    manifest_path: Path,
+    ledger_path: Path,
+) -> tuple[list[Problem], list[Problem], dict]:
+    problems: list[Problem] = []
+    advisories: list[Problem] = []
+    manifest, manifest_problems = _load_figure_manifest(manifest_path)
+    problems.extend(manifest_problems)
+    if manifest is None:
+        advisories.append(
+            _problem(
+                "figure-support-not-needed",
+                manifest_path,
+                None,
+                "没有 figures/manifest.yaml，图表语义支持不适用",
+            )
+        )
+        return problems, advisories, {"required": 0, "reviewed": 0}
+
+    manifest_entries: dict[str, dict] = {}
+    for item in manifest:
+        name = item.get("name")
+        if isinstance(name, str) and name.strip():
+            manifest_entries[name.strip()] = item
+    if not manifest_entries:
+        advisories.append(
+            _problem(
+                "figure-support-not-needed",
+                manifest_path,
+                None,
+                "图表清单没有具名交付图，图表语义支持不适用",
+            )
+        )
+        return problems, advisories, {"required": 0, "reviewed": 0}
+
+    payload, read_problems = _read_yaml(ledger_path)
+    problems.extend(read_problems)
+    if payload is None:
+        if not ledger_path.is_file():
+            problems.append(
+                _problem(
+                    "figure-support-ledger-missing",
+                    ledger_path,
+                    None,
+                    "manifest 声明了交付图，但缺少人工图表语义支持台账",
+                )
+            )
+        return problems, advisories, {
+            "required": len(manifest_entries),
+            "reviewed": 0,
+        }
+
+    entries = payload.get("figures")
+    if not isinstance(entries, list):
+        problems.append(
+            _problem(
+                "argument-audit-invalid",
+                ledger_path,
+                None,
+                "figures 必须是数组",
+            )
+        )
+        return problems, advisories, {
+            "required": len(manifest_entries),
+            "reviewed": 0,
+        }
+
+    claims = _declared_claims(paper_root)
+    if not claims:
+        advisories.append(
+            _problem(
+                "figure-support-claims-unavailable",
+                NOVELTY_LEDGER_RELATIVE_PATH,
+                None,
+                "novelty-audit 未声明 claims，无法核对图表与 claim 的绑定",
+            )
+        )
+
+    covered: set[str] = set()
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            problems.append(
+                _problem(
+                    "argument-audit-invalid",
+                    ledger_path,
+                    None,
+                    f"figures[{index}] 必须是映射",
+                )
+            )
+            continue
+        figure_id = entry.get("id")
+        if not isinstance(figure_id, str) or not figure_id.strip():
+            problems.append(
+                _problem(
+                    "argument-audit-invalid",
+                    ledger_path,
+                    None,
+                    f"figures[{index}].id 必须是非空字符串",
+                )
+            )
+            continue
+        figure_id = figure_id.strip()
+        if figure_id in seen:
+            problems.append(
+                _problem(
+                    "argument-audit-invalid",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: 重复的图表语义支持条目",
+                )
+            )
+            continue
+        seen.add(figure_id)
+
+        missing = [
+            field
+            for field in ("verdict", "reviewer", "reviewed_at")
+            if field not in entry
+        ]
+        if missing:
+            problems.append(
+                _problem(
+                    "argument-audit-invalid",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: 缺少字段 {', '.join(missing)}",
+                )
+            )
+            continue
+        if not _human_reviewer(entry.get("reviewer")):
+            problems.append(
+                _problem(
+                    "figure-support-not-human",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: reviewer 必须记录人类姓名，不能是模型名",
+                )
+            )
+        if not _valid_date(entry.get("reviewed_at")):
+            problems.append(
+                _problem(
+                    "figure-support-invalid-date",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: reviewed_at 必须是 YYYY-MM-DD",
+                )
+            )
+        verdict = entry.get("verdict")
+        if not isinstance(verdict, str) or verdict not in FIGURE_VERDICTS:
+            problems.append(
+                _problem(
+                    "figure-support-invalid-verdict",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: verdict 必须是 {sorted(FIGURE_VERDICTS)}",
+                )
+            )
+            continue
+
+        manifest_entry = manifest_entries.get(figure_id)
+        if manifest_entry is None:
+            problems.append(
+                _problem(
+                    "figure-support-figure-missing",
+                    manifest_path,
+                    None,
+                    f"{figure_id}: manifest 中没有同名交付图",
+                )
+            )
+            continue
+        covered.add(figure_id)
+
+        note = entry.get("note")
+        note_valid = (
+            isinstance(note, str) and len(_normalise_whitespace(note)) >= _MIN_NOTE
+        )
+        if verdict in FIGURE_NOTE_VERDICTS and not note_valid:
+            problems.append(
+                _problem(
+                    "figure-support-note-missing",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: verdict={verdict} 必须写明 >= {_MIN_NOTE} 字符的理由",
+                )
+            )
+
+        if verdict == "not-applicable":
+            claim_ids = entry.get("claim_ids")
+            if claim_ids not in (None, []):
+                problems.append(
+                    _problem(
+                        "figure-support-invalid-claims",
+                        ledger_path,
+                        None,
+                        f"{figure_id}: not-applicable 的图不得绑定 claim",
+                    )
+                )
+            continue
+
+        claim_ids = entry.get("claim_ids")
+        if (
+            not isinstance(claim_ids, list)
+            or not claim_ids
+            or not all(
+                isinstance(item, str) and item.strip() for item in claim_ids
+            )
+        ):
+            problems.append(
+                _problem(
+                    "figure-support-invalid-claims",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: claim_ids 必须是非空字符串数组",
+                )
+            )
+        else:
+            for claim_id in sorted({item.strip() for item in claim_ids}):
+                if claims and claim_id not in claims:
+                    problems.append(
+                        _problem(
+                            "figure-support-unknown-claim",
+                            ledger_path,
+                            None,
+                            f"{figure_id}: claim {claim_id!r} 未在 novelty-audit 中声明",
+                        )
+                    )
+
+        text = entry.get("attributed_text")
+        text_valid = (
+            isinstance(text, str)
+            and len(_normalise_whitespace(text)) >= _MIN_QUOTE
+        )
+        if not text_valid:
+            problems.append(
+                _problem(
+                    "figure-support-text-too-short",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: attributed_text 至少需要 {_MIN_QUOTE} 字符",
+                )
+            )
+
+        if verdict in FIGURE_NOT_SUPPORTING_VERDICTS:
+            problems.append(
+                _problem(
+                    "figure-support-not-supporting",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: verdict={verdict!r}，图表不支撑正文归属的结论",
+                )
+            )
+        elif verdict == "partial":
+            advisories.append(
+                _problem(
+                    "figure-support-partial",
+                    ledger_path,
+                    None,
+                    f"{figure_id}: 图表只提供部分支持，需要人工确认是否足够",
+                )
+            )
+
+        references = manifest_entry.get("referenced_in")
+        if (
+            not isinstance(references, list)
+            or not references
+            or not all(
+                isinstance(item, str) and item.strip() for item in references
+            )
+        ):
+            problems.append(
+                _problem(
+                    "figure-support-reference-missing",
+                    manifest_path,
+                    None,
+                    f"{figure_id}: manifest 缺 referenced_in，无法把审计结论绑定到正文",
+                )
+            )
+            continue
+
+        if not text_valid:
+            continue
+        found = False
+        for reference in references:
+            resolved, corpus, error = _reference_corpus(paper_root, reference)
+            if error is not None:
+                problems.append(
+                    _problem(
+                        "figure-support-reference-invalid",
+                        manifest_path,
+                        None,
+                        f"{figure_id}: {error}",
+                    )
+                )
+                continue
+            if corpus is not None and _normalise_whitespace(text) in corpus:
+                found = True
+        if not found:
+            problems.append(
+                _problem(
+                    "figure-support-text-not-found",
+                    manifest_path,
+                    None,
+                    f"{figure_id}: attributed_text 未出现在 referenced_in 指向的正文文件中",
+                )
+            )
+
+    for name in sorted(manifest_entries):
+        if name not in covered:
+            problems.append(
+                _problem(
+                    "figure-support-missing",
+                    manifest_path,
+                    None,
+                    f"交付图 {name!r} 没有人工图表语义支持记录",
+                )
+            )
+    return problems, advisories, {
+        "required": len(manifest_entries),
+        "reviewed": len(covered),
+    }
+
+
 def check(
     paper_root: Path,
     *,
@@ -706,6 +1119,8 @@ def check(
     bib: Path | None = None,
     proof_ledger: Path | None = None,
     citation_ledger: Path | None = None,
+    figure_ledger: Path | None = None,
+    manifest: Path | None = None,
 ) -> tuple[list[Problem], list[Problem]]:
     paper_root = Path(paper_root)
     manuscript = Path(manuscript) if manuscript else paper_root / "manuscript"
@@ -719,6 +1134,16 @@ def check(
         Path(citation_ledger)
         if citation_ledger
         else paper_root / CITATION_LEDGER_RELATIVE_PATH
+    )
+    figure_ledger = (
+        Path(figure_ledger)
+        if figure_ledger
+        else paper_root / FIGURE_LEDGER_RELATIVE_PATH
+    )
+    manifest = (
+        Path(manifest)
+        if manifest
+        else paper_root / FIGURE_MANIFEST_RELATIVE_PATH
     )
     if not manuscript.is_dir():
         raise ValueError(f"手稿目录不存在或不是目录: {manuscript}")
@@ -749,12 +1174,22 @@ def check(
             keys,
         )
     )
+    figure_problems, figure_advisories, figure_summary = _check_figure_support(
+        paper_root,
+        manifest,
+        figure_ledger,
+    )
     problems = [
         *policy_problems,
         *proof_problems,
         *support_problems,
+        *figure_problems,
     ]
-    advisories = [*proof_advisories, *support_advisories]
+    advisories = [
+        *proof_advisories,
+        *support_advisories,
+        *figure_advisories,
+    ]
     if proof_summary["required"]:
         advisories.append(
             _problem(
@@ -775,18 +1210,30 @@ def check(
                 f"{support_summary['required']}",
             )
         )
+    if figure_summary["required"]:
+        advisories.append(
+            _problem(
+                "figure-support-coverage",
+                figure_ledger,
+                None,
+                f"图表语义支持 {figure_summary['reviewed']}/"
+                f"{figure_summary['required']}",
+            )
+        )
     return problems, advisories
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="审计人工证明复核与引用语义支持台账"
+        description="审计人工证明复核、引用语义支持与图表语义支持台账"
     )
     parser.add_argument("--paper-root", default=".")
     parser.add_argument("--manuscript")
     parser.add_argument("--bib")
     parser.add_argument("--proof-ledger")
     parser.add_argument("--citation-ledger")
+    parser.add_argument("--figure-ledger")
+    parser.add_argument("--manifest")
     args = parser.parse_args(argv[1:])
     try:
         problems, advisories = check(
@@ -797,6 +1244,10 @@ def main(argv: list[str]) -> int:
             citation_ledger=(
                 Path(args.citation_ledger) if args.citation_ledger else None
             ),
+            figure_ledger=(
+                Path(args.figure_ledger) if args.figure_ledger else None
+            ),
+            manifest=Path(args.manifest) if args.manifest else None,
         )
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))
