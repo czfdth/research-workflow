@@ -1893,3 +1893,10 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
   - 三笔提交信息均注明"adopted from an in-flight session with the user's authorization"；原作者未知。
 - **Task 3a 修复 `e834edc`**（`Confucius`）：无可用标题 → `found=False, detail="title missing"`，不再写 `matched_title: null`；补真实往返与相似度边界用例；证据哈希改原始字节并写明防伪造边界（commit `fix: never write evidence the ledger reader rejects`）。待 `Kierkegaard` 定向复验。
 - 计划已补 **Task 1b**（run-log 记 `git_repo: self|foreign|none`；foreign → problem、旧记录 → advisory）与 **Task 3b**（`declared_purpose` + T-30 build 豁免 advisory + cross-review 引文逐字命中）两个可派发小节。Task 1b 与 3b 都改 `run_log.py`，按序执行。
+
+## evidence-integrity 执行记录（Task 3a 复验 + Task 1b + DOI code）
+
+- **Task 3a 修复 `e834edc` 复验（`Kierkegaard`）**：**ADDRESSED**（I1/I2/I3 全关）。独立复现：无标题 → `(False, "title missing", None)`，写账为 `failed`（全文件无 `null`），只读复查只报 `unverified-entry`、无 `citation-self-asserted`，重复核验字节稳定；正常往返写账后只读 problems 为空；边界 0.8929→mismatch / 0.9091→found；非 UTF-8 响应按原始字节哈希。判别力两条独立复现。干净 worktree 888 tests OK。新 Minor：`doi-not-found` 混用（DOI 不存在 vs 标题不可用）→ 已修（见下）。
+- **Task 1b `66d4657`**（`Confucius`）：`git_state` 三态（`self`/`foreign`/`none`）+ realpath 比较；`foreign` 时 commit/dirty 双 null（不再记录父仓库提交）；`check_runs` 新 code：旧记录 advisory `run-log-git-repo-unknown`、foreign problem `run-log-foreign-repo`、none problem `run-log-no-git-repo`、非法值 malformed；顺带修了一处真缺陷——`_run_git` 用系统 locale 解码，中文路径会被误判 foreign，改为 UTF-8。判别力：去掉 toplevel 校验 → 嵌套目录用例 `'self' != 'foreign'` 失败。tools 898 OK。
+- **DOI code 拆分 `c0da3ae`**：`LookupResult.http_ok` 标记"提供方返回过 200"；两源都非 200 → `doi-not-found`，200 但 DOI/标题失败 → 新 code `doi-lookup-failed`；`_default_fetch` HTTPError 分支统一返回 bytes。判别力：title-missing 改回 doi-not-found → `doi-lookup-failed not found in ['doi-not-found', ...]`。tools 902 OK。
+- 评审派 `Kierkegaard`（两节：Task 1b + DOI code 拆分，干净 worktree）；**Task 3b 已派** `Confucius`（`declared_purpose` + T-30 build 豁免 advisory + cross-review 引文逐字命中；commit `feat: mark declarations as declared and require quotable review findings`）。
