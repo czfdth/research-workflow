@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -35,6 +36,28 @@ class BaseCase(unittest.TestCase):
 
         return run, calls
 
+    def init_repo(self, path, message="first commit"):
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Run Log Test"],
+            cwd=path,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "runlog@test.invalid"],
+            cwd=path,
+            check=True,
+        )
+        (path / "seed.txt").write_text("seed\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", message],
+            cwd=path,
+            check=True,
+        )
+
 
 class TestRunId(BaseCase):
     def test_first_id_uses_stamp_and_counter(self):
@@ -52,10 +75,32 @@ class TestRunId(BaseCase):
 
 
 class TestGitState(BaseCase):
-    def test_non_repo_returns_none_and_false(self):
-        commit, dirty = git_state(self.root)
-        self.assertIsNone(commit)
-        self.assertFalse(dirty)
+    def test_non_repo_returns_none_identity(self):
+        state = git_state(self.root)
+        self.assertEqual(state.git_repo, "none")
+        self.assertIsNone(state.git_commit)
+        self.assertIsNone(state.git_dirty)
+
+    def test_own_repository_returns_self_with_commit(self):
+        self.init_repo(self.root)
+
+        state = git_state(self.root)
+
+        self.assertEqual(state.git_repo, "self")
+        self.assertTrue(state.git_commit)
+        self.assertFalse(state.git_dirty)
+
+    def test_nested_directory_in_parent_repo_is_foreign(self):
+        parent = self.root / "template"
+        nested = parent / "papers" / "demo"
+        nested.mkdir(parents=True)
+        self.init_repo(parent)
+
+        state = git_state(nested)
+
+        self.assertEqual(state.git_repo, "foreign")
+        self.assertIsNone(state.git_commit)
+        self.assertIsNone(state.git_dirty)
 
 
 class TestReadConfig(BaseCase):
@@ -108,6 +153,46 @@ class TestRunCommand(BaseCase):
             runner=run,
         )
         self.assertEqual(record["purpose"], "build")
+
+    def test_record_carries_git_repo_identity(self):
+        self.init_repo(self.root)
+        # Keep the record outside the repository so run-log's own placeholder
+        # does not make the measured tree dirty.
+        log_dir = Path(tempfile.mkdtemp()) / "log"
+        run, _ = self.runner(exit_code=0)
+
+        run_id, record = run_command(
+            ["python", "train.py"],
+            log_dir,
+            self.root,
+            runner=run,
+        )
+
+        self.assertEqual(record["git_repo"], "self")
+        self.assertTrue(record["git_commit"])
+        self.assertFalse(record["git_dirty"])
+        persisted = json.loads(
+            (log_dir / f"{run_id}.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(persisted["git_repo"], "self")
+
+    def test_nested_directory_records_foreign_without_parent_commit(self):
+        parent = self.root / "template"
+        nested = parent / "papers" / "demo"
+        nested.mkdir(parents=True)
+        self.init_repo(parent)
+        run, _ = self.runner(exit_code=0)
+
+        _, record = run_command(
+            ["python", "train.py"],
+            self.log_dir,
+            nested,
+            runner=run,
+        )
+
+        self.assertEqual(record["git_repo"], "foreign")
+        self.assertIsNone(record["git_commit"])
+        self.assertIsNone(record["git_dirty"])
 
     def test_invalid_purpose_is_rejected(self):
         run, _ = self.runner(exit_code=0)
@@ -258,6 +343,7 @@ class TestCheckRuns(BaseCase):
             "run_id": "20261003T142530-01",
             "status": "completed",
             "metrics": {"accuracy": 0.9},
+            "git_repo": "self",
             "git_commit": "abc1234",
             "git_dirty": False,
             "started_at": "2026-10-03T14:25:30Z",
@@ -269,6 +355,49 @@ class TestCheckRuns(BaseCase):
         self._write_record("a", self._base())
         problems, advisories = check_runs(self.log_dir)
         self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+
+    def test_old_record_without_git_repo_is_an_advisory(self):
+        record = self._base()
+        del record["git_repo"]
+        self._write_record("a", record)
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(problems, [])
+        self.assertEqual(
+            self._codes(advisories),
+            ["run-log-git-repo-unknown"],
+        )
+
+    def test_foreign_repo_is_a_problem_without_commit_noise(self):
+        self._write_record(
+            "a",
+            self._base(
+                git_repo="foreign",
+                git_commit=None,
+                git_dirty=None,
+            ),
+        )
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(self._codes(problems), ["run-log-foreign-repo"])
+        self.assertEqual(advisories, [])
+
+    def test_none_repo_is_a_problem_without_commit_noise(self):
+        self._write_record(
+            "a",
+            self._base(
+                git_repo="none",
+                git_commit=None,
+                git_dirty=None,
+            ),
+        )
+
+        problems, advisories = check_runs(self.log_dir)
+
+        self.assertEqual(self._codes(problems), ["run-log-no-git-repo"])
         self.assertEqual(advisories, [])
 
     def test_completed_without_metrics_is_a_problem(self):

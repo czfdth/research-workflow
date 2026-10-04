@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import date, datetime, time as datetime_time, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
@@ -71,33 +72,66 @@ def new_run_id(log_dir: Path, stamp: str | None = None) -> tuple[str, Path]:
         return run_id, path
 
 
-def git_state(paper_root: Path) -> tuple[str | None, bool]:
-    paper_root = Path(paper_root)
-    commands = (
-        ["git", "-C", str(paper_root), "rev-parse", "HEAD"],
-        ["git", "-C", str(paper_root), "status", "--porcelain"],
-    )
-    results = []
-    try:
-        for command in commands:
-            results.append(
-                subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=10,
-                )
-            )
-    except (OSError, subprocess.TimeoutExpired):
-        return None, False
+class GitState(NamedTuple):
+    git_repo: str
+    git_commit: str | None
+    git_dirty: bool | None
 
-    head, status = results
-    if head.returncode != 0 or status.returncode != 0:
-        return None, False
-    commit = head.stdout.strip() or None
-    dirty = bool(status.stdout.strip())
-    return commit, dirty
+
+def _run_git(
+    paper_root: Path,
+    args: list[str],
+) -> subprocess.CompletedProcess | None:
+    """Run one git command, folding missing git/timeout into None."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(paper_root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def git_state(paper_root: Path) -> GitState:
+    """Record whether the run happened in the paper's own repository.
+
+    ``self`` keeps the commit/dirty fields. A directory inside a parent or
+    other repository is ``foreign`` and a missing git environment is ``none``;
+    both carry null commit/dirty so a parent repository's commit is never
+    recorded as this run's provenance.
+    """
+    paper_root = Path(paper_root)
+    top = _run_git(paper_root, ["rev-parse", "--show-toplevel"])
+    if top is None or top.returncode != 0:
+        return GitState("none", None, None)
+    toplevel = top.stdout.strip()
+    if not toplevel:
+        return GitState("none", None, None)
+    try:
+        same_repository = Path(toplevel).resolve() == paper_root.resolve()
+    except OSError:
+        same_repository = False
+    if not same_repository:
+        return GitState("foreign", None, None)
+    head = _run_git(paper_root, ["rev-parse", "HEAD"])
+    status = _run_git(paper_root, ["status", "--porcelain"])
+    if (
+        head is None
+        or status is None
+        or head.returncode != 0
+        or status.returncode != 0
+    ):
+        return GitState("self", None, None)
+    return GitState(
+        "self",
+        head.stdout.strip() or None,
+        bool(status.stdout.strip()),
+    )
 
 
 def read_config(path: Path, *, paper_root: Path) -> dict:
@@ -153,7 +187,7 @@ def run_command(
 
     run_id, record_path = new_run_id(log_dir)
     config_entry = read_config(config, paper_root=paper_root) if config else None
-    commit, dirty = git_state(paper_root)
+    state = git_state(paper_root)
     started_at = _now_iso()
     started = time.monotonic()
     record = {
@@ -162,8 +196,9 @@ def run_command(
         "cwd": cwd,
         "config": config_entry,
         "seed": seed,
-        "git_commit": commit,
-        "git_dirty": dirty,
+        "git_repo": state.git_repo,
+        "git_commit": state.git_commit,
+        "git_dirty": state.git_dirty,
         "started_at": started_at,
         "finished_at": None,
         "duration_s": None,
@@ -320,7 +355,45 @@ def check_runs(
                         f"运行指标为空对象: {record.get('run_id')}",
                     )
                 )
-        if not record.get("git_commit"):
+        repo = record.get("git_repo")
+        if "git_repo" not in record:
+            advisories.append(
+                Problem(
+                    "run-log-git-repo-unknown",
+                    str(path),
+                    None,
+                    f"旧记录未标注 git_repo，无法判断是否发生在论文仓库: {record.get('run_id')}",
+                )
+            )
+        elif repo == "foreign":
+            problems.append(
+                Problem(
+                    "run-log-foreign-repo",
+                    str(path),
+                    None,
+                    f"该运行发生在论文目录之外的 git 仓库，未记录父仓库提交: {record.get('run_id')}",
+                )
+            )
+        elif repo == "none":
+            problems.append(
+                Problem(
+                    "run-log-no-git-repo",
+                    str(path),
+                    None,
+                    f"该运行不在任何 git 仓库中，无法绑定 commit: {record.get('run_id')}",
+                )
+            )
+        elif repo != "self":
+            problems.append(
+                Problem(
+                    "run-log-malformed",
+                    str(path),
+                    None,
+                    f"运行记录 git_repo 非法: {repo!r}",
+                )
+            )
+
+        if repo in (None, "self") and not record.get("git_commit"):
             problems.append(
                 Problem(
                     "run-log-missing-commit",
@@ -329,7 +402,7 @@ def check_runs(
                     f"记录缺少 git commit: {record.get('run_id')}",
                 )
             )
-        if record.get("git_dirty") is True:
+        if repo in (None, "self") and record.get("git_dirty") is True:
             advisories.append(
                 Problem(
                     "run-log-dirty-tree",
