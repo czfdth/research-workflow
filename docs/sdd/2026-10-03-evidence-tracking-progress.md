@@ -2040,6 +2040,6 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - gate 同步：`grounded` 要求 novelty audit；`experiment-design` 要求 statistics plan；`submission-check` 要求 governance 台账；两份 checklist 已重新生成。模块名为 `stats_plan.py`，避免与 Python 标准库 `statistics` 冲突；CLI 入口仍是 `scripts/statistics.ps1`；新论文模板会 seed 三份空台账，等待逐项填写。
 - 判别力：三个新测试文件共 19 条，覆盖缺台账、少近邻、单数据库、未覆盖 claim、未支撑表述、alpha/sample_size/seeds/correction 错误、缺 COI、缺 IRB/consent、AI 未披露、查重未做、双用途未复核等。
 - 独立评审（`governance-stats-novelty-review.json`）判 **fail**：novelty 可用重复数据库/重复 claim/未声明 claim_id 蒙过；stats_plan 接受 `.nan/.inf` 作为 `effect_size`；另有混合 ISO 日期、宽松 version、未 seed 台账、文档计数等低风险问题。
-- 修复：novelty 增加数据库/claim/近邻标题去重、近邻 id 必须存在于 `manuscript/references.bib`、claim_id 必须属于声明 claims；stats_plan 用 `math.isfinite` 拒绝非有限 effect_size；`is_iso_date` 只接受 `YYYY-MM-DD`；ledger version 要求严格 int；new-paper seed 三份空台账；更新设计文档与账本。
-- 修复后全量：tools **1055 tests OK**，app（offscreen）**141 tests OK**。
+- 修复：novelty 增加数据库/claim/近邻标题去重、近邻 id 必须存在于 `manuscript/references.bib`、claim_id 必须属于声明 claims；stats_plan 用有限数检查拒绝 `.nan/.inf` 和超大整数 effect_size；`is_iso_date` 只接受 `YYYY-MM-DD`；ledger version 要求严格 int；new-paper seed 三份空台账；更新设计文档与账本。
+- 修复后全量：tools **1056 tests OK**，app（offscreen）**141 tests OK**。
 - 边界：三道 gate 只强制结构化声明与覆盖，不保证新颖性、统计正确性或治理真实性。

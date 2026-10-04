@@ -80,12 +80,16 @@ def _check_claim(path: Path, index: int, claim: object) -> list:
                 )
             )
     effect_size = claim.get("effect_size")
-    if (
-        isinstance(effect_size, bool)
-        or not isinstance(effect_size, (int, float))
-        or not math.isfinite(effect_size)
-        or effect_size <= 0
-    ):
+    try:
+        effect_size_ok = (
+            not isinstance(effect_size, bool)
+            and isinstance(effect_size, (int, float))
+            and math.isfinite(effect_size)
+            and effect_size > 0
+        )
+    except OverflowError:
+        effect_size_ok = False
+    if not effect_size_ok:
         problems.append(
             problem(
                 "statistics-invalid",

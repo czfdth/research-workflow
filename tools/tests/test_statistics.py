@@ -89,6 +89,15 @@ class StatisticsTests(unittest.TestCase):
                 problems, _advisories = check(self.root)
                 self.assertIn("statistics-invalid", self._codes(problems))
 
+    def test_huge_effect_size_is_a_problem_not_a_crash(self):
+        huge = "1" + "0" * 400
+        self.path.write_text(
+            VALID.replace("effect_size: 0.5", f"effect_size: {huge}"),
+            encoding="utf-8",
+        )
+        problems, _advisories = check(self.root)
+        self.assertIn("statistics-invalid", self._codes(problems))
+
 
 if __name__ == "__main__":
     unittest.main()
