@@ -104,6 +104,8 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("manuscript/main.tex", prompt)
         self.assertIn("禁止修改任何文件", prompt)
         self.assertIn("JSON", prompt)
+        self.assertIn("本次运行就是在生成当前有效的跨模型评审报告", prompt)
+        self.assertIn("不要因为 reviews/cross-review.json 尚不存在", prompt)
 
     def test_argv_has_exact_required_flags_and_stdin_prompt(self):
         runner = self._runner(payload=self._payload())

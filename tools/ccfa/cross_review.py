@@ -135,6 +135,17 @@ def build_prompt(paper_root: Path, stage: str, paths: list[Path]) -> str:
         "待评审文件:",
     ]
     lines.extend(f"- {path}" for path in relative_paths)
+    if stage == "internal-review":
+        lines.extend(
+            [
+                "",
+                "本次运行就是在生成当前有效的跨模型评审报告。"
+                "不要因为 reviews/cross-review.json 尚不存在，或因为历史轮次存在 "
+                "blocking 记录，而把这一事实本身判为 blocking。"
+                "请只依据给定的稿件和核验报告，独立判断引用、数字、图表三项核验"
+                "是否通过，以及稿件是否存在实质性的科学或完整性问题。",
+            ]
+        )
     lines.extend(
         [
             "",
