@@ -35,12 +35,13 @@ from pathlib import Path
 import yaml
 
 from ccfa.cli import tool_error
-from ccfa.run_log import log_metrics, run_command
+from ccfa.run_log import log_metrics, log_resource_usage, run_command
 
 QUEUE_VERSION = 1
 SANDBOX_MODES = ("none", "policy")
 GPU_UTILIZATION_THRESHOLD = 5
 GPU_SAMPLE_INTERVAL_S = 1.0
+LOCK_WRITE_GRACE_S = 5.0
 SANDBOX_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -214,29 +215,49 @@ class QueueLock:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return False
+            try:
+                age = max(0.0, time.time() - self.path.stat().st_mtime)
+            except OSError:
+                return True
+            return age > LOCK_WRITE_GRACE_S
         pid = payload.get("pid") if isinstance(payload, dict) else None
         if type(pid) is not int:
-            return False
+            try:
+                age = max(0.0, time.time() - self.path.stat().st_mtime)
+            except OSError:
+                return True
+            return age > LOCK_WRITE_GRACE_S
         return not self._pid_alive(pid)
+
+    def _recover_stale(self) -> bool:
+        quarantine = self.path.with_name(
+            f"{self.path.name}.stale.{self.pid}.{time.time_ns()}"
+        )
+        try:
+            os.replace(self.path, quarantine)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
+        try:
+            quarantine.unlink()
+        except OSError:
+            pass
+        return True
 
     def __enter__(self):
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise ValueError(f"无法创建队列锁目录 {self.path.parent}: {exc}") from exc
-        for _attempt in range(2):
+        for _attempt in range(5):
             try:
                 descriptor = os.open(
                     self.path,
                     os.O_CREAT | os.O_EXCL | os.O_WRONLY,
                 )
             except FileExistsError:
-                if self._stale():
-                    try:
-                        self.path.unlink()
-                    except FileNotFoundError:
-                        pass
+                if self._stale() and self._recover_stale():
                     continue
                 raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
             except OSError as exc:
@@ -254,12 +275,21 @@ class QueueLock:
                 os.write(descriptor, payload.encode("utf-8"))
             except OSError as exc:
                 try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                descriptor = None
+                try:
                     self.path.unlink()
                 except OSError:
                     pass
                 raise ValueError(f"无法写入队列锁 {self.path}: {exc}") from exc
             finally:
-                os.close(descriptor)
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
             return self
         raise QueueLocked(f"另一个队列正在运行，锁文件: {self.path}")
 
@@ -363,7 +393,10 @@ class GpuMeter:
     def stop(self) -> dict:
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=self._interval_s * 2 + 1)
+            # The reader has its own subprocess timeout; waiting here removes
+            # the old overlap where stop() and the sampler both recorded a
+            # final interval.
+            self._thread.join()
             self._thread = None
         self._sample()
         return {
@@ -386,9 +419,29 @@ def _sandbox_env(environ=None) -> dict[str, str]:
 
 def _forward_stream(stream, activity: list[float]) -> None:
     try:
-        for line in stream:
+        try:
+            descriptor = stream.fileno()
+        except (AttributeError, OSError):
+            descriptor = None
+        if descriptor is None:
+            chunk = stream.read()
+            if chunk:
+                activity[0] = time.monotonic()
+                sys.stderr.write(
+                    chunk.decode("utf-8", errors="replace")
+                    if isinstance(chunk, bytes)
+                    else chunk
+                )
+                flush = getattr(sys.stderr, "flush", None)
+                if flush is not None:
+                    flush()
+            return
+        while True:
+            chunk = os.read(descriptor, 4096)
+            if not chunk:
+                break
             activity[0] = time.monotonic()
-            sys.stderr.write(line)
+            sys.stderr.write(chunk.decode("utf-8", errors="replace"))
             flush = getattr(sys.stderr, "flush", None)
             if flush is not None:
                 flush()
@@ -411,10 +464,7 @@ def _default_runner(
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
+        bufsize=0,
     )
     activity = [time.monotonic()]
     pumps = [
@@ -474,7 +524,7 @@ def _item_cwd(
     else:
         path = Path(cwd)
         resolved = path if path.is_absolute() else queue_root / path
-        resolved = resolved.resolve()
+    resolved = resolved.resolve()
     if sandbox:
         try:
             resolved.relative_to(queue_root.resolve())
@@ -482,7 +532,7 @@ def _item_cwd(
             raise ValueError(
                 f"沙箱策略拒绝队列项 {item.get('name')!r} 逃出队列根: {resolved}"
             ) from exc
-    return resolved.resolve()
+    return resolved
 
 
 def run_queue(
@@ -519,6 +569,11 @@ def run_queue(
         raise ValueError("gpu_budget_s 必须是非负数")
 
     default_runner = runner is None or runner is _default_runner
+    if sandbox_mode == "policy" and not default_runner:
+        raise ValueError(
+            "sandbox=policy 仅支持默认 runner；注入 runner 无法保证"
+            "环境白名单与 stall 看门狗"
+        )
     run = runner or _default_runner
     now = clock or time.monotonic
     gpu_meter_factory = gpu_meter_factory or GpuMeter
@@ -620,6 +675,7 @@ def run_queue(
                         meter_reading = meter.stop()
 
                 attempt_metrics: dict = {}
+                resource_usage: dict = {}
                 if timed_out:
                     attempt_metrics.update(
                         timeout=True,
@@ -632,15 +688,14 @@ def run_queue(
                     )
                 if meter_reading is not None:
                     gpu_total += float(meter_reading["seconds"])
-                    attempt_metrics.update(
-                        gpu_seconds=meter_reading["seconds"],
-                    )
+                    resource_usage["gpu_seconds"] = meter_reading["seconds"]
+                    resource_usage["gpu_samples"] = meter_reading["samples"]
                     if meter_reading["errors"]:
-                        attempt_metrics["gpu_sampling_errors"] = meter_reading[
-                            "errors"
-                        ]
+                        resource_usage["gpu_sampling_errors"] = meter_reading["errors"]
                 if attempt_metrics:
                     log_metrics(log_dir, run_id, attempt_metrics)
+                if resource_usage:
+                    log_resource_usage(log_dir, run_id, resource_usage)
                 if meter_reading is not None and meter_reading["errors"]:
                     raise ValueError(
                         "GPU 利用率采样失败，无法可靠执行 GPU 预算"

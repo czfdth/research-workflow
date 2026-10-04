@@ -17,6 +17,7 @@ from ccfa.queue import (
     QueueLock,
     QueueLocked,
     QueueStalled,
+    _item_cwd,
     _sandbox_env,
     build_parser,
     load_queue,
@@ -429,6 +430,28 @@ class TestRunQueue(QueueTests):
 
         self.assertFalse(lock_path.exists())
 
+    def test_malformed_lock_is_recovered_after_grace(self):
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.log_dir / ".queue.lock"
+        lock_path.write_text("", encoding="utf-8")
+        old = time.time() - 10
+        os.utime(lock_path, (old, old))
+
+        lock = QueueLock(self.log_dir)
+        with lock:
+            self.assertTrue(lock_path.is_file())
+
+        self.assertFalse(lock_path.exists())
+
+    def test_recent_malformed_lock_is_refused(self):
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.log_dir / ".queue.lock"
+        lock_path.write_text("", encoding="utf-8")
+
+        with self.assertRaises(QueueLocked):
+            with QueueLock(self.log_dir):
+                pass
+
     def test_queue_lock_is_released_after_run(self):
         self._write_queue([self._item()])
 
@@ -453,7 +476,27 @@ class TestRunQueue(QueueTests):
         )
         self.assertEqual(result["runs"][1]["attempts"], 0)
         self.assertEqual(result["stopped"], "gpu-budget")
-        self.assertEqual(self._records()[0]["metrics"]["gpu_seconds"], 6)
+        self.assertEqual(
+            self._records()[0]["resource_usage"]["gpu_seconds"],
+            6,
+        )
+        self.assertIsNone(self._records()[0]["metrics"])
+
+    def test_gpu_budgeted_run_still_reports_metrics_pending(self):
+        self._write_queue([self._item()])
+        meter = FakeGpuMeter([2])
+
+        self._run(
+            RecordingRunner([0]),
+            gpu_budget_s=10,
+            gpu_meter_factory=lambda: meter,
+        )
+
+        problems, _advisories = check_runs(self.log_dir)
+        self.assertIn(
+            "run-log-metrics-pending",
+            [problem.code for problem in problems],
+        )
 
     def test_gpu_budget_requires_a_meter(self):
         self._write_queue([self._item()])
@@ -504,8 +547,10 @@ class TestRunQueue(QueueTests):
             )
 
         metrics = self._records()[0]["metrics"]
-        self.assertEqual(metrics["gpu_seconds"], 1.5)
-        self.assertEqual(metrics["gpu_sampling_errors"], 1)
+        self.assertIsNone(metrics)
+        resource_usage = self._records()[0]["resource_usage"]
+        self.assertEqual(resource_usage["gpu_seconds"], 1.5)
+        self.assertEqual(resource_usage["gpu_sampling_errors"], 1)
 
     def test_stall_is_recorded_and_not_retried_by_default(self):
         self._write_queue(
@@ -551,18 +596,35 @@ class TestRunQueue(QueueTests):
         self._write_queue([self._item(cwd="..")])
 
         with self.assertRaisesRegex(ValueError, "沙箱策略"):
-            self._run(RecordingRunner([0]), sandbox="policy")
+            self._run(None, sandbox="policy")
 
     def test_sandbox_policy_rejects_absolute_external_cwd(self):
         self._write_queue([self._item(cwd=str(self.root.parent))])
 
         with self.assertRaisesRegex(ValueError, "沙箱策略"):
+            self._run(None, sandbox="policy")
+
+    def test_sandbox_policy_accepts_no_cwd_with_relative_queue_root(self):
+        resolved = _item_cwd(Path("."), self._item(), sandbox=True)
+
+        self.assertTrue(resolved.is_absolute())
+
+    def test_policy_sandbox_rejects_injected_runner(self):
+        self._write_queue([self._item()])
+
+        with self.assertRaisesRegex(ValueError, "默认 runner"):
             self._run(RecordingRunner([0]), sandbox="policy")
 
     def test_sandbox_policy_is_recorded_outside_metrics(self):
-        self._write_queue([self._item()])
+        self._write_queue(
+            [
+                self._item(
+                    command=[sys.executable, "-c", "print('ok')"],
+                )
+            ]
+        )
 
-        self._run(RecordingRunner([0]), sandbox="policy")
+        self._run(None, sandbox="policy")
 
         record = self._records()[0]
         self.assertEqual(record["policy"]["sandbox"], "policy")
@@ -676,6 +738,29 @@ class TestDefaultRunner(QueueTests):
             )
 
         self.assertIn("READY", stderr.getvalue())
+
+    def test_default_runner_watchdog_does_not_kill_no_newline_progress(self):
+        from ccfa.queue import _default_runner
+
+        script = (
+            "import sys, time\n"
+            "for _ in range(12):\n"
+            "    sys.stdout.write('PROGRESS')\n"
+            "    sys.stdout.flush()\n"
+            "    time.sleep(0.05)\n"
+        )
+        stderr = StringIO()
+
+        with redirect_stderr(stderr):
+            code = _default_runner(
+                [sys.executable, "-c", script],
+                self.root,
+                10,
+                stall_timeout_s=0.3,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertIn("PROGRESS", stderr.getvalue())
 
     def test_default_runner_env_does_not_leak_non_allowlisted_values(self):
         from ccfa.queue import _default_runner

@@ -12,6 +12,7 @@ from ccfa.run_log import (
     check_runs,
     git_state,
     log_metrics,
+    log_resource_usage,
     main,
     new_run_id,
     read_config,
@@ -406,6 +407,27 @@ class TestLogMetrics(BaseCase):
         path.write_text("[]", encoding="utf-8")
         with self.assertRaises(ValueError):
             log_metrics(self.log_dir, "20260101T000000-01", {"accuracy": 1.0})
+
+    def test_resource_usage_is_recorded_without_touching_metrics(self):
+        run_id = self._make_run()
+
+        record = log_resource_usage(
+            self.log_dir,
+            run_id,
+            {"gpu_seconds": 1.5, "gpu_samples": 2},
+        )
+
+        self.assertEqual(
+            record["resource_usage"],
+            {"gpu_seconds": 1.5, "gpu_samples": 2},
+        )
+        self.assertIsNone(record["metrics"])
+
+    def test_resource_usage_must_be_an_object(self):
+        run_id = self._make_run()
+
+        with self.assertRaises(ValueError):
+            log_resource_usage(self.log_dir, run_id, [1, 2])
 
 
 class TestCheckRuns(BaseCase):

@@ -238,6 +238,7 @@ def run_command(
         "notes": notes,
         "declared_purpose": purpose,
         "policy": _json_safe(policy) if policy is not None else None,
+        "resource_usage": None,
     }
     _save_record(record_path, record)
 
@@ -279,6 +280,29 @@ def log_metrics(log_dir: Path, run_id: str, metrics: dict) -> dict:
     if not isinstance(record, dict):
         raise ValueError(f"运行记录不是对象: {run_id}")
     record["metrics"] = metrics
+    save_text_atomically(
+        path,
+        json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        description="运行记录",
+    )
+    return record
+
+
+def log_resource_usage(
+    log_dir: Path,
+    run_id: str,
+    resource_usage: dict,
+) -> dict:
+    """Record operational resource accounting without touching metrics."""
+    if not isinstance(resource_usage, dict):
+        raise ValueError("resource_usage 必须是 JSON 对象")
+    path = record_path(log_dir, run_id)
+    if not path.is_file():
+        raise ValueError(f"没有这条运行记录: {run_id}")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError(f"运行记录不是对象: {run_id}")
+    record["resource_usage"] = _json_safe(resource_usage)
     save_text_atomically(
         path,
         json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
