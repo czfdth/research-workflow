@@ -203,7 +203,7 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | 正文写作 | `deepseek-v4-flash` | `deepseek-v4-pro`（独立会话） |
 | 终稿检查 | 脚本（确定性） | 不需要模型 |
 
-**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。
+**必须说清的限制**：`v4-flash` 与 `v4-pro` 同属 DeepSeek V4 系列。E68–E70 之后，`cross-review run` 默认拒绝把同族/未知族模型写成 pass：只有 `family_judgement=="cross-family"` 才允许写入，或显式传 `--allow-same-family` 留 override；`check` 对旧同族记录报 `review-same-family`。本机的 `workbuddy` profile 指向 `glm-5.2`，但该 provider 尚未在配置中定义，所以真正跨族仍需用户接入不同 family 的 provider。工具不会伪造跨族。信任边界：`check` 检测记录内部不一致，不是密码学签名；能改写整份 JSON 的人仍可同时伪造 `model` 与 `family_judgement`，本机防的是默认同族与无意错写，不是防本机恶意篡改。
 
 触发约束：跨模型评审只在 gate 关键节点触发（T-14、内部审稿），不逐轮触发。
 

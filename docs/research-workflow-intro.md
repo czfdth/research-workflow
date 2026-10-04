@@ -143,6 +143,8 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 `--allow-same-family` 留 override；`check` 对旧同族记录报
 `review-same-family`。当前本机尚未配置第二个可用 provider，所以真正跨族仍需
 用户接入不同 family 的 provider；工具不会把同族评审冒充成跨族。
+`check` 检测记录内部不一致，不是密码学签名；能改写整份 JSON 的人仍可同时
+伪造 `model` 与 `family_judgement`，本机防的是默认同族与无意错写。
 
 ## 七、记忆与知识层
 
