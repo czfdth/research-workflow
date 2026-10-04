@@ -26,7 +26,8 @@ ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第�
 ARIS proof run-directory + notation/derivation gate 已完成第三切片；
 ARIS typed graph wiki 已完成第四切片；academic-research-skills 的
 hash-chained run ledger 已完成第五切片；ARIS auto-review-loop state 已完成
-第六切片。其余来源仍按下表分级。
+第六切片；academic-research-skills risk capability matrix 与 data flows 已完成
+第七切片。其余来源仍按下表分级。
 
 ## 1. AI-Research-SKILLs
 
@@ -121,14 +122,12 @@ resubmit orchestrator 仍未对齐。**
 
 - 已有 `run_ledger.py` 的 hash-chained append-only peer ledger；但仍没有保存
   checkpoint 问题、用户原话和 initial instructions 的完整 ARS passport ledger。
-- 风险登记册没有“风险 → 控制 → 证据状态 → 残余缺口”的强 schema，也没有
-  对应 capability matrix 的 evidence status。
-- 没有 `DATA_FLOWS.md` 等价文件，逐项说明每个 provider、connector、cache
-  和本地 store 的数据去向。
+- `governance_map.py` 已实现 risk → control → evidence status → residual gap
+  和 `DATA_FLOWS.md` 生成；完整 ARS passport 与 calibration 仍未完成。
 - Citation semantic support 仍是人工台账，没有 FNR/FPR calibration gold set。
 
-结论：**人在环、run ledger、hash-chain、risk register、governance 的概念已吸收；
-capability-evidence 绑定、data-flow map 和 citation calibration 未完成。**
+结论：**人在环、run ledger、hash-chain、risk capability matrix、data-flow map、
+governance 的概念已吸收；完整 passport ledger 和 citation calibration 未完成。**
 
 ## 4. ARA paperbench
 
@@ -216,7 +215,7 @@ replay、`.science` package 尚未实现。**
 | --- | --- | --- |
 | AI-Research-SKILLs | 本轮补查 | two-loop、research-state、ARA draft compiler 已对齐；完整语义提取和 code stub 仍缺 |
 | ARIS | 本轮补查 | proof campaign + run-dir + proof gates、typed graph wiki、review loop state 已对齐；resubmit orchestrator 和自动 fix/re-review 仍未对齐 |
-| academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk/governance 概念对齐；data-flow、capability matrix、calibration 未对齐 |
+| academic-research-skills | 本轮补查 | human-in-loop、hash-chained run ledger、risk capability matrix、data-flow map 已对齐；完整 passport/calibration 未对齐 |
 | ARA paperbench | 本轮补查 | claim/exploration/evidence 部分对齐；code stub、DAG、rubric 未对齐 |
 | open-science | 本轮补查 | provenance/workbench 概念对齐；immutable artifacts、replay、`.science` 未实现 |
 | NeurIPS/ARR/ACM | 本轮核对公开结构 | ACM badge 已实现；官方 checklist fixture 未固化 |
@@ -237,8 +236,8 @@ replay、`.science` package 尚未实现。**
 2. 继续对齐 ARIS 的自动 fix/re-review 与 resubmit/talk pipeline；
    review loop state、proof run directory、notation/derivation gate 和
    typed graph wiki 已完成。
-3. 继续把 academic-research-skills 的 risk capability matrix 和
-   `DATA_FLOWS.md` 纳入治理层；hash-chained run ledger 已完成。
+3. 继续把 academic-research-skills 的完整 passport run ledger 与 citation
+   calibration 纳入治理层；risk matrix、data flows、hash-chain 已完成。
 4. 把 open-science 的 immutable artifact version 与 portable package 接入
    repro/release 流程。
 

@@ -98,6 +98,10 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_run_ledger",
     ),
+    "tools/ccfa/governance_map.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_governance_map",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

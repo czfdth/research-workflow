@@ -40,6 +40,7 @@ CLI_WRAPPERS = {
     "novelty": "scripts/novelty.ps1",
     "stats_plan": "scripts/statistics.ps1",
     "governance": "scripts/governance.ps1",
+    "governance_map": "scripts/governance-map.ps1",
     "repro_env": "scripts/repro-env.ps1",
     "watch": "scripts/watch.ps1",
     "queue": "scripts/queue.ps1",

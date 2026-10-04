@@ -24,6 +24,7 @@ from ccfa import (
     cross_review,
     experiment_loop,
     final_check,
+    governance_map,
     governance,
     latex_check,
     novelty,
@@ -335,6 +336,11 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         specs["run-ledger"] = lambda: run_ledger.check_ledger(paper_root)
     if (paper_root / "reviews" / "review-loop-state.json").is_file():
         specs["review-loop"] = lambda: review_loop.check_loop(paper_root)
+    if (
+        (paper_root / "data" / "capability-matrix.yaml").is_file()
+        or (paper_root / "data" / "data-flows.yaml").is_file()
+    ):
+        specs["governance-map"] = lambda: governance_map.check(paper_root)
 
     specs["research-ledgers"] = lambda: research_ledgers.check(
         paper_root,

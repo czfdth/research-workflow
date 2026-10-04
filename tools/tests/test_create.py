@@ -107,6 +107,8 @@ class TestCreateProject(unittest.TestCase):
             "data/exploration-graph.yaml",
             "data/cost-ledger.yaml",
             "data/risk-register.yaml",
+            "data/capability-matrix.yaml",
+            "data/data-flows.yaml",
             "data/experiment-loop.yaml",
             "data/post-submission.yaml",
             "data/rigor-rubric.yaml",
@@ -614,6 +616,8 @@ class TestCreateProject(unittest.TestCase):
         self.assertIn("data/exploration-graph.yaml", tracked)
         self.assertIn("data/cost-ledger.yaml", tracked)
         self.assertIn("data/risk-register.yaml", tracked)
+        self.assertIn("data/capability-matrix.yaml", tracked)
+        self.assertIn("data/data-flows.yaml", tracked)
         self.assertIn("data/experiment-loop.yaml", tracked)
         self.assertIn("data/post-submission.yaml", tracked)
         self.assertIn("data/rigor-rubric.yaml", tracked)

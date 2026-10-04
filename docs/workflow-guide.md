@@ -233,6 +233,9 @@ rubric 标成 `complete`。
 
 ```powershell
 scripts/governance.ps1 --paper-root $paper
+scripts/governance-map.ps1 check --paper-root $paper
+scripts/governance-map.ps1 render --paper-root $paper `
+    --out "$paper/docs/data-flows.md"
 scripts/repro-env.ps1 --paper-root $paper
 scripts/final-check.ps1 --paper-root $paper `
     --manuscript "$paper/manuscript" `

@@ -50,6 +50,7 @@ jobs:
             tools/ccfa/dashboard.py `
             tools/ccfa/doctor.py `
             tools/ccfa/experiment_loop.py `
+            tools/ccfa/governance_map.py `
             tools/ccfa/meta_optimize.py `
             tools/ccfa/post_submission.py `
             tools/ccfa/proof_orchestrator.py `

@@ -178,6 +178,15 @@ SEED_FILES = {
         "version: 1\n"
         "risks: []\n"
     ),
+    "data/capability-matrix.yaml": (
+        "version: 1\n"
+        "capabilities: []\n"
+    ),
+    "data/data-flows.yaml": (
+        "version: 1\n"
+        "network: []\n"
+        "stores: []\n"
+    ),
     "data/experiment-loop.yaml": (
         "version: 1\n"
         "not_applicable: false\n"

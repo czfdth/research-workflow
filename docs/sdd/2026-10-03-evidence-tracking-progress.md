@@ -2521,3 +2521,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - readiness 在 state 存在时执行可选 review-loop gate。
 - 新增 `tools/tests/test_review_loop.py` 4 条覆盖；scripts/docs/CI/test-impact
   同步。
+
+## 源码对齐第七切片：risk matrix 与 data flows（2026-10-05）
+
+- 按 academic-research-skills `RISK_REGISTER.md` / `DATA_FLOWS.md`，新增
+  `tools/ccfa/governance_map.py` 与 `scripts/governance-map.ps1`。
+- capability status 固定为 DESIGNED/NOT_RUN/MEASURED/MIXED；risk 必须引用真实
+  control 并填写 residual_gap。
+- data flows 覆盖 network endpoint、发送内容、凭据、off switch，以及本地
+  store 的 path/content/lifetime/delete。
+- `check` 拒绝未知 control、非法状态和明文凭据；`render` 生成
+  `docs/data-flows.md`。
+- 新增 `tools/tests/test_governance_map.py` 5 条覆盖；create/readiness/
+  scripts/docs/CI/test-impact 同步。

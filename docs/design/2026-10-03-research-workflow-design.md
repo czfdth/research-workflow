@@ -851,6 +851,25 @@ Markdown 实体和图边是 source of truth；index 与 query pack 是生成物�
 
 该 state machine 负责门禁和续跑，不自动修稿、不自动开释。
 
+### 9.17 源码对齐第七切片：risk capability matrix 与 data flows
+
+按 academic-research-skills 的 `docs/RISK_REGISTER.md` 与
+`docs/DATA_FLOWS.md`，v6.1 新增 `tools/ccfa/governance_map.py` 与
+`scripts/governance-map.ps1`：
+
+- `data/capability-matrix.yaml` 逐项记录 stage、control、behavioral evidence
+  status 和 evidence。
+- `data/risk-register.yaml` 在 capability matrix 存在时必须为每条风险记录
+  controls、evidence_status、residual_gap；controls 必须解析到真实 capability
+  id。
+- `data/data-flows.yaml` 逐项记录 network touchpoint 的 endpoint、purpose、
+  sends、credentials、off switch，以及 local store 的 path、content、
+  lifetime、delete。
+- `check` 拒绝未知 control、非法 capability status 和明显明文凭据；
+  `render` 从 YAML 生成 `docs/data-flows.md`。
+- status 词表固定为 DESIGNED / NOT_RUN / MEASURED / MIXED，避免风险登记册
+  用自造状态掩盖未运行证据。
+
 ## 10. 目录结构
 
 模板库：
