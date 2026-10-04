@@ -603,7 +603,6 @@ def check_review(
     )
     if (
         isinstance(stored_family, str)
-        and computed_family != "unknown"
         and stored_family != computed_family
     ):
         problems.append(
