@@ -2347,3 +2347,16 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - README、workflow guide、PR 模板与设计文档同步；新增
   `tools/tests/test_test_impact.py`，覆盖精确映射、未知回退、删除回退、
   dotfile 路径、工作树未跟踪文件和运行命令选择。
+
+## Pilot 筛选与双循环实验账本（2026-10-05）
+
+- 新增 `data/experiment-loop.yaml`、`tools/ccfa/experiment_loop.py` 与
+  `scripts/experiment-loop.ps1`，补齐对标报告 P1-5 的 pilot 与内外层循环。
+- `check` 验证 ideas / inner_loop / outer_loop 的枚举、placeholder、终态理由、
+  pilot 预算、metric、kill criterion，以及 claim/run id 的真实引用。
+- `next` 输出 pilot、内层和外层当前待办动作，只读，不自动运行实验或修改结论。
+- 纯 SoK 支持 `not_applicable: true`，但必须有非空具体 reason；空台账只产生
+  advisory，不伪装完成。
+- readiness standard/high-assurance 接入第八类台账，新论文模板自动生成。
+- 新增 `tools/tests/test_experiment_loop.py` 9 条覆盖；create/readiness/scripts/
+  docs 测试同步。

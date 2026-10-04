@@ -49,6 +49,11 @@ _TOOLS_FULL_PATHS = {
 }
 
 _TOOLS_EXACT = {
+    "tools/ccfa/experiment_loop.py": (
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_experiment_loop",
+        "tools.tests.test_readiness",
+    ),
     "tools/ccfa/cross_review.py": (
         "tools.tests.test_automation_e2e",
         "tools.tests.test_cross_review",

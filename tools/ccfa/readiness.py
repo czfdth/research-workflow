@@ -21,6 +21,7 @@ from ccfa import (
     argument_audit,
     citation_guard,
     cross_review,
+    experiment_loop,
     final_check,
     governance,
     latex_check,
@@ -48,6 +49,7 @@ EVIDENCE_LEDGER_PATHS = {
     "exploration-graph": Path("data/exploration-graph.yaml"),
     "cost-ledger": Path("data/cost-ledger.yaml"),
     "risk-register": Path("data/risk-register.yaml"),
+    "experiment-loop": Path("data/experiment-loop.yaml"),
     "proof": Path("data/proof-audit.yaml"),
     "citation-support": Path("data/citation-support.yaml"),
     "figure-support": Path("data/figure-support.yaml"),
@@ -68,6 +70,7 @@ PROFILE_REQUIRED_LEDGERS = {
         "exploration-graph",
         "cost-ledger",
         "risk-register",
+        "experiment-loop",
         "citation-support",
         "figure-support",
         "novelty",
@@ -94,6 +97,7 @@ LEDGER_GATE_NAMES = {
     "statistics": "statistics",
     "repro-environment": "repro-environment",
     "human-coding": "human-coding",
+    "experiment-loop": "experiment-loop",
 }
 
 
@@ -286,6 +290,7 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         "novelty": lambda: novelty.check(paper_root),
         "repro-environment": lambda: repro_env.check(paper_root),
         "statistics": lambda: stats_plan.check(paper_root),
+        "experiment-loop": lambda: experiment_loop.check(paper_root),
     }
     for ledger in PROFILE_REQUIRED_LEDGERS[profile]:
         if not (paper_root / EVIDENCE_LEDGER_PATHS[ledger]).is_file():

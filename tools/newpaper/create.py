@@ -178,6 +178,14 @@ SEED_FILES = {
         "version: 1\n"
         "risks: []\n"
     ),
+    "data/experiment-loop.yaml": (
+        "version: 1\n"
+        "not_applicable: false\n"
+        "not_applicable_reason: ''\n"
+        "ideas: []\n"
+        "inner_loop: []\n"
+        "outer_loop: []\n"
+    ),
 }
 
 GitRunner = Callable[[list[str], Path], "tuple[int, str]"]

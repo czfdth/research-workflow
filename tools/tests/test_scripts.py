@@ -42,6 +42,7 @@ CCFA_WRAPPERS = {
     "readiness": "readiness.ps1",
     "research_ledgers": "research-ledgers.ps1",
     "test_impact": "test-impact.ps1",
+    "experiment_loop": "experiment-loop.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

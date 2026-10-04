@@ -84,6 +84,7 @@ git -C $paper status --short
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/research_ledgers.py` | 校验 claim registry、assumptions/limitations、venue checklist、artifact provenance、探索图、成本账本与风险登记册 | `scripts/research-ledgers.ps1` |
+| `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id，并输出下一批待办动作 | `scripts/experiment-loop.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 
 ## 阶段到命令速查
@@ -103,6 +104,7 @@ git -C $paper status --short
 | `grounded` | `scripts/novelty.ps1` | 检查检索范围/日期、至少三个近邻与逐 claim 差异 |
 | `data-ready` | `scripts/provenance.ps1` | 登记数据来源、分类、校验和并检查完整性 |
 | `experiment-design` | `scripts/statistics.ps1` | 检查功效、样本量、多重比较校正、种子、停止规则与缺失数据处理 |
+| `experiment-design`、`experiments-running` | `scripts/experiment-loop.ps1` | 校验 pilot 候选、kill criterion 与内外层实验循环，并输出下一批待办动作 |
 | `experiment-design`、`experiments-running` | `scripts/run-log.ps1` | 记录运行事实、指标、退出码与失败结果；`check` 对脏树运行报 problem，只有 `--dirty-waiver` 写明 ≥20 字符的理由才降为 advisory |
 | `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |

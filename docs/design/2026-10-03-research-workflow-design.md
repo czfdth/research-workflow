@@ -620,6 +620,26 @@ docker 模式默认拒绝注入 runner；测试或高级调用要注入 runner �
 人工清理。镜像本身是受信任输入：只读根、mount 与 network 控制是本机单用户
 流程的隔离边界，不是对恶意镜像或内核漏洞的安全承诺。
 
+### 9.3 Pilot 筛选与双循环实验账本
+
+对标报告指出的缺口是：`grounded` 之后直接进入实验设计，缺少“小试后再投入”的
+筛选环节；单次实验优化与跨实验综合也没有统一台账。v6.1 新增
+`data/experiment-loop.yaml` 和 `tools/ccfa/experiment_loop.py`。
+
+账本包含三层：
+
+- `ideas`：候选想法、pilot 预算、metric、kill criterion、run id 与
+  promote/reject/park 决策。终态必须有理由；没有 run id 不能声称 pilot 完成。
+- `inner_loop`：每次 baseline、调参、修 bug 或消融的 change、hypothesis、
+  metric、result 与 keep/revert/continue/stop 决策。result=pending 时不能写
+  终结决策；已有 result 时必须写决策。
+- `outer_loop`：跨实验综合，绑定 claim 与 evidence run ids，记录
+  continue/pivot/write/stop 和下一步动作。
+
+`check` 做确定性的枚举、placeholder、claim/run 交叉引用验证；
+`next` 只输出当前待办动作，不自动运行实验、不自动改论文结论。纯 SoK 或
+不含实验的论文可以 `not_applicable: true`，但必须写明具体 reason。
+
 ## 10. 目录结构
 
 模板库：

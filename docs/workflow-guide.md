@@ -137,7 +137,13 @@ scripts/provenance.ps1 --store "$paper/data/provenance.json" `
 
 ```powershell
 scripts/statistics.ps1 --paper-root $paper
+scripts/experiment-loop.ps1 check --paper-root $paper
 ```
+
+`data/experiment-loop.yaml` 记录 8-12 个候选、pilot 预算与 kill criterion，
+以及内层 keep/revert/continue 和外层 continue/pivot/write 决策。先用
+`experiment-loop next` 读取下一批待办动作；纯 SoK 或不含实验的论文应写明
+`not_applicable_reason`，不要把空台账伪装成完成。
 
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
@@ -151,6 +157,7 @@ scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
 
 scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
     --paper-root $paper check
+scripts/experiment-loop.ps1 next --paper-root $paper
 ```
 
 长任务优先使用 `scripts/queue.ps1`。需要隔离时使用 Docker 沙箱，不要在 daemon

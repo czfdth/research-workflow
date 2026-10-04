@@ -124,6 +124,7 @@ class ReadinessTests(unittest.TestCase):
         )
         self.assertIn("citation-support", report["evidence"]["missing_required"])
         self.assertIn("claim-registry", report["evidence"]["missing_required"])
+        self.assertIn("experiment-loop", report["evidence"]["missing_required"])
         research = next(
             item
             for item in report["gate_results"]
