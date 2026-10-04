@@ -255,6 +255,9 @@ class EvidenceIntegrityEndToEnd(unittest.TestCase):
             paths=[Path("main.tex")],
             runner=runner,
             allow_same_family=True,
+            override_reason=(
+                "test fixture: no second-family provider is configured"
+            ),
         )
 
         codes = [problem.code for problem in check_review(paper)]

@@ -42,7 +42,7 @@
 ## 8. [internal-review]
 
 - [ ] gate `review_cleared`
-  - 通过条件：跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过
+  - 通过条件：跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过；人工证明复核与引用语义支持台账无未复核项
 
 ## 9. [submission-check]
 

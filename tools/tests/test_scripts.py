@@ -27,6 +27,8 @@ CCFA_WRAPPERS = {
     "memory": "memory.ps1",
     "milestones": "milestones.ps1",
     "cross_review": "cross-review.ps1",
+    "argument_audit": "argument-audit.ps1",
+    "human_coding": "human-coding.ps1",
     "watch": "watch.ps1",
     "queue": "queue.ps1",
     "validate": "validate.ps1",

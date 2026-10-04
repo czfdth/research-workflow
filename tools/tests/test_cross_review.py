@@ -76,6 +76,9 @@ class CrossReviewTests(unittest.TestCase):
         values = {
             "model": "deepseek-v4-pro",
             "allow_same_family": True,
+            "override_reason": (
+                "test migration: no second-family provider is configured"
+            ),
             "stage": "internal-review",
             "paths": [Path("manuscript/main.tex")],
         }
@@ -157,6 +160,46 @@ class TestRunReview(CrossReviewTests):
 
         self.assertEqual(runner.calls, [])
         self.assertFalse(self._record_path().exists())
+
+    def test_same_family_override_requires_a_reason(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        with self.assertRaisesRegex(ValueError, "override-reason"):
+            self._run(
+                runner,
+                allow_same_family=True,
+                override_reason=None,
+            )
+
+        self.assertEqual(runner.calls, [])
+        self.assertFalse(self._record_path().exists())
+
+    def test_same_family_override_reason_is_recorded(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(runner)
+
+        self.assertTrue(result["family_override"])
+        self.assertIn("no second-family provider", result["family_override_reason"])
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        self.assertEqual(
+            record["family_override_reason"],
+            result["family_override_reason"],
+        )
+
+    def test_cross_family_does_not_need_override_reason(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(
+            runner,
+            model="gpt-5.6",
+            allow_same_family=False,
+            override_reason=None,
+        )
+
+        self.assertEqual(result["family_judgement"], "cross-family")
+        self.assertFalse(result["family_override"])
+        self.assertIsNone(result["family_override_reason"])
 
     def test_cross_family_model_is_allowed_without_override(self):
         runner = self._runner(payload=self._payload("pass"))
@@ -404,6 +447,38 @@ class TestCheckReview(CrossReviewTests):
         self.assertEqual(
             check_review(self.paper_root, allow_same_family=True),
             [],
+        )
+
+    def test_same_family_override_without_reason_is_a_problem(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record = json.loads(self._record_path().read_text(encoding="utf-8"))
+        record.pop("family_override_reason", None)
+        self._record_path().write_text(json.dumps(record), encoding="utf-8")
+
+        problems = check_review(
+            self.paper_root,
+            allow_same_family=True,
+        )
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-override-reason-missing"],
+        )
+
+    def test_strict_cross_family_reports_override(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+
+        problems = check_review(
+            self.paper_root,
+            allow_same_family=True,
+            strict_cross_family=True,
+        )
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["review-family-override"],
         )
 
     def test_edited_family_judgement_cannot_bypass_recomputation(self):

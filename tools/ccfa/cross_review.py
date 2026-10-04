@@ -390,6 +390,7 @@ def run_review(
     model: str = DEFAULT_MODEL,
     provider: str | None = None,
     allow_same_family: bool = False,
+    override_reason: str | None = None,
     stage: str,
     paths: list[Path],
     runner=None,
@@ -407,6 +408,18 @@ def run_review(
             "评审模型（必要时用 --provider 指向其 provider），"
             "或显式传 --allow-same-family"
         )
+    if allow_same_family:
+        if (
+            not isinstance(override_reason, str)
+            or len(override_reason.strip()) < 20
+        ):
+            raise ValueError(
+                "同族 override 必须提供 --override-reason，且至少 20 字符，"
+                "说明为什么当前没有真实跨族评审"
+            )
+        override_reason = override_reason.strip()
+    else:
+        override_reason = None
     output_dir = _resolve_out_dir(paper_root, out_dir)
     json_path, markdown_path, schema_path, last_message_path = _record_paths(
         output_dir
@@ -458,6 +471,7 @@ def run_review(
             "execution_model": execution_model,
             "family_judgement": family,
             "family_override": allow_same_family,
+            "family_override_reason": override_reason,
             "verdict": None,
             "blocking": [],
             "summary": "codex exec failed",
@@ -492,6 +506,7 @@ def run_review(
             "execution_model": execution_model,
             "family_judgement": family,
             "family_override": allow_same_family,
+            "family_override_reason": override_reason,
             "verdict": "malformed",
             "blocking": [],
             "summary": "review output missing or malformed",
@@ -516,6 +531,7 @@ def run_review(
         "execution_model": execution_model,
         "family_judgement": family,
         "family_override": allow_same_family,
+        "family_override_reason": override_reason,
         "verdict": normalized["verdict"],
         "blocking": normalized["blocking"],
         "summary": normalized["summary"],
@@ -539,6 +555,7 @@ def check_review(
     out_dir: Path | None = None,
     *,
     allow_same_family: bool = False,
+    strict_cross_family: bool = False,
 ) -> list[Problem]:
     """Audit the stored review record against current inputs."""
     paper_root = Path(paper_root)
@@ -616,6 +633,30 @@ def check_review(
             )
         )
     family_override = record.get("family_override") is True
+    if family_override:
+        override_reason = record.get("family_override_reason")
+        if (
+            not isinstance(override_reason, str)
+            or len(override_reason.strip()) < 20
+        ):
+            problems.append(
+                Problem(
+                    "review-override-reason-missing",
+                    str(path),
+                    None,
+                    "family_override=true 但缺少 ≥20 字符的 "
+                    "family_override_reason",
+                )
+            )
+        elif strict_cross_family:
+            problems.append(
+                Problem(
+                    "review-family-override",
+                    str(path),
+                    None,
+                    "记录使用的是同族 override，不是真正跨族评审",
+                )
+            )
     same_family_gate = not provenance_complete or computed_family != "cross-family"
     if same_family_gate and not (family_override or allow_same_family):
         if not provenance_complete:
@@ -737,6 +778,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", default=DEFAULT_MODEL)
     run.add_argument("--provider")
     run.add_argument("--allow-same-family", action="store_true")
+    run.add_argument(
+        "--override-reason",
+        help="同族 override 的原因，至少 20 字符；会写入评审记录",
+    )
     run.add_argument("--timeout", type=float, default=600)
     run.add_argument("--out-dir")
     run.add_argument("--force", action="store_true")
@@ -745,6 +790,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--paper-root", default=".")
     check.add_argument("--out-dir", default="reviews")
     check.add_argument("--allow-same-family", action="store_true")
+    check.add_argument(
+        "--strict-cross-family",
+        action="store_true",
+        help="严格模式：任何同族 override 都报 review-family-override",
+    )
     return parser
 
 
@@ -757,6 +807,7 @@ def main(argv: list[str]) -> int:
                     Path(args.paper_root),
                     out_dir=Path(args.out_dir),
                     allow_same_family=args.allow_same_family,
+                    strict_cross_family=args.strict_cross_family,
                 )
             )
         record = run_review(
@@ -764,6 +815,7 @@ def main(argv: list[str]) -> int:
             model=args.model,
             provider=args.provider,
             allow_same_family=args.allow_same_family,
+            override_reason=args.override_reason,
             stage=args.stage,
             paths=[Path(item) for item in args.path],
             timeout=args.timeout,
