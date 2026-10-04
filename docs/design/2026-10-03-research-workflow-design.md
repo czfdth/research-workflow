@@ -69,14 +69,14 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 | Stage | Gate | 通过条件 |
 | --- | --- | --- |
 | idea | scope_defined | 问题陈述、至少一条可检验假设、目标 venue 均写明 |
-| grounded | novelty_grounded | 列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个"无人测量的合取"。禁止"没人做过"式表述 |
+| grounded | novelty_grounded | 列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个"无人测量的合取"；novelty-audit 记录检索范围/日期与逐 claim 差异；禁止"没人做过"式表述 |
 | data-ready | provenance_recorded | 逐份数据有来源、分类与校验和；执行 `provenance check --scan data` 确认无未登记数据；来源文档可被脚本核对；不合规来源已排除 |
-| experiment-design | design_frozen | 每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；含种子计划、失败判据与平台画像（阶段零微基准） |
+| experiment-design | design_frozen | 每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；statistics-plan 含 alpha/多重比较、功效与样本量、种子、停止规则、缺失数据处理与平台画像（阶段零微基准） |
 | experiments-running | results_recorded | `experiments/log/` 逐次运行留有配置、种子、commit、退出码、指标 |
 | results-ready | claims_supported | 每个 claim 指到具体数值，且该数值通过行内标记脚本核对；无支撑项标记待验证或删除 |
 | writing | draft_complete | 正文、图表、引用齐备；页数符合 venue；所有引用条目来自检索期已核验的条目 |
 | internal-review | review_cleared | 跨模型评审报告无 blocking 项；引用、数字、图表三项核验通过；人工证明复核与引用语义支持台账无未复核项 |
-| submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功 |
+| submission-check | package_ready | 模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露） |
 
 会议尾部：
 
@@ -239,6 +239,9 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 | `friction-log` | 记录工具缺陷与指令缺口，跨论文聚合 |
 | `argument-audit`（v6 补记） | 审计人工证明复核与引用语义支持台账；缺记录、非人类 reviewer、refuted/uncertain/contradicts 均报 problem |
 | `human-coding`（v6 补记） | 对两张人工编码表计算一致率、Cohen's kappa 与 bootstrap 置信区间；低 κ 先修编码手册 |
+| `novelty`（v6 补记） | 检查检索范围/日期、≥3 篇近邻、逐 claim 差异；禁止未支撑的没人做过式表述 |
+| `statistics`（v6 补记） | 检查预注册统计设计：alpha、功效、样本量、多重比较、种子、停止规则、缺失数据处理 |
+| `governance`（v6 补记） | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露 |
 
 **分期说明（v6 补记）**：`research-version` 推迟到"复现与归档"计划实施，且默认按 **git 的薄封装**（tag + 真实 diff）而非独立版本库来做。理由：论文库本身已是 git 仓库，独立快照库会制造"两个版本真相"——同一份稿子的"第几版"到底以哪个为准。先不建与 git 打架的东西，比建了再拆便宜。
 
@@ -266,6 +269,25 @@ T-30 之后不接受新实验是硬规则。最后一刻加实验是论文流产
 - **引用语义支持**（`data/citation-support.yaml`）：受保护章节中的每个 `\cite{}` 必须有 `reviewer`、`reviewed_at`、`verdict`、`claim_text`、`support_quote`、`citations`、`source_path`。`contradicts`/`irrelevant` 是 problem，`partial` 是 advisory；脚本核对 `claim_text` 是否出现在该引用所在的受保护章节中，并核对 `support_quote` 是否真的出现在 `source_path` 中。脚本不判断证明和语义本身，只强制这些判断有人做过、可追责、可复核。
 - **人工编码一致性**（`human-coding`）：两张人工编码表按 item id join，计算 observed agreement、Cohen's kappa 与 95% bootstrap CI；`--min-kappa` 以下退 1。模型辅助审计不能替代这一步。
 - **同族评审 override**：`cross-review run --allow-same-family` 现在必须同时提供 `--override-reason`（≥20 字符），原因写入记录；`check --strict-cross-family` 会把任何同族 override 报成 problem。真正的 gate 仍然要求不同 family 的 provider。
+
+### 6.1.3 治理、统计与新颖性 gate（v6 补记）
+
+审计指出三条剩余高严重度缺口：治理与伦理检查空白、统计设计门槛薄、新颖性判据只有
+三篇最近邻。三件事都无法由脚本判断真伪，但都可以要求使用者把判断写进结构化台账：
+
+- **novelty**（`data/novelty-audit.yaml`）：记录检索数据库（≥2）、查询、检索日期与
+  cutoff、≥3 篇最近邻、每篇的 overlap/difference、以及每篇覆盖的 claim id。每个
+  声明 claim 必须被至少一个近邻差异覆盖；禁止“没人做过 / no one has done / first to”
+  式未支撑表述。
+- **statistics**（`data/statistics-plan.yaml`）：记录 alpha、multiple_comparison、
+  每个 claim 的 endpoint/test/effect_size/target_power/sample_size/seeds/
+  stopping_rule/missing_data。多个 claim 时 correction 不能为 none；缺失功效、样本量、
+  种子或停止规则都是 problem。
+- **governance**（`data/governance.yaml`）：记录作者与贡献角色、corresponding、
+  逐作者 COI、伦理（human_subjects / IRB / informed consent / data license）、
+  AI 使用披露、查重工具与日期、双用途复核与负责任披露联系人。
+
+这三道 gate 只保证“结构化声明存在且覆盖完整”，不保证新颖性、统计正确性或治理真实性。
 
 ### 6.2 终稿确定性检查项
 

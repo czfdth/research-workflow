@@ -44,7 +44,7 @@ _SHARED_GATES: dict[str, Gate] = {
     "grounded": Gate(
         "novelty_grounded",
         "列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个无人测量的合取；"
-        "禁止没人做过式表述",
+        "novelty-audit 记录检索范围/日期与逐 claim 差异；禁止没人做过式表述",
     ),
     "data-ready": Gate(
         "provenance_recorded",
@@ -53,7 +53,8 @@ _SHARED_GATES: dict[str, Gate] = {
     "experiment-design": Gate(
         "design_frozen",
         "每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；"
-        "含种子计划、失败判据与平台画像",
+        "statistics-plan 含 alpha/多重比较、功效与样本量、种子、停止规则、"
+        "缺失数据处理与平台画像",
     ),
     "experiments-running": Gate(
         "results_recorded",
@@ -75,7 +76,9 @@ _SHARED_GATES: dict[str, Gate] = {
     ),
     "submission-check": Gate(
         "package_ready",
-        "模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功",
+        "模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；"
+        "governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、"
+        "双用途与负责任披露）",
     ),
     "submitted": Gate("venue_decided", "收到 venue 决定，评审意见归档"),
 }

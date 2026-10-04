@@ -12,7 +12,7 @@
 ## 2. [grounded]
 
 - [ ] gate `novelty_grounded`
-  - 通过条件：列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个无人测量的合取；禁止没人做过式表述
+  - 通过条件：列出三篇最近邻工作及各自盲区，说明本工作填补的是哪一个无人测量的合取；novelty-audit 记录检索范围/日期与逐 claim 差异；禁止没人做过式表述
 
 ## 3. [data-ready]
 
@@ -22,7 +22,7 @@
 ## 4. [experiment-design]
 
 - [ ] gate `design_frozen`
-  - 通过条件：每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；含种子计划、失败判据与平台画像
+  - 通过条件：每个 claim 对应一个实验；baseline 来源明确；metric 定义明确；statistics-plan 含 alpha/多重比较、功效与样本量、种子、停止规则、缺失数据处理与平台画像
 
 ## 5. [experiments-running]
 
@@ -47,7 +47,7 @@
 ## 9. [submission-check]
 
 - [ ] gate `package_ready`
-  - 通过条件：模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功
+  - 通过条件：模板、匿名、页数、元数据检查通过；复现包在干净环境实际重跑成功；governance 台账齐备（署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与负责任披露）
 
 ## 10. [submitted]
 

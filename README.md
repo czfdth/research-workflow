@@ -43,6 +43,9 @@
 | `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵，阻止 blocking 项漏过 | `scripts/cross-review.ps1` |
 | `tools/ccfa/argument_audit.py` | 审计人工证明复核与引用语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
+| `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
+| `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
+| `tools/ccfa/governance.py` | 检查署名/贡献、利益冲突、伦理与许可、AI 使用、查重、双用途与负责任披露 | `scripts/governance.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
 | `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
@@ -59,7 +62,9 @@
 | 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-90、T-60、T-30、T-21、T-14、T-7、T-3、T-1 与 gate 缺口；T-30 之后出现新实验运行会报 `t30-new-experiment` |
 | `idea`、`grounded` | `scripts/library.ps1` | 索引和检索共享文献库，支撑近邻工作与新颖性核对 |
 | `idea`、`grounded` | `scripts/memory.ps1` | 追加 idea 或 dead-end，检查是否重复 |
+| `grounded` | `scripts/novelty.ps1` | 检查检索范围/日期、至少三个近邻与逐 claim 差异 |
 | `data-ready` | `scripts/provenance.ps1` | 登记数据来源、分类、校验和并检查完整性 |
+| `experiment-design` | `scripts/statistics.ps1` | 检查功效、样本量、多重比较校正、种子、停止规则与缺失数据处理 |
 | `experiment-design`、`experiments-running` | `scripts/run-log.ps1` | 记录运行事实、指标、退出码与失败结果 |
 | `experiment-design`、`experiments-running` | `scripts/queue.ps1` | 按队列顺序运行实验，预算或重试耗尽即停止 |
 | `results-ready` | `scripts/trace-claims.ps1` | 核对 claim 数字与源数据值 |
@@ -69,6 +74,7 @@
 | `experiment-design`、`results-ready` | `scripts/human-coding.ps1` | 对人工双编码表计算一致率与 Cohen's kappa 置信区间 |
 | `writing`、`submission-check` | `scripts/latex-check.ps1` | 结构检查或编译；非默认主文件用 `--main` 指定 |
 | `submission-check`、`camera-ready` | `scripts/final-check.ps1` | 对终稿或渲染 PDF 执行确定性检查 |
+| `submission-check` | `scripts/governance.ps1` | 检查署名/贡献、COI、伦理与许可、AI 使用、查重、双用途与披露 |
 | `submission-check`、`archived` | `scripts/repro-package.ps1` | 生成复现包并实际重跑 |
 | 任意需要快照的阶段 | `scripts/research-version.ps1` | 建立版本 tag 或比较两版差异 |
 
