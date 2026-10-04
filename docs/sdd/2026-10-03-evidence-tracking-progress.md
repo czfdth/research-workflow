@@ -2046,3 +2046,29 @@ Ruling: (1) 三条 README 命令改为真实 argv（顶层参数前置、位置�
 - 修复后全量：tools **1074 tests OK**，app（offscreen）**141 tests OK**。
 - 第二轮复核（`governance-stats-novelty-review-2.json`）判 **pass**，无 blocking/important finding；保留两条低风险观察：缺 `references.bib` 时 novelty 退 2 而非结构化 problem，未跟踪的 weaknesses 文档仍保留旧治理缺口表述。
 - 边界：三道 gate 只强制结构化声明与覆盖，不保证新颖性、统计正确性或治理真实性。
+
+## 图表语义支持 gate（2026-10-04，E79）
+
+- 计划：`docs/plans/2026-10-04-figure-support-audit.md`。目标：关闭审计剩余的中等严重度缺口——「不检查图表是否支撑正文结论」：manifest 只验来源/字节/哈希，没有人对「这张图是否真的展示了正文用它所主张的结论」负责。不新增工具与 CLI：把图表语义支持做成 `argument-audit` 的第三张台账，与人工证明复核、引用语义支持并列，因为它们同属「脚本判不了语义真伪，但可以强制判断有人做过、可追责、可复核」。
+- **E79 契约**：新增 `data/figure-support.yaml`（`version: 1`，`figures:`）。`figures/manifest.yaml` 里每张具名交付图必须有一条具名人工判断：`id`、`claim_ids`、`attributed_text`、`verdict`（supports/partial/contradicts/irrelevant/not-applicable）、`reviewer`、`reviewed_at`、`note`。
+- **fail-closed 判定（problem）**：manifest 缺 name/图名重复；台账缺失；条目 id 不在 manifest；交付图无记录；证据图 claim_ids 非法；claim 未在 novelty-audit 声明；novelty claim 注册表不可信或为空；attributed_text 过短或不在 `referenced_in` 指向的正文文件里；`referenced_in` 缺失/行号非法/越界/逃逸/文件不存在；reviewer 是模型名；日期非法；verdict 非法；contradicts/irrelevant；非 supports 判定缺理由。**advisory（永不改退出码）**：`partial`、`figure-support-not-needed`、`figure-support-coverage`。
+- **边界**：脚本不看图、不判断语义本身；v1 只做文件级原文匹配，不做段落级定位。非证据图（示意图/架构图）用 `not-applicable`，必须写明 >=20 字符理由且不得绑定 claim。
+- 文档同步：README 工具表与阶段速查、设计文档 §4.2/§6.1.2/§6.3、用户介绍、审计缺点总结；`stages.py` internal-review 判据与两份 checklist 重新生成；`new-paper` 播种空台账并加断言。
+
+### 实现与评审
+
+- `8d131fd feat: audit figure-to-claim support`：首版实现 + 28 用例。
+- 第一轮独立只读评审（`deepseek-v4-pro`，`figure-support-review.json`）判 **needs-fixes**，5 条：`referenced_in` 行号不查上界（important）；manifest 重复/无名图名被静默丢弃、交付图可漏审（important）；novelty claim 注册表不可信被降级为 advisory、claim 绑定可零退出遁过（important）；`version: true`/`1.0` 与整数 1 相等（minor）；多条合同行无测试、happy-path 断言偏弱（minor）。
+- 修复 `f905414 fix: fail closed on figure-audit gaps`：行号按文件实际行数校验；缺 name/重名直接报 `figure-support-manifest-invalid`；有证据图但 claim 注册表不可用时报 problem；`_read_yaml` 要求严格 int 版本（同时收紧 proof/citation 台账，属合同收紧）；happy-path 改为 `problems == []`；补 9 条用例。
+- 判别力实测：把 `argument_audit.py` 回退到 `8d131fd` 后，越界行号、重名 manifest、缺失注册表、bool 版本四条新用例全部失败（AssertionError 原文留档于会话）。
+- 第二轮定向复核（`figure-support-review-2.json`）指出修复不完整：`_declared_claims` 仍忽略注册表版本并过滤非字符串成员，`claims: [C1, 123]` 会返回 `{C1}`，绑定仍可零退出通过。
+- 修复 `b47192f fix: reject partial novelty claim registries`：`_declared_claims` 改为「可信才返回集合，不可信返回 `None`」——缺文件/解析失败/顶层非映射/版本非整数 1/claims 非列表/任一成员非非空字符串都判不可信；调用方对 `None` 与空集合都按不可绑定处理。补 3 条用例（两条对 `f905414` 判别力失败）。
+- 第三轮定向复核（`figure-support-review-3.json`）指出同类最后一条：重复 claim id 被折叠为集合，`claims: [C1, C1]` 仍可信，而 `novelty.py` 对同一注册表报 `novelty-duplicate-claim`。
+- 修复 `6be4bb1 fix: reject duplicate novelty claim ids`：strip 后检测重复并返回 `None`；补 1 条用例（对 `b47192f` 判别力失败）。
+- 第四轮定向复核（`figure-support-review-4.json`，HEAD `6be4bb1`）判 **pass，findings 为空**：确认重复 claim 已封闭、`None`/空集合都被正确当作不可绑定、`not-applicable` 图仍豁免、proof/citation 路径未变；并记下两条不构成 false pass 的观察——空 claims 列表在 novelty 侧报 `novelty-invalid` 而本工具按不可绑定处理；novelty 台账的 search/neighbors 不合法时本工具仍信任其 claims（但 novelty 是独立 gate，论文仍过不了）。
+
+### 验证
+
+- 全量：tools **1115 tests OK**，app（offscreen）**141 tests OK**；Docker 后端与跨族评审相关模块未触碰。
+- 最终代码 HEAD 为 `6be4bb1`（其后仅本账本与文档提交）。
+- 未实现边界：本 gate 只证明「有人做过图表语义判断」，不证明判断正确，也不看图；图-结论一致性的最终判断仍靠外部专家。
