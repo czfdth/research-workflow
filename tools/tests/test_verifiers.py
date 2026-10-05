@@ -1,9 +1,11 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ccfa import verifiers
 from ccfa.verifiers import (
@@ -69,6 +71,47 @@ class ProbeEngineTests(unittest.TestCase):
         self.assertFalse(status.available)
         self.assertIsNone(status.location)
 
+    def test_wsl_probe_is_used_when_native_tools_are_absent(self):
+        engine = Engine(
+            key="agda",
+            kind="proof-assistant",
+            capability="proofs",
+            wsl_probe="agda --version",
+        )
+        seen = []
+
+        def wsl(command):
+            seen.append(command)
+            return "Agda version 2.6.3 (WSL Ubuntu-24.04)"
+
+        status = probe_engine(
+            engine,
+            which=lambda name: None,
+            module_probe=lambda name: None,
+            wsl_probe=wsl,
+        )
+
+        self.assertTrue(status.available)
+        self.assertEqual(status.location, "wsl")
+        self.assertIn("2.6.3", status.detail)
+        self.assertEqual(seen, ["agda --version"])
+
+    def test_wsl_probe_is_skipped_without_a_probe_callable(self):
+        engine = Engine(
+            key="agda",
+            kind="proof-assistant",
+            capability="proofs",
+            wsl_probe="agda --version",
+        )
+
+        status = probe_engine(
+            engine,
+            which=lambda name: None,
+            module_probe=lambda name: None,
+        )
+
+        self.assertFalse(status.available)
+
     def test_executable_is_preferred_over_module(self):
         engine = Engine(
             key="cvc5",
@@ -100,6 +143,25 @@ class ProbeEngineTests(unittest.TestCase):
         self.assertIsNone(
             verifiers._default_module_probe("no_such_module_zzz_123")
         )
+
+    @unittest.skipUnless(
+        verifiers.os.name == "nt",
+        "extensionless launchers only need special handling on Windows",
+    )
+    def test_extensionless_launcher_is_found_on_path(self):
+        with tempfile.TemporaryDirectory() as raw:
+            bin_dir = Path(raw)
+            launcher = bin_dir / "isabelle"
+            launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+            fake_path = str(bin_dir) + verifiers.os.pathsep + os.environ.get(
+                "PATH", ""
+            )
+            with mock.patch.dict(os.environ, {"PATH": fake_path}, clear=False):
+                resolved = verifiers._resolve_executable(
+                    "isabelle", lambda name: None
+                )
+
+            self.assertEqual(resolved, str(launcher))
 
 
 class InventoryTests(unittest.TestCase):

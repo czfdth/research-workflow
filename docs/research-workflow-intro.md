@@ -167,9 +167,11 @@ cross-review 等检查器。
 z3 与 cvc5 都证明其否定不可满足。两个不同实现给出同一结论，比单一引擎更有说服力，
 但仍只覆盖算术/条件核心，语义映射到继承公理这一步仍需人工复核。
 
-`scripts/verifiers.ps1` 清点本机可用的形式化引擎并对照论文声明的引擎：z3、cvc5 为
-可用/已接入，Lean、Julia 为可用，Coq、Isabelle、Agda、Why3、Sage 给出缺失状态与
-安装提示。缺失被如实报告，而不是让 `doctor` 保持“全绿”。
+`scripts/verifiers.ps1` 清点本机可用的形式化引擎并对照论文声明的引擎。截至本机实测，
+九个引擎全部可用：z3、cvc5（SMT，已接入）、Lean、Coq、Isabelle、Agda、Why3、Sage、
+Julia。其中 Agda、Why3、Sage 走 WSL（`apt` / conda-forge），检测器会运行
+`wsl -d <distro> -u root -- bash -lc ...` 确认它们真的可调用，而不只是文件存在。
+缺失时如实报告，而不是让 `doctor` 保持“全绿”。
 
 ### 5. 长任务安全
 

@@ -21,7 +21,9 @@ import argparse
 import importlib
 import importlib.util
 import json
+import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +48,7 @@ class Engine:
     capability: str
     executables: tuple[str, ...] = ()
     python_module: str | None = None
+    wsl_probe: str | None = None
     tier: str = TIER_OPTIONAL
     install_hint: str = ""
 
@@ -97,29 +100,32 @@ FORMAL_ENGINES: tuple[Engine, ...] = (
         key="isabelle",
         kind="proof-assistant",
         capability="高阶逻辑定理证明（Isabelle/HOL）",
-        executables=("isabelle",),
-        install_hint="从 https://isabelle.in.tum.de 下载（体积大，依赖 JDK）",
+        executables=("isabelle", "isabelle.exe", "Isabelle2025-2.exe"),
+        install_hint="从 https://isabelle.in.tum.de 下载 7z SFX 并用 7z 解压，再把 bin 加进 PATH",
     ),
     Engine(
         key="agda",
         kind="proof-assistant",
         capability="依赖类型定理证明（Agda）",
         executables=("agda",),
-        install_hint="cabal install Agda，或从 GitHub release 下载预编译包",
+        wsl_probe="command -v agda >/dev/null 2>&1 && agda --version",
+        install_hint="WSL: apt-get install agda agda-stdlib；Windows 需 GHC+cabal",
     ),
     Engine(
         key="why3",
         kind="verification-platform",
         capability="把 WhyML 义务分派给多个 SMT/证明助手",
         executables=("why3",),
-        install_hint="opam install why3",
+        wsl_probe="command -v why3 >/dev/null 2>&1 && why3 --version",
+        install_hint="opam install why3 或 WSL: apt-get install why3",
     ),
     Engine(
         key="sage",
         kind="CAS",
         capability="符号代数、数论与大规模精确计算（SageMath）",
         executables=("sage",),
-        install_hint="体积大；Windows 建议在 WSL 安装，或改用 SymPy / Julia+Symbolics",
+        wsl_probe="test -x /opt/sage/bin/sage && /opt/sage/bin/sage --version",
+        install_hint="WSL: conda create -p /opt/sage -c conda-forge sage（Ubuntu 24.04 已移除 apt 包）",
     ),
     Engine(
         key="julia",
@@ -164,12 +170,13 @@ def probe_engine(
     *,
     which: Callable[[str], str | None] | None = None,
     module_probe: Callable[[str], str | None] | None = None,
+    wsl_probe: Callable[[str], str | None] | None = None,
 ) -> EngineStatus:
     """Report whether *engine* is present on this host."""
     which = which or shutil.which
     module_probe = module_probe or _default_module_probe
     for executable in engine.executables:
-        found = which(executable)
+        found = _resolve_executable(executable, which)
         if found:
             return EngineStatus(
                 engine,
@@ -187,7 +194,107 @@ def probe_engine(
                 location,
                 f"module {engine.python_module} {version}",
             )
+    if engine.wsl_probe and wsl_probe is not None:
+        detail = wsl_probe(engine.wsl_probe)
+        if detail:
+            return EngineStatus(engine, True, "wsl", detail)
     return EngineStatus(engine, False, None, "未找到可执行文件或 Python 模块")
+
+
+_WSL_DISTRO: str | None = None
+
+
+def _wsl_distro() -> str | None:
+    """Return the first registered WSL distro that is not Docker's internal one."""
+    global _WSL_DISTRO
+    if _WSL_DISTRO is not None:
+        return _WSL_DISTRO or None
+    try:
+        completed = subprocess.run(
+            ["wsl", "-l", "-q"],
+            capture_output=True,
+            text=True,
+            encoding="utf-16-le",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _WSL_DISTRO = ""
+        return None
+    for line in completed.stdout.splitlines():
+        name = line.strip().strip("\x00")
+        if not name or name.lower().startswith("docker-desktop"):
+            continue
+        _WSL_DISTRO = name
+        return name
+    _WSL_DISTRO = ""
+    return None
+
+
+def default_wsl_probe(command: str) -> str | None:
+    """Run *command* inside WSL; return its first output line on success."""
+    if os.name != "nt":
+        return None
+    distro = _wsl_distro()
+    if not distro:
+        return None
+    try:
+        completed = subprocess.run(
+            [
+                "wsl",
+                "-d",
+                distro,
+                "-u",
+                "root",
+                "--",
+                "bash",
+                "-lc",
+                command,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    text = completed.stdout.strip()
+    if not text:
+        return None
+    first_line = text.splitlines()[0].strip()
+    return f"{first_line} (WSL {distro})" if first_line else None
+
+
+def _resolve_executable(
+    name: str,
+    which: Callable[[str], str | None],
+) -> str | None:
+    """Resolve *name*, including extensionless launchers on Windows.
+
+    ``shutil.which`` on Windows only matches files carrying a ``PATHEXT``
+    suffix, so it misses launchers such as Isabelle's ``bin/isabelle`` shell
+    script. Fall back to a direct PATH scan for the exact file name.
+    """
+    found = which(name)
+    if found:
+        return found
+    if os.name != "nt":
+        return None
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        candidate = Path(entry) / name
+        try:
+            if candidate.is_file():
+                return str(candidate)
+        except OSError:
+            continue
+    return None
 
 
 def inventory(
@@ -195,9 +302,15 @@ def inventory(
     *,
     which: Callable[[str], str | None] | None = None,
     module_probe: Callable[[str], str | None] | None = None,
+    wsl_probe: Callable[[str], str | None] | None = None,
 ) -> list[EngineStatus]:
     return [
-        probe_engine(engine, which=which, module_probe=module_probe)
+        probe_engine(
+            engine,
+            which=which,
+            module_probe=module_probe,
+            wsl_probe=wsl_probe,
+        )
         for engine in engines
     ]
 
@@ -334,6 +447,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="任何引擎缺失都算 problem（退 1），用于一次性装齐",
     )
+    parser.add_argument(
+        "--no-wsl",
+        action="store_true",
+        help="不探测 WSL 中安装的 Agda/Sage/Why3",
+    )
     return parser
 
 
@@ -342,10 +460,16 @@ def main(
     *,
     which: Callable[[str], str | None] | None = None,
     module_probe: Callable[[str], str | None] | None = None,
+    wsl_probe: Callable[[str], str | None] | None = None,
 ) -> int:
     args = build_parser().parse_args(argv[1:])
     wired = wired_engines(Path(args.paper_root)) if args.paper_root else set()
-    statuses = inventory(which=which, module_probe=module_probe)
+    selected_wsl = None if args.no_wsl else wsl_probe
+    statuses = inventory(
+        which=which,
+        module_probe=module_probe,
+        wsl_probe=selected_wsl,
+    )
     problems, advisories = collect_problems(
         statuses,
         wired=wired,
@@ -386,4 +510,5 @@ if __name__ == "__main__":
         _reconfigure = getattr(_stream, "reconfigure", None)
         if _reconfigure is not None:
             _reconfigure(encoding="utf-8")
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(sys.argv, wsl_probe=default_wsl_probe))
+

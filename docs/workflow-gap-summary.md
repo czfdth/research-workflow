@@ -222,12 +222,20 @@ tools/ccfa/formal_check.py   scripts/formal-check.ps1
 | z3 | SMT | 可用，已接入 | pip `z3-solver==5.1.0.0`，核心引擎 |
 | cvc5 | SMT | 可用，已接入 | pip `cvc5==1.3.1`，第二独立 SMT 引擎 |
 | lean | proof-assistant | 可用 | winget `Lean.Lean` 4.34.1 |
+| coq | proof-assistant | 可用 | winget `Coq.CoqPlatform` 2025.08.3（Rocq 9.0.1，装在 `C:\Rocq-Platform~9.0~2025.08`） |
+| isabelle | proof-assistant | 可用 | 官方 7z SFX 解压到 `F:\Isabelle2025-2`（Isabelle2025-2，自带 Cygwin/JDK） |
+| agda | proof-assistant | 可用 | WSL Ubuntu-24.04：`apt-get install agda agda-stdlib`（Agda 2.6.3） |
+| why3 | verification-platform | 可用 | WSL Ubuntu-24.04：`apt-get install why3`（Why3 1.6.0） |
+| sage | CAS | 可用 | WSL Ubuntu-24.04 + conda-forge `sage`（SageMath 10.9，装在 `/opt/sage`） |
 | julia | language | 可用 | winget `Julialang.Julia` 1.13.1 |
-| coq | proof-assistant | 缺失 | 需 opam 或官方安装包 |
-| isabelle | proof-assistant | 缺失 | 体积大，依赖 JDK |
-| agda | proof-assistant | 缺失 | cabal 或 release 包 |
-| why3 | verification-platform | 缺失 | opam |
-| sage | CAS | 缺失 | 体积大；Windows 建议 WSL |
+
+Agda、Why3、Sage 装在 WSL 里，`verifiers` / `doctor` 会通过
+`wsl -d Ubuntu-24.04 -u root -- bash -lc ...` 真正调用它们来确认可用，而不是只看文件是否
+存在。Ubuntu 发行版的 vhdx 已从 C: 迁到 `F:\wsl\Ubuntu-24.04`。
+
+安装过程记录了两处真实环境问题：Windows 上 Haskell 的 `stack` 因 TLS 证书校验失败
+（`InvalidSignature`）无法拉取 GHC，因此 Agda 改走 WSL；Ubuntu 24.04 已移除 `sagemath`
+apt 包，因此 Sage 改走 conda-forge（Miniforge + 清华镜像）。
 
 ### 3. Proposition 4 的双引擎交叉检查
 
@@ -253,7 +261,8 @@ cvc5  1.3.1  proved  prop:noncomp
 
 ### 4. 还剩什么
 
-Lean 已安装，但尚未给 Proposition 4 写正式 Lean 证明，也未接入 `formal-checks.yaml`：
-接入交互式证明助手需要同时改 CI 以提供 toolchain，且需要真正写出形式化，而不是只装一个
-二进制。Coq/Isabelle/Agda/Why3/Sage 属重量级工具链，本轮只如实报告缺失与安装提示，
-未强行安装。当前命题的独立检查需求已由 z3 + cvc5 满足。
+九个引擎现在都可用，但**只有 z3 与 cvc5 接入了 `formal-checks.yaml`**。交互式证明助手
+（Lean/Coq/Isabelle/Agda）要真正产生价值，需要先把某个命题写成该助手的形式化，再把它
+接进 `formal-checks.yaml` 和 CI（CI 还要提供对应 toolchain）。只装二进制不等于有了证明。
+当前 Proposition 4 的独立检查需求由 z3 + cvc5 满足；其余引擎就位，供后续“需要对无界结构
+归纳”的定理使用。
