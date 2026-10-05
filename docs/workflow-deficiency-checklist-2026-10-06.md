@@ -23,6 +23,7 @@ This checklist turns the live GitHub comparison into explicit work items.
 | P1-2 | Inner experiment loop is not truly automatic | Code-resolved for parameter search | `experiment_optimizer.py` runs grid/random trials under budget, parses objective metrics, tracks best/patience, writes per-trial logs and a keep/revert proposal. It does not mutate code or auto-promote claims; proposals remain human-reviewed |
 | P1-3 | Portability: no pipx/console entry | Resolved | Root `pyproject.toml` + `ccfa.dispatch:run` expose `ccfa <module> ...`; devcontainer is still optional |
 | P1-4 | Reference audit is not periodic | Code-resolved | `docs/reference-registry.yaml` pins audited commits; `reference-audit.yml` checks monthly and fails closed on upstream drift |
+| P1-5 | Automatic code mutation and new research-plan generation | Sandboxed code-resolved | `autoresearch.py` generates `research-plan-candidates.yaml` and model-authored file replacements for explicitly allowed files; mutations are applied and tested in a disposable sandbox, recorded as diffs, and never modify the source repo or claim registry |
 
 ## P2
 

@@ -508,6 +508,32 @@ class ReadinessTests(unittest.TestCase):
             "data/experiment-optimization-proposals.yaml",
         )
 
+    def test_generated_research_plans_have_a_review_checkpoint(self):
+        (self.paper_root / "data").mkdir(exist_ok=True)
+        (self.paper_root / "data" / "research-plan-candidates.yaml").write_text(
+            "version: 1\nplans:\n  - id: RP-001\n    status: proposed\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        checkpoint = report["human_review"]["checkpoints"][0]
+        self.assertEqual(checkpoint["id"], "research-plans")
+        self.assertEqual(checkpoint["ledger"], "data/research-plan-candidates.yaml")
+
+    def test_code_mutation_proposals_have_a_review_checkpoint(self):
+        (self.paper_root / "data").mkdir(exist_ok=True)
+        (self.paper_root / "data" / "code-mutation-proposals.yaml").write_text(
+            "version: 1\nproposals:\n  - id: CM-1\n    status: proposed\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        checkpoint = report["human_review"]["checkpoints"][0]
+        self.assertEqual(checkpoint["id"], "code-mutations")
+        self.assertEqual(checkpoint["ledger"], "data/code-mutation-proposals.yaml")
+
     def test_high_assurance_defaults_to_submission_assurance(self):
         self._touch_ledgers(["novelty"])
         self._write_state("workflow:\n  profile: high-assurance\n")

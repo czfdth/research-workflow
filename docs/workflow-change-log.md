@@ -520,3 +520,28 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T180709Z-90a6359694 - Add sandboxed automatic code mutation and research plan generation
+
+- timestamp: `2026-10-05T18:07:09Z`
+- status: `complete`
+- author: `codex`
+- reason: Implement the remaining autoresearch gap safely: model-generated plans and file replacements are written as candidates, code mutations run only in a disposable sandbox with tests and diffs, and neither claims nor the source repo are auto-accepted or modified.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/autoresearch.ps1`
+  - `tools/ccfa/autoresearch.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_autoresearch.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_autoresearch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+

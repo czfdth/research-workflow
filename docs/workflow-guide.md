@@ -232,6 +232,22 @@ patience: 3
 每轮写 run-log、compute ledger 和 `experiments/optimization/<id>/trials.jsonl`，
 最终只写 `data/experiment-optimization-proposals.yaml`，由人决定是否接受。
 
+自动研究方案与沙箱代码变异：
+
+```powershell
+scripts/autoresearch.ps1 plan --paper-root $paper --model qwen3:30b
+scripts/autoresearch.ps1 check-plans --paper-root $paper
+scripts/autoresearch.ps1 mutate --paper-root $paper --model qwen3:30b `
+    --objective "improve primary metric" --allow "src/**/*.py" `
+    --test-command "{python} -m unittest discover" --execute
+scripts/autoresearch.ps1 check-mutations --paper-root $paper
+```
+
+`plan` 只写 `data/research-plan-candidates.yaml`。`mutate` 要求显式 `--allow`，
+模型只能返回白名单文件的完整替换内容；工具在 disposable sandbox 中应用并运行
+测试，记录 unified diff、sandbox status 和输出，原仓库不会改变。`proposed`
+只表示沙箱通过，不表示方案或代码已被科学接受。
+
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
 ### `experiments-running`：运行并留档
