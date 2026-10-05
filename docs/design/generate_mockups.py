@@ -4,7 +4,8 @@ Design tokens are loaded straight out of ``app/ccfa_gui/theme.py`` (by file, so
 no Qt import is needed), which means the mockups cannot drift from the shipped
 stylesheet. Run:
 
-    python docs/design/generate_mockups.py
+    python docs/design/generate_mockups.py                 # light -> exports/
+    CCFA_MOCKUP_MODE=dark python docs/design/generate_mockups.py   # -> exports/dark/
 
 Figma import: drag the SVG onto the canvas. Text stays editable and every
 ``<g id=...>`` becomes a named layer.
@@ -13,6 +14,7 @@ Figma import: drag the SVG onto the canvas. Text stays editable and every
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -38,19 +40,32 @@ def _load_icon_paths():
 T = _load_theme()
 ICONS = _load_icon_paths()
 
-ACCENT = T.ACCENT
-ACCENT_HOVER = T.ACCENT_HOVER
-INK = T.INK
-MUTED = T.MUTED
-LINE = T.LINE
-CANVAS = T.CANVAS
-PANEL = T.PANEL
-PROBLEM = T.PROBLEM
-ADVISORY = T.ADVISORY
-OK = T.OK
-CHIP = "#f2f4f7"
-SELECTED = "#e8f0fe"
-FIELD_BORDER = "#d0d5dd"
+# Light and dark exports come from the same source: pick the palette up front,
+# so every default argument and literal below binds to the chosen mode.
+MODE = os.environ.get("CCFA_MOCKUP_MODE", "light").strip().casefold()
+MODE = "dark" if MODE == "dark" else "light"
+PALETTE = T.palette(MODE)
+
+ACCENT = PALETTE["accent"]
+ACCENT_HOVER = PALETTE["accent_hover"]
+INK = PALETTE["ink"]
+MUTED = PALETTE["muted"]
+LINE = PALETTE["line"]
+CANVAS = PALETTE["canvas"]
+PANEL = PALETTE["panel"]
+PROBLEM = PALETTE["problem"]
+ADVISORY = PALETTE["advisory"]
+OK = PALETTE["ok"]
+CHIP = PALETTE["chip"]
+SELECTED = PALETTE["row_selected"]
+FIELD_BORDER = PALETTE["field_border"]
+TABLE_HEADER = PALETTE["table_header"]
+GRIDLINE = PALETTE["gridline"]
+PLACEHOLDER_ICON = PALETTE["placeholder_icon"]
+ERROR_BG = PALETTE["badge_problem_bg"]
+ERROR_BORDER = PALETTE["badge_problem_border"]
+PENDING_BG = PALETTE["banner_pending_bg"]
+PENDING_BORDER = PALETTE["banner_pending_border"]
 MONO = "'JetBrains Mono', Consolas, 'Cascadia Mono', monospace"
 SANS = "'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif"
 
@@ -65,11 +80,16 @@ BUBBLES = {
         "border": LINE,
         "text": PROBLEM,
     },
-    "error": {"label": "错误", "fill": "#fef3f2", "border": "#fecdca", "text": PROBLEM},
+    "error": {
+        "label": "错误",
+        "fill": ERROR_BG,
+        "border": ERROR_BORDER,
+        "text": PROBLEM,
+    },
     "stopped": {
         "label": "已停止",
-        "fill": "#fffaeb",
-        "border": "#fedf89",
+        "fill": PENDING_BG,
+        "border": PENDING_BORDER,
         "text": ADVISORY,
     },
 }
@@ -410,7 +430,7 @@ def detail_header(
         if index == 2 and broken:
             parts.append(chip(svg, chip_x, y + 64, label))
         elif is_problem:
-            parts.append(chip(svg, chip_x, y + 64, label, fill="#fef3f2", colour=PROBLEM))
+            parts.append(chip(svg, chip_x, y + 64, label, fill=ERROR_BG, colour=PROBLEM))
         else:
             parts.append(chip(svg, chip_x, y + 64, label))
         chip_x += 12 + len(label) * 7.2 + 18
@@ -455,7 +475,7 @@ def results_table(svg: Svg, rows: list[tuple[str, str, str]], *, height: int = 5
     w = DETAIL_W
     parts = [
         svg.rect(x, y, w, height, fill=PANEL, stroke=LINE, r=6),
-        svg.rect(x + 1, y + 1, w - 2, 28, fill="#fafbfc", r=5),
+        svg.rect(x + 1, y + 1, w - 2, 28, fill=TABLE_HEADER, r=5),
         svg.line(x + 1, y + 29, x + w - 1, y + 29),
         svg.text(x + 14, y + 20, "来源", size=11, fill=MUTED, weight=600),
         svg.text(x + 90, y + 20, "代码", size=11, fill=MUTED, weight=600),
@@ -464,12 +484,12 @@ def results_table(svg: Svg, rows: list[tuple[str, str, str]], *, height: int = 5
     row_y = y + 30
     for source, code, message in rows:
         parts.append(svg.text(x + 14, row_y + 18, source, size=12))
-        colour = T.severity_color(code)
+        colour = T.severity_color(code, MODE)
         parts.append(
             svg.text(x + 90, row_y + 18, code, size=11, fill=colour, family=MONO, weight=600)
         )
         parts.append(svg.text(x + 190, row_y + 18, clip(message, 62), size=12, fill=INK))
-        parts.append(svg.line(x + 1, row_y + 28, x + w - 1, row_y + 28, stroke="#eef0f3"))
+        parts.append(svg.line(x + 1, row_y + 28, x + w - 1, row_y + 28, stroke=GRIDLINE))
         row_y += 28
     svg.layer("results-table", *parts)
 
@@ -484,7 +504,7 @@ def checkpoint_panel(
 
     x, y, w = DETAIL_X, BODY_Y, DETAIL_W
     parts = [
-        svg.rect(x, y, w, 72, fill="#fffaeb", stroke="#fedf89", r=6),
+        svg.rect(x, y, w, 72, fill=PENDING_BG, stroke=PENDING_BORDER, r=6),
         svg.text(x + 14, y + 28, banner, size=13, fill=ADVISORY, weight=600),
         svg.text(
             x + 14,
@@ -505,7 +525,7 @@ def checkpoint_panel(
                     x + 14,
                     card_y + 14,
                     "approve" if kind == "approve" else "feedback",
-                    fill=CHIP if kind == "approve" else "#fffaeb",
+                    fill=CHIP if kind == "approve" else PENDING_BG,
                     colour=INK if kind == "approve" else ADVISORY,
                 ),
                 button(svg, x + w - 104, card_y + 12, 90, "打开台账", h=26),
@@ -554,7 +574,7 @@ def screen_empty() -> str:
             center - 22,
             BODY_Y + 268,
             size=44,
-            colour="#c9c9d1",
+            colour=PLACEHOLDER_ICON,
         ),
         svg.text(
             center,
@@ -808,9 +828,10 @@ SCREENS = {
 
 
 def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = OUT_DIR if MODE == "light" else OUT_DIR / MODE
+    out_dir.mkdir(parents=True, exist_ok=True)
     for name, builder in SCREENS.items():
-        target = OUT_DIR / name
+        target = out_dir / name
         target.write_text(builder(), encoding="utf-8", newline="\n")
         print(f"wrote {target.relative_to(REPO_ROOT).as_posix()}")
     return 0

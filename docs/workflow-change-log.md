@@ -547,3 +547,26 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T175202Z-3335c7e38c - Generate the design exports in both themes: the mockup generator now takes the palette from CCFA_MOCKUP_MODE and writes exports/dark.
+
+- timestamp: `2026-10-05T17:52:02Z`
+- status: `complete`
+- author: `codex`
+- reason: 设计说明里'只有浅色一套'是最后一块没对齐的地方；深色模式已经在 app 里跑起来了，设计稿不跟上就没法用来核对。
+- files:
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/02-workbench-project.svg`
+  - `docs/design/exports/03-workbench-blocked.svg`
+  - `docs/design/exports/04-human-checkpoints.svg`
+  - `docs/design/exports/06-chat-bubbles.svg`
+  - `docs/design/exports/dark/01-workbench-empty.svg`
+  - `docs/design/exports/dark/02-workbench-project.svg`
+  - `docs/design/exports/dark/03-workbench-blocked.svg`
+  - `docs/design/exports/dark/04-human-checkpoints.svg`
+  - `docs/design/exports/dark/05-settings-dialog.svg`
+  - `docs/design/exports/dark/06-chat-bubbles.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `generator byte-stability (both modes)`
+- notes: 浅色四屏也变了：选中行改用主题里的 row_selected(#eef1ff)，与 app 对齐；同一份生成器对同一棵树是确定性的。
+

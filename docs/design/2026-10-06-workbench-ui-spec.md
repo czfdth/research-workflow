@@ -2,7 +2,8 @@
 
 日期：2026-10-06
 对应实现：`app/ccfa_gui/`（PySide6）
-设计稿：`docs/design/exports/*.svg`（Figma 可直接导入）
+设计稿：`docs/design/exports/*.svg`（浅色）与 `docs/design/exports/dark/*.svg`（深色），
+两份都由同一份生成器按色板产出，Figma 可直接导入
 生成器：`docs/design/generate_mockups.py`
 
 ## 一、这个界面要回答什么
@@ -105,7 +106,11 @@ outcome 作正文。列表项本身仍保留纯文本，脚本消费者不受影
 ## 六、怎么用这份设计
 
 ```powershell
-# 重新生成设计稿（只依赖 theme.py，不启动 Qt）
+# 重新生成浅色设计稿（只依赖 theme.py，不启动 Qt）
+& app/.venv/Scripts/python.exe docs/design/generate_mockups.py
+
+# 深色一套（写到 exports/dark/）
+$env:CCFA_MOCKUP_MODE='dark'
 & app/.venv/Scripts/python.exe docs/design/generate_mockups.py
 ```
 
@@ -131,7 +136,5 @@ Figma：`File → Import`（或直接把 `.svg` 拖进画布）。每个 `<g id=
 
 还没做：
 
-1. **设计稿导出仍只有浅色一套**，深色版 SVG 没生成（`generate_mockups.py`
-   目前用 `LIGHT`）。
-2. 动效（hover/切换过渡）没有定义。
-3. 气泡内的 Markdown 渲染（代码块、列表）仍按纯文本显示。
+1. 动效（hover/切换过渡）没有定义。
+2. 气泡内的 Markdown 渲染（代码块、列表）仍按纯文本显示。
