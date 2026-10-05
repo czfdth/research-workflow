@@ -25,6 +25,7 @@ from ccfa_core.settings import (
     load_settings,
     save_settings,
 )
+from ccfa_core.workflow import WorkflowClient
 
 
 class SettingsDialog(QDialog):
@@ -99,6 +100,16 @@ class SettingsDialog(QDialog):
         )
         python_row.addWidget(self.workflow_python_browse_button)
         form.addRow("Python 解释器", python_row)
+
+        test_row = QHBoxLayout()
+        self.workflow_test_button = QPushButton("测试工作流连接")
+        self.workflow_test_button.setObjectName("workflow_test_button")
+        self.workflow_test_button.clicked.connect(self._test_workflow)
+        test_row.addWidget(self.workflow_test_button)
+        self.workflow_status_label = QLabel("")
+        self.workflow_status_label.setObjectName("workflow_status_label")
+        test_row.addWidget(self.workflow_status_label, stretch=1)
+        form.addRow("", test_row)
 
         layout.addLayout(form)
 
@@ -185,6 +196,19 @@ class SettingsDialog(QDialog):
         )
         if selected:
             self.workflow_python_edit.setText(selected)
+
+    def _test_workflow(self) -> None:
+        """Probe the workflow using the values currently in the dialog."""
+
+        client = WorkflowClient(
+            self.workflow_root_edit.text().strip() or None,
+            python=self.workflow_python_edit.text().strip() or None,
+        )
+        ok, detail = client.probe()
+        self.workflow_status_label.setText(detail)
+        self.workflow_status_label.setStyleSheet(
+            "color: #0b6b2f;" if ok else "color: #b00020;"
+        )
 
     def _registry_path(self, configured: str) -> Path:
         path = Path(configured)
