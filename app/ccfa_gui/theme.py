@@ -81,6 +81,18 @@ def stylesheet() -> str:
         font-size: 12pt;
         font-weight: 600;
     }}
+    QLabel#appTitle {{
+        font-size: 10pt;
+        font-weight: 600;
+    }}
+    QLabel#placeholderTitle {{
+        font-size: 12pt;
+        font-weight: 600;
+        color: {INK};
+    }}
+    QLabel#placeholderHint {{
+        color: {MUTED};
+    }}
     QLabel#dialogTitle {{
         font-size: 13pt;
         font-weight: 600;
@@ -170,9 +182,13 @@ def stylesheet() -> str:
         padding: 5px 6px;
         border-radius: 4px;
     }}
+    QListWidget::item:hover {{
+        background: #f4f5f7;
+    }}
     QListWidget::item:selected {{
-        background: #e8f0fe;
+        background: #eef1ff;
         color: {INK};
+        border-left: 2px solid {ACCENT};
     }}
 
     QTableWidget {{
@@ -190,6 +206,7 @@ def stylesheet() -> str:
         font-weight: 600;
     }}
     QTableWidget::item:selected {{ background: #e8f0fe; color: {INK}; }}
+    QTableWidget::item:hover {{ background: #f8f9fb; }}
 
     QPlainTextEdit, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
         background: {PANEL};

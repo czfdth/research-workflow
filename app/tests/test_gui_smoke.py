@@ -214,6 +214,26 @@ class GuiSmokeTests(unittest.TestCase):
             self.window._open_ledger("data/proof-audit.yaml")
             fake.openUrl.assert_called_once()
 
+    def test_empty_project_list_shows_the_placeholder(self):
+        empty_root = Path(self._temporary.name) / "empty"
+        (empty_root / "papers").mkdir(parents=True)
+
+        window = MainWindow(
+            repo_root=empty_root,
+            secret_store=self.secrets,
+            settings_path=empty_root / "settings.json",
+        )
+        window.show()
+        APP.processEvents()
+        self.addCleanup(window.deleteLater)
+
+        self.assertEqual(window.project_list.count(), 0)
+        self.assertEqual(window.detail_stack.currentIndex(), 2)
+        self.assertIn("还没有论文项目", window.placeholder_title.text())
+        self.assertIn("new-paper.ps1", window.placeholder_hint.text())
+        self.assertFalse(window.placeholder_icon.pixmap().isNull())
+        window.close()
+
     def test_run_validate_on_bad_project_shows_error_row(self):
         self._select("bad")
 

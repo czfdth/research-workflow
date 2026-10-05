@@ -429,3 +429,29 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
   - `tools.tests.test_research_ledgers`
 
+## WC-20261005T173552Z-2c2b7f6189 - Polish the workbench chrome: shared vector icon set, product mark, empty state, selected-row accent, transparent icon pixmaps.
+
+- timestamp: `2026-10-05T17:35:52Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求设计好看的 UI。原来的 chrome 用 Qt 自带图标（蓝色文件夹/刷新箭头），和整套配色不搭；空列表时中栏是一张空表；图标 pixmap 用 QPixmap.fill() 默认填了白色，在主按钮上显示成白方块。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/chat_panel.py`
+  - `app/ccfa_gui/icon_paths.py`
+  - `app/ccfa_gui/icons.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/01-workbench-empty.svg`
+  - `docs/design/exports/02-workbench-project.svg`
+  - `docs/design/exports/03-workbench-blocked.svg`
+  - `docs/design/exports/04-human-checkpoints.svg`
+  - `docs/design/exports/05-settings-dialog.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `app unittest discover (209 tests)`
+  - `ruff check app`
+- notes: 实测截图确认：工具栏标记+图标、侧栏选中主色条、状态栏圆点、空白状态占位。
+

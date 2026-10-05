@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -40,7 +39,7 @@ from ccfa_core.settings import default_settings_path, load_settings
 
 from .chat_panel import ChatPanel
 from .settings_dialog import SettingsDialog
-from . import theme
+from . import icons, theme
 
 _SHARED_LIBRARY_DIR = Path(__file__).resolve().parents[2] / "library"
 
@@ -162,17 +161,25 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(8, 4, 8, 4)
         row.setSpacing(6)
 
+        self.app_mark = QLabel()
+        self.app_mark.setObjectName("appMark")
+        self.app_mark.setPixmap(icons.app_mark(22))
+        row.addWidget(self.app_mark)
+        self.app_title = QLabel("论文工作台")
+        self.app_title.setObjectName("appTitle")
+        row.addWidget(self.app_title)
+        row.addSpacing(10)
+
         self.refresh_button = QPushButton("刷新")
         self.refresh_button.setObjectName("refresh_button")
-        self.refresh_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
-        )
+        self.refresh_button.setIcon(icons.icon("refresh", colour=theme.INK))
         self.refresh_button.setToolTip("重新扫描 papers/ 下的项目")
         self.refresh_button.clicked.connect(self.refresh_projects)
         row.addWidget(self.refresh_button)
 
         self.settings_button = QPushButton("设置")
         self.settings_button.setObjectName("settings_button")
+        self.settings_button.setIcon(icons.icon("settings", colour=theme.INK))
         self.settings_button.setToolTip("provider、密钥与工作流目录")
         self.settings_button.clicked.connect(self.open_settings)
         row.addWidget(self.settings_button)
@@ -221,9 +228,7 @@ class MainWindow(QMainWindow):
         title_row.addStretch(1)
         self.open_dir_button = QPushButton()
         self.open_dir_button.setObjectName("open_dir_button")
-        self.open_dir_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
-        )
+        self.open_dir_button.setIcon(icons.icon("folder", colour=theme.MUTED))
         self.open_dir_button.setToolTip("在文件管理器中打开项目目录")
         self.open_dir_button.setFixedSize(26, 26)
         self.open_dir_button.setEnabled(False)
@@ -255,16 +260,19 @@ class MainWindow(QMainWindow):
         self.validate_button = QPushButton("运行 validate")
         self.validate_button.setObjectName("validate_button")
         self.validate_button.setProperty("role", "primary")
+        self.validate_button.setIcon(icons.icon("validate", colour="#ffffff"))
         self.validate_button.setToolTip("校验当前项目的 ccfa.yaml")
         self.validate_button.clicked.connect(self.run_validate)
         actions.addWidget(self.validate_button)
         self.milestones_button = QPushButton("运行 milestones")
         self.milestones_button.setObjectName("milestones_button")
+        self.milestones_button.setIcon(icons.icon("milestones", colour=theme.INK))
         self.milestones_button.setToolTip("检查倒排里程碑与到期项")
         self.milestones_button.clicked.connect(self.run_milestones)
         actions.addWidget(self.milestones_button)
         self.checkpoints_button = QPushButton("待人工复核")
         self.checkpoints_button.setObjectName("checkpoints_button")
+        self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=theme.INK))
         self.checkpoints_button.setToolTip(
             "读出 readiness 的人工复核队列：要判断什么、写进哪个台账"
         )
@@ -315,6 +323,27 @@ class MainWindow(QMainWindow):
         self.checkpoint_layout.addStretch(1)
         self.checkpoint_scroll.setWidget(self.checkpoint_container)
         self.detail_stack.addWidget(self.checkpoint_scroll)
+
+        self.placeholder = QWidget()
+        placeholder_layout = QVBoxLayout(self.placeholder)
+        placeholder_layout.setContentsMargins(24, 24, 24, 24)
+        placeholder_layout.setSpacing(8)
+        placeholder_layout.addStretch(1)
+        self.placeholder_icon = QLabel()
+        self.placeholder_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder_layout.addWidget(self.placeholder_icon)
+        self.placeholder_title = QLabel("")
+        self.placeholder_title.setObjectName("placeholderTitle")
+        self.placeholder_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder_layout.addWidget(self.placeholder_title)
+        self.placeholder_hint = QLabel("")
+        self.placeholder_hint.setObjectName("placeholderHint")
+        self.placeholder_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_hint.setWordWrap(True)
+        placeholder_layout.addWidget(self.placeholder_hint)
+        placeholder_layout.addStretch(1)
+        self.detail_stack.addWidget(self.placeholder)
+
         self.detail_stack.setCurrentIndex(0)
         self._checkpoint_cards: list[QFrame] = []
         column.addWidget(self.detail_stack, stretch=1)
@@ -403,6 +432,22 @@ class MainWindow(QMainWindow):
         self._set_badge(self.gate_label, "")
         self._set_badge(self.deadline_label, "")
 
+    def _show_placeholder(
+        self,
+        title: str,
+        hint: str,
+        *,
+        icon_name: str = "inbox",
+    ) -> None:
+        """Empty state for the detail pane: icon, one line, then the hint."""
+
+        self.placeholder_icon.setPixmap(
+            icons.pixmap(icon_name, colour="#c9c9d1", size=44)
+        )
+        self.placeholder_title.setText(title)
+        self.placeholder_hint.setText(hint)
+        self.detail_stack.setCurrentIndex(2)
+
     def _show_project_error(self, slug: str, error: str) -> None:
         """Show a broken project without spilling a traceback across the header."""
 
@@ -458,6 +503,11 @@ class MainWindow(QMainWindow):
         else:
             self._clear_stage_panel()
             self._set_results([])
+            self._show_placeholder(
+                "还没有论文项目",
+                "在仓库根运行 scripts/new-paper.ps1 my-paper --venue NeurIPS "
+                "--year 2027 --mode conference 创建第一篇，然后点「刷新」。",
+            )
             self.chat_panel.set_project(None)
 
     def _on_project_selected(self, _current, _previous) -> None:
@@ -467,6 +517,10 @@ class MainWindow(QMainWindow):
         self._clear_checkpoint_cards()
         if ref is None:
             self._clear_stage_panel()
+            self._show_placeholder(
+                "未选择项目",
+                "从左侧选择一个项目查看阶段、门禁与检查结果。",
+            )
             self.chat_panel.set_project(None)
             return
         self.open_dir_button.setEnabled(True)
@@ -696,13 +750,13 @@ class MainWindow(QMainWindow):
         try:
             self._secret_store.get("__ccfa_status_probe__")
         except SecretStoreUnavailable:
-            self.credential_label.setText("凭据不可用")
+            self.credential_label.setText("● 凭据不可用")
             self.credential_label.setToolTip(
                 "系统密钥环不可访问，API key 无法保存或读取"
             )
             self.credential_label.setStyleSheet(f"color: {theme.PROBLEM};")
         else:
-            self.credential_label.setText("凭据可用")
+            self.credential_label.setText("● 凭据可用")
             self.credential_label.setToolTip("系统密钥环可读写")
             self.credential_label.setStyleSheet(f"color: {theme.OK};")
         try:
