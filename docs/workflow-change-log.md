@@ -308,3 +308,15 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_readiness`
 
+## WC-20261005T171205Z-d13b046223 - Ignore generated readiness reports when checking git dirtiness
+
+- timestamp: `2026-10-05T17:12:05Z`
+- status: `complete`
+- author: `codex`
+- reason: A readiness run writes its own JSON/Markdown/error files under reviews/, which made the same report claim the paper tree was dirty. The generated report files are now excluded from the dirtiness calculation.
+- files:
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_readiness`
+

@@ -262,15 +262,30 @@ def _git_summary(paper_root: Path) -> GitSummary:
     status = _git(["status", "--porcelain"], paper_root)
     remotes = _git(["remote"], paper_root)
     workflows_present = (paper_root / ".github" / "workflows").is_dir()
+    records = [
+        line
+        for line in status.stdout.splitlines()
+        if line.strip() and not _is_generated_readiness_record(line)
+    ]
     return GitSummary(
         True,
-        bool(status.stdout.strip()) if status.returncode == 0 else None,
+        bool(records) if status.returncode == 0 else None,
         commit.stdout.strip() if commit.returncode == 0 else None,
         [line for line in remotes.stdout.splitlines() if line.strip()]
         if remotes.returncode == 0
         else [],
         workflows_present,
         None,
+    )
+
+
+def _is_generated_readiness_record(line: str) -> bool:
+    """Ignore the report files this command writes into ``reviews/``."""
+    path = line[3:].strip().strip('"').replace("\\", "/")
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1]
+    return path.startswith("reviews/readiness") and path.endswith(
+        (".json", ".md", ".err.txt")
     )
 
 

@@ -481,6 +481,22 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(report["git"]["remotes"], ["origin"])
         self.assertTrue(report["git"]["workflows_present"])
 
+    def test_generated_readiness_reports_do_not_mark_tree_dirty(self):
+        subprocess.run(["git", "init"], cwd=self.paper_root, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=self.paper_root, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=self.paper_root, check=True)
+        reviews = self.paper_root / "reviews"
+        reviews.mkdir()
+        (reviews / ".gitkeep").write_text("", encoding="utf-8")
+        subprocess.run(["git", "add", "ccfa.yaml", "reviews/.gitkeep"], cwd=self.paper_root, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=self.paper_root, check=True, capture_output=True)
+        (reviews / "readiness.md").write_text("# report\n", encoding="utf-8")
+        (reviews / "readiness.json").write_text("{}\n", encoding="utf-8")
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertFalse(report["git"]["dirty"])
+
     def test_standard_requires_git_remote_and_workflows(self):
         self._touch_ledgers(
             [
