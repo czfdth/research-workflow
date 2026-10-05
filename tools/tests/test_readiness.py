@@ -450,6 +450,25 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(human["pending"], ["proof"])
         self.assertEqual(human["checkpoints"][0]["id"], "proof")
 
+    def test_cross_review_failure_has_an_actionable_checkpoint(self):
+        human = readiness._human_review_status(
+            self.paper_root,
+            "standard",
+            [
+                {
+                    "name": "cross-review",
+                    "problems": [
+                        {"code": "review-provider-config-drift"},
+                        {"code": "review-blocking"},
+                    ]
+                }
+            ],
+        )
+
+        self.assertEqual(human["pending"], ["cross-review"])
+        self.assertEqual(human["checkpoints"][0]["id"], "cross-review")
+        self.assertIn("跨族", human["checkpoints"][0]["question"])
+
     def test_high_assurance_defaults_to_submission_assurance(self):
         self._touch_ledgers(["novelty"])
         self._write_state("workflow:\n  profile: high-assurance\n")

@@ -166,6 +166,18 @@ HUMAN_CHECKPOINT_SPECS = {
         "question": "第二位人类编码者完成盲法编码了吗？一致率达到预设门槛了吗？",
         "answer_with": "写 coders、agreement、kappa 与分歧裁决",
     },
+    "cross-review": {
+        "type": "approve",
+        "stage": "internal-review",
+        "question": (
+            "是否有真实跨族、gate-capable 的独立评审，"
+            "且确定性 gate 不再否决模型 pass？"
+        ),
+        "answer_with": (
+            "配置可验证的跨族 provider 后重跑评审，"
+            "或完成外部人类评审并写 reviewer、结论与证据"
+        ),
+    },
 }
 
 
@@ -702,6 +714,16 @@ def _human_review_status(
             pending.append("figure-support")
         if any("human-coding" in code for code in codes):
             pending.append("human-coding")
+    review_codes = {
+        str(problem.get("code", ""))
+        for result in (gate_results or [])
+        if result.get("name") == "cross-review"
+        for problem in result.get("problems", [])
+        if isinstance(problem, dict)
+    }
+    if review_codes:
+        pending.append("cross-review")
+    pending = list(dict.fromkeys(pending))
     if not pending:
         status = "human-attested" if profile == "high-assurance" else "not-required"
         return {"status": status, "pending": [], "checkpoints": []}

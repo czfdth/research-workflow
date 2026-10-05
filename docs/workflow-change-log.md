@@ -350,3 +350,15 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_citation_calibration`
 
+## WC-20261005T171719Z-462141832f - Turn cross-review failures into an actionable checkpoint
+
+- timestamp: `2026-10-05T17:17:19Z`
+- status: `complete`
+- author: `codex`
+- reason: Readiness reported cross-review as a bare gate failure; it now names the required action: configure a verifiable gate-capable cross-family provider or complete an external human review with evidence.
+- files:
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_readiness`
+
