@@ -32,6 +32,8 @@ STATUS_COLORS = {
     "错误": PROBLEM,
     "advisory": ADVISORY,
     "警告": ADVISORY,
+    "approve": ACCENT,
+    "feedback": ADVISORY,
     "ok": OK,
     "OK": OK,
 }
@@ -117,6 +119,25 @@ def stylesheet() -> str:
     QLabel#mono {{ font-family: {MONO}; }}
     QLabel#projectNote {{ color: {MUTED}; }}
     QLabel#statusSeparator {{ color: #d0d5dd; }}
+    QLabel#checkpoint_banner {{
+        border-radius: 6px;
+        padding: 8px 12px;
+    }}
+    QLabel#checkpoint_banner[state="pending"] {{
+        background: #fffaeb;
+        border: 1px solid #fedf89;
+        color: {ADVISORY};
+    }}
+    QLabel#checkpoint_banner[state="ok"] {{
+        background: #ecfdf3;
+        border: 1px solid #a6f4c5;
+        color: {OK};
+    }}
+    QLabel#checkpoint_banner[state="muted"] {{
+        background: #f2f4f7;
+        border: 1px solid {LINE};
+        color: {MUTED};
+    }}
 
     QListWidget {{
         background: {PANEL};

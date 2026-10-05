@@ -1004,6 +1004,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--out",
         help="可选 Markdown 输出路径；相对路径按 paper-root 解析",
     )
+    parser.add_argument(
+        "--checkpoints-only",
+        action="store_true",
+        help="只输出人工复核 checkpoint，不执行 gate（给桌面工作台用）",
+    )
     return parser
 
 
@@ -1012,6 +1017,21 @@ def main(argv: list[str]) -> int:
     try:
         today = date.fromisoformat(args.today) if args.today else None
         paper_root = Path(args.paper_root)
+        if args.checkpoints_only:
+            # The workbench needs the human queue, not 25 gate subprocesses.
+            state = _load_state(paper_root)
+            selected_profile = _profile(state, args.profile)
+            assurance = _assurance(state)
+            audit_profile = _audit_profile(selected_profile, assurance)
+            payload = {
+                "paper_root": str(paper_root),
+                "profile": selected_profile,
+                "assurance": assurance or _default_assurance(selected_profile),
+                "audit_profile": audit_profile,
+                "human_review": _human_review_status(paper_root, audit_profile),
+            }
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            return 0
         report = build_report(paper_root, profile=args.profile, today=today)
         if args.out:
             out = Path(args.out)

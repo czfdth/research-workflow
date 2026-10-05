@@ -95,7 +95,9 @@ Figma：`File → Import`（或直接把 `.svg` 拖进画布）。每个 `<g id=
 
 ## 七、还没做的
 
-1. `04` 的 checkpoint 面板目前只是设计，`app/ccfa_gui` 还没有读取
-   `readiness.human_review.checkpoints`——这是最值得先实现的一屏。
+1. `04` 已经落地为「待人工复核」按钮：点它走
+   `ccfa.readiness --checkpoints-only`，结果表按 `checkpoint / type / 问题 + 台账`
+   列出，上方出现状态横幅。**仍是表格形态**，设计里的卡片形态（每条一个问题卡）
+   还没做。
 2. 深色模式、动效、窗口小于 1000px 的折叠策略都没覆盖。
 3. 对话面板的消息气泡样式（多轮、工具调用、错误态）还没出稿。

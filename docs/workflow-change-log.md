@@ -362,3 +362,25 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_readiness`
 
+## WC-20261005T171750Z-7feb7aa905 - Wire the human-checkpoint queue into the workbench: readiness gains --checkpoints-only and the app gets a 待人工复核 button with a status banner.
+
+- timestamp: `2026-10-05T17:17:50Z`
+- status: `complete`
+- author: `codex`
+- reason: 设计稿 04-human-checkpoints 只停留在模拟图。工作台要能回答'现在有哪些事只有人能决定、答案写哪里'，但完整 readiness 会跑 20+ 个 gate，不适合点一下就等。
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/checks.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_checks.py`
+  - `app/tests/test_gui_smoke.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `app unittest discover (207 tests)`
+  - `ruff check app tools`
+  - `tools.tests.test_readiness (47 tests)`
+- notes: 实测：真实 app 点按钮走 ccfa.readiness --checkpoints-only，表格列出 4 条 checkpoint，横幅显示待人工复核。
+

@@ -73,6 +73,21 @@ cd app
 & .venv/Scripts/python.exe -m ccfa_gui.main
 ```
 
+## 主界面
+
+三栏同时可见：左栏 `papers/` 下的项目（坏项目显示 `▲` 与一行原因），中栏当前项目的
+阶段/门禁/截止徽章与检查结果，右栏对话。中栏三个按钮都走工作流自己的 CLI：
+
+| 按钮 | 调用的工作流命令 | 结果 |
+| --- | --- | --- |
+| 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |
+| 运行 milestones | `ccfa.milestones due` | 倒排截止与 gate 缺口 |
+| 待人工复核 | `ccfa.readiness --checkpoints-only` | 人工复核队列：要判断什么、写进哪个台账 |
+
+`--checkpoints-only` 只解析人工台账、不跑 gate，所以点它是秒级返回；结果表上方会
+出现状态横幅（待人工/已完成/不要求）。设计稿见仓库
+`docs/design/exports/04-human-checkpoints.svg`。
+
 ## 红线
 
 - `ccfa_core` 不 import PySide6（E58）。

@@ -26,7 +26,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ccfa_core.checks import CheckError, run_milestones_due, run_validate
+from ccfa_core.checks import (
+    CheckError,
+    run_milestones_due,
+    run_validate,
+)
+from ccfa_core.checks import run_checkpoints as load_checkpoints
 from ccfa_core.projects import ProjectError, find_projects, load_project
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from ccfa_core.settings import default_settings_path, load_settings
@@ -256,12 +261,25 @@ class MainWindow(QMainWindow):
         self.milestones_button.setToolTip("检查倒排里程碑与到期项")
         self.milestones_button.clicked.connect(self.run_milestones)
         actions.addWidget(self.milestones_button)
+        self.checkpoints_button = QPushButton("待人工复核")
+        self.checkpoints_button.setObjectName("checkpoints_button")
+        self.checkpoints_button.setToolTip(
+            "读出 readiness 的人工复核队列：要判断什么、写进哪个台账"
+        )
+        self.checkpoints_button.clicked.connect(self.run_checkpoints)
+        actions.addWidget(self.checkpoints_button)
         actions.addStretch(1)
         self.results_summary = QLabel("尚未运行检查")
         self.results_summary.setObjectName("results_summary")
         self.results_summary.setProperty("role", "hint")
         actions.addWidget(self.results_summary)
         column.addLayout(actions)
+
+        self.checkpoint_banner = QLabel("")
+        self.checkpoint_banner.setObjectName("checkpoint_banner")
+        self.checkpoint_banner.setWordWrap(True)
+        self.checkpoint_banner.setVisible(False)
+        column.addWidget(self.checkpoint_banner)
 
         self.results_table = QTableWidget(0, 3)
         self.results_table.setObjectName("results_table")
@@ -422,6 +440,7 @@ class MainWindow(QMainWindow):
     def _on_project_selected(self, _current, _previous) -> None:
         ref = self._selected_ref()
         self._set_results([])
+        self._hide_checkpoint_banner()
         if ref is None:
             self._clear_stage_panel()
             self.chat_panel.set_project(None)
@@ -458,6 +477,7 @@ class MainWindow(QMainWindow):
         return ref.error
 
     def run_validate(self) -> None:
+        self._hide_checkpoint_banner()
         error = self._selected_project_error()
         if error:
             self._set_results([("validate", "错误", error)])
@@ -474,6 +494,7 @@ class MainWindow(QMainWindow):
         self._set_results(rows)
 
     def run_milestones(self) -> None:
+        self._hide_checkpoint_banner()
         error = self._selected_project_error()
         if error:
             self._set_results([("milestones", "错误", error)])
@@ -504,6 +525,68 @@ class MainWindow(QMainWindow):
             else:
                 rows.append(("milestones", "problem", str(problem)))
         self._set_results(rows)
+
+    def _hide_checkpoint_banner(self) -> None:
+        self.checkpoint_banner.setVisible(False)
+
+    def _show_checkpoint_banner(self, status: str, count: int) -> None:
+        if status == "pending-human-review":
+            state = "pending"
+            text = (
+                f"待人工复核：{count} 项。脚本只能证明它还没被回答，不能替你回答。"
+            )
+        elif status == "human-attested":
+            state = "ok"
+            text = "人工复核账本已完成，没有待办。"
+        else:
+            state = "muted"
+            text = f"当前 profile 不要求人工复核（status={status}）。"
+        self.checkpoint_banner.setText(text)
+        self.checkpoint_banner.setProperty("state", state)
+        self.checkpoint_banner.style().unpolish(self.checkpoint_banner)
+        self.checkpoint_banner.style().polish(self.checkpoint_banner)
+        self.checkpoint_banner.setVisible(True)
+
+    def run_checkpoints(self) -> None:
+        ref = self._selected_ref()
+        if ref is None or ref.error:
+            self._hide_checkpoint_banner()
+            self._set_results([("readiness", "错误", "先选择一个可读取的项目")])
+            return
+        try:
+            result = load_checkpoints(ref.dir)
+        except CheckError as exc:
+            self._hide_checkpoint_banner()
+            self._set_results([("readiness", "错误", str(exc))])
+            return
+        human = (result.report or {}).get("human_review")
+        human = human if isinstance(human, dict) else {}
+        rows = [
+            (
+                "checkpoint",
+                str(item.get("type") or "review"),
+                " ".join(
+                    part
+                    for part in (
+                        str(item.get("question") or item.get("id") or ""),
+                        f"[{item.get('ledger')}]" if item.get("ledger") else "",
+                        str(item.get("answer_with") or ""),
+                    )
+                    if part
+                ),
+            )
+            for item in human.get("checkpoints", [])
+            if isinstance(item, dict)
+        ]
+        if rows:
+            self._set_results(rows)
+            self.results_summary.setText(f"{len(rows)} 项待人工")
+            self.results_summary.setStyleSheet(f"color: {theme.PROBLEM};")
+        else:
+            self._set_results(
+                [("readiness", "OK", "当前没有待人工复核项")]
+            )
+        self._show_checkpoint_banner(str(human.get("status", "unknown")), len(rows))
 
     def _update_credential_status(self) -> None:
         try:

@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -10,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QLineEdit
 
+from ccfa_core.checks import CheckResult
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.settings_dialog import SettingsDialog
@@ -114,6 +116,7 @@ class GuiSmokeTests(unittest.TestCase):
             self.window.validate_button,
             self.window.milestones_button,
             self.window.settings_button,
+            self.window.checkpoints_button,
         ):
             with self.subTest(widget=type(widget).__name__):
                 self.assertTrue(widget.isVisible())
@@ -154,6 +157,42 @@ class GuiSmokeTests(unittest.TestCase):
         APP.processEvents()
 
         self.assertGreater(self.window.results_table.rowCount(), 0)
+
+    def test_checkpoints_button_shows_the_human_queue(self):
+        self._select("good")
+        payload = {
+            "human_review": {
+                "status": "pending-human-review",
+                "checkpoints": [
+                    {
+                        "id": "proof",
+                        "type": "approve",
+                        "question": "主证明逐行成立吗？",
+                        "answer_with": "写 reviewer 与复核证据路径",
+                        "ledger": "data/proof-audit.yaml",
+                    }
+                ],
+            }
+        }
+
+        with mock.patch(
+            "ccfa_gui.window.load_checkpoints",
+            return_value=CheckResult(
+                name="checkpoints",
+                ok=False,
+                problems=(),
+                report=payload,
+            ),
+        ):
+            self.window.checkpoints_button.click()
+            APP.processEvents()
+
+        self.assertEqual(self.window.results_table.rowCount(), 1)
+        message = self.window.results_table.item(0, 2).text()
+        self.assertIn("主证明逐行成立吗？", message)
+        self.assertIn("data/proof-audit.yaml", message)
+        self.assertTrue(self.window.checkpoint_banner.isVisible())
+        self.assertIn("待人工复核", self.window.checkpoint_banner.text())
 
     def test_run_validate_on_bad_project_shows_error_row(self):
         self._select("bad")
