@@ -139,27 +139,25 @@ HUMAN_CHECKPOINT_SPECS = {
         "type": "approve",
         "stage": "internal-review",
         "question": "主证明逐行成立吗？每一步推理与所依赖的假设是否都站得住？",
-        "answer_with": "在 data/proof-audit.yaml 写 reviewer、结论与复核证据路径",
+        "answer_with": "写 reviewer、结论与复核证据路径",
     },
     "citation-support": {
         "type": "approve",
         "stage": "writing",
         "question": "关键引用是否真的支撑它所在的那句论断，而不只是存在？",
-        "answer_with": "在 data/citation-support.yaml 逐条写 supports 与判定依据",
+        "answer_with": "逐条写 supports 与判定依据",
     },
     "figure-support": {
         "type": "approve",
         "stage": "writing",
         "question": "每张图和表是否真的展示了正文声称的效应？",
-        "answer_with": "在 data/figure-support.yaml 逐图写 figure 与判定依据",
+        "answer_with": "逐图写 figure 与判定依据",
     },
     "human-coding": {
         "type": "feedback",
         "stage": "results-ready",
         "question": "第二位人类编码者完成盲法编码了吗？一致率达到预设门槛了吗？",
-        "answer_with": (
-            "在 data/human-coding-report.json 写 coders、agreement、kappa 与分歧裁决"
-        ),
+        "answer_with": "写 coders、agreement、kappa 与分歧裁决",
     },
 }
 

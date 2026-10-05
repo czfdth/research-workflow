@@ -144,7 +144,7 @@ idea-discovery → novelty-check → research-refine(research contract)
       "stage": "internal-review",
       "status": "pending",
       "question": "主证明逐行成立吗？每一步推理与所依赖的假设是否都站得住？",
-      "answer_with": "在 data/proof-audit.yaml 写 reviewer、结论与复核证据路径",
+      "answer_with": "写 reviewer、结论与复核证据路径",
       "ledger": "data/proof-audit.yaml"
     }
   ]
