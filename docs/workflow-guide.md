@@ -455,6 +455,13 @@ scripts/change-log.ps1 render
 `docs/workflow-change-log.jsonl` 是 append-only source of truth；
 `docs/workflow-change-log.md` 是生成物。不要删改旧日志来绕过检查。
 
+工作树漂移审计：
+
+```powershell
+scripts/worktree-audit.ps1 --base origin/master --format markdown
+scripts/worktree-audit.ps1 --base origin/master --strict
+```
+
 修改工具后只运行新增、修改模块及直接消费者：
 
 ```powershell

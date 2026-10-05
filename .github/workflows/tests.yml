@@ -76,6 +76,7 @@ jobs:
           $env:PYTHONPATH = "tools"
           tools/.venv/Scripts/python.exe -m py_compile `
             tools/ccfa/ara_compile.py `
+            tools/ccfa/ara_extract.py `
             tools/ccfa/artifact_badge.py `
             tools/ccfa/artifact_store.py `
             tools/ccfa/change_log.py `
@@ -104,7 +105,8 @@ jobs:
             tools/ccfa/talk_pipeline.py `
             tools/ccfa/test_impact.py `
             tools/ccfa/venue_fixtures.py `
-            tools/ccfa/verifiers.py
+            tools/ccfa/verifiers.py `
+            tools/ccfa/worktree_audit.py
 
       - name: Check workflow change log
         shell: pwsh

@@ -88,3 +88,43 @@ rewrite historical entries.
   - `tools.tests.test_readiness (33 tests)`
 - notes: worktree 缺 tools/.venv，test_scripts 在本目录跑不动；已在主仓库验证 tests.test_scripts 116 项通过。
 
+## WC-20261005T164518Z-207ae33734 - Add portable CLI entry, deterministic ARA extraction, and worktree drift audit.
+
+- timestamp: `2026-10-05T16:45:18Z`
+- status: `complete`
+- author: `codex`
+- reason: Address the portability, automatic semantic-extraction, and uncommitted-worktree drift gaps identified in the live comparison.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-guide.md`
+  - `pyproject.toml`
+  - `scripts/ara-extract.ps1`
+  - `scripts/worktree-audit.ps1`
+  - `tools/ccfa/ara_extract.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/worktree_audit.py`
+  - `tools/tests/test_ara_extract.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_packaging.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_worktree_audit.py`
+- tests:
+  - `tools.tests.test_ara_extract`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_packaging`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_worktree_audit`
+
+## WC-20261005T164728Z-0a75308587 - Publish fake-pass detection notes and the P0/P1/P2 deficiency checklist.
+
+- timestamp: `2026-10-05T16:47:28Z`
+- status: `complete`
+- author: `codex`
+- reason: Keep the evidence-first moat visible and separate code-resolved items from human or external blockers.
+- files:
+  - `docs/fake-pass-detection.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+- tests:
+  - `tools.tests.test_change_log`
+
