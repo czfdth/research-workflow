@@ -327,9 +327,9 @@ class DoctorTests(unittest.TestCase):
 
     def test_unreachable_service_is_promoted_by_strict_mode(self):
         service = Service(
-            key="workbuddy",
-            url="http://127.0.0.1:8787/health",
-            capability="WorkBuddy converter",
+            key="example-service",
+            url="http://127.0.0.1:9/health",
+            capability="Example local service",
         )
 
         problems, advisories, statuses = check_environment(
@@ -419,7 +419,7 @@ class DoctorTests(unittest.TestCase):
             "http://127.0.0.1:15721/v1/models",
         )
         self.assertEqual(by_key["provider"].expected_model, "gpt-5.6")
-        self.assertIn("workbuddy", by_key)
+        self.assertEqual(set(by_key), {"provider", "zotero"})
         self.assertIn("zotero", by_key)
 
     def test_invalid_codex_config_still_discovers_fixed_local_services(self):
@@ -430,7 +430,7 @@ class DoctorTests(unittest.TestCase):
 
         self.assertEqual(
             {service.key for service in services},
-            {"workbuddy", "zotero"},
+            {"zotero"},
         )
 
     def test_default_path_check_rejects_an_empty_interpreter(self):

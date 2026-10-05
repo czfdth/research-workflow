@@ -106,11 +106,6 @@ _HTTP_TIMEOUT_S = 5
 
 _LOCAL_SERVICES = (
     Service(
-        "workbuddy",
-        "http://127.0.0.1:8787/health",
-        "WorkBuddy converter",
-    ),
-    Service(
         "zotero",
         "http://127.0.0.1:23119/api/users/0/items?limit=1",
         "Zotero Desktop API",
@@ -414,7 +409,7 @@ def main(
     parser.add_argument(
         "--skip-services",
         action="store_true",
-        help="只检查本地安装，不探测 provider/WorkBuddy/Zotero",
+        help="只检查本地安装，不探测 provider/Zotero",
     )
     parser.add_argument(
         "--codex-config",
