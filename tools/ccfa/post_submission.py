@@ -114,9 +114,23 @@ def _figure_ids(paper_root: Path) -> set[str]:
     return ids
 
 
-def _load_payload(paper_root: Path) -> tuple[dict | None, list[Problem], list[Problem]]:
+def _load_payload(
+    paper_root: Path,
+    *,
+    require_configured: bool = False,
+) -> tuple[dict | None, list[Problem], list[Problem]]:
     path = paper_root / POST_SUBMISSION
     if not path.is_file():
+        if require_configured:
+            return None, [
+                problem(
+                    "post-submission-missing",
+                    path,
+                    None,
+                    "已进入 tail stage，但没有 post-submission 台账；"
+                    "缺少它会让 rebuttal / resubmit / talk 的 gate 静默失效",
+                )
+            ], []
         return None, [], [
             problem(
                 "post-submission-not-configured",
@@ -572,9 +586,16 @@ def _validate_talk(
     return problems
 
 
-def check(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
+def check(
+    paper_root: Path,
+    *,
+    require_configured: bool = False,
+) -> tuple[list[Problem], list[Problem]]:
     paper_root = Path(paper_root).resolve()
-    payload, problems, advisories = _load_payload(paper_root)
+    payload, problems, advisories = _load_payload(
+        paper_root,
+        require_configured=require_configured,
+    )
     if payload is None:
         return problems, advisories
     path = paper_root / POST_SUBMISSION

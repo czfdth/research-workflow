@@ -49,7 +49,7 @@ from ccfa import (
 )
 from ccfa.cli import Problem, ToolEnvironmentError, save_text_atomically, tool_error
 from ccfa.milestones import due_report, stage_report
-from ccfa.stages import gate_for
+from ccfa.stages import SHARED_STAGES, gate_for
 from ccfa.texscan import iter_tex_files
 from ccfa.validate import validate_yaml
 
@@ -510,10 +510,36 @@ def _formal_check_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
     return problems, advisories
 
 
-def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
+# Once a paper leaves the shared stages it owes a post-submission ledger, and
+# later stages owe a resubmit plan or a talk plan. These were previously
+# registered only when the artifact already existed, so a missing tail file
+# silently deleted its own gate.
+RESUBMIT_STAGES = frozenset({"resubmitted", "accepted", "archived"})
+TALK_STAGES = frozenset({"camera-ready", "accepted", "archived"})
+
+
+def _tail_requirements(state_stage: object) -> dict[str, bool]:
+    name = state_stage.get("current") if isinstance(state_stage, dict) else None
+    if not isinstance(name, str) or name in SHARED_STAGES:
+        return {}
+    required = {"post-submission": True}
+    if name in RESUBMIT_STAGES:
+        required["resubmit-pipeline"] = True
+    if name in TALK_STAGES:
+        required["talk-pipeline"] = True
+    return required
+
+
+def _gate_specs(
+    paper_root: Path,
+    profile: str,
+    *,
+    state_stage: object = None,
+) -> list[tuple[str, object]]:
     specs: dict[str, object] = {
         "schema-valid": lambda: _schema_gate(paper_root),
     }
+    tail = _tail_requirements(state_stage)
     runners = {
         "argument-audit": lambda: argument_audit.check(paper_root),
         "governance": lambda: governance.check(paper_root),
@@ -545,8 +571,13 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
     if profile == "minimal":
         return list(specs.items())
 
-    if (paper_root / EVIDENCE_LEDGER_PATHS["post-submission"]).is_file():
-        specs["post-submission"] = lambda: post_submission.check(paper_root)
+    if tail.get("post-submission") or (
+        paper_root / EVIDENCE_LEDGER_PATHS["post-submission"]
+    ).is_file():
+        specs["post-submission"] = lambda: post_submission.check(
+            paper_root,
+            require_configured=bool(tail.get("post-submission")),
+        )
     if (paper_root / "experiments" / "log" / "run-ledger.jsonl").is_file():
         specs["run-ledger"] = lambda: run_ledger.check_ledger(paper_root)
     if (paper_root / "reviews" / "review-loop-state.json").is_file():
@@ -565,10 +596,20 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         specs["artifact-store"] = lambda: artifact_store.verify_store(paper_root)
     if (paper_root / "data" / "formal-checks.yaml").is_file():
         specs["formal-check"] = lambda: _formal_check_gate(paper_root)
-    if (paper_root / "data" / "resubmit-plan.yaml").is_file():
-        specs["resubmit-pipeline"] = lambda: resubmit_pipeline.check(paper_root)
-    if (paper_root / "data" / "talk-plan.yaml").is_file():
-        specs["talk-pipeline"] = lambda: talk_pipeline.check(paper_root)
+    if tail.get("resubmit-pipeline") or (
+        paper_root / "data" / "resubmit-plan.yaml"
+    ).is_file():
+        specs["resubmit-pipeline"] = lambda: resubmit_pipeline.check(
+            paper_root,
+            require_configured=bool(tail.get("resubmit-pipeline")),
+        )
+    if tail.get("talk-pipeline") or (
+        paper_root / "data" / "talk-plan.yaml"
+    ).is_file():
+        specs["talk-pipeline"] = lambda: talk_pipeline.check(
+            paper_root,
+            require_configured=bool(tail.get("talk-pipeline")),
+        )
     if (
         paper_root / "ccfa-workfiles" / "passport" / "run-ledger.yaml"
     ).is_file():
@@ -637,10 +678,19 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
     return list(specs.items())
 
 
-def _run_gates(paper_root: Path, profile: str) -> list[dict]:
+def _run_gates(
+    paper_root: Path,
+    profile: str,
+    *,
+    state_stage: object = None,
+) -> list[dict]:
     return [
         _run_gate(name, runner)
-        for name, runner in _gate_specs(paper_root, profile)
+        for name, runner in _gate_specs(
+            paper_root,
+            profile,
+            state_stage=state_stage,
+        )
     ]
 
 
@@ -989,7 +1039,11 @@ def build_report(
     ledgers = _ledger_status(paper_root, audit_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
-    gate_results = _run_gates(paper_root, audit_profile)
+    gate_results = _run_gates(
+        paper_root,
+        audit_profile,
+        state_stage=stage,
+    )
     human_review = _human_review_status(paper_root, audit_profile, gate_results)
     executed_gates = [result["name"] for result in gate_results]
     drills, drill_problems = _load_gate_drills(paper_root)
