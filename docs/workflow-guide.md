@@ -171,6 +171,9 @@ scripts/claim-extract.ps1 check --paper-root $paper `
 `polarity: null` 且已 supported 的 claim 还必须绑定至少一个 `experiment`——
 「没有差异」只能由真的对照实验支撑，citation 或 figure 不算。不写 `polarity`
 等于丢掉了方向信息，读者无法判断这条证据到底能不能支撑那句话。
+`polarity: effect` 的实证 claim 还被要求引用一个对照运行
+（`claim-registry-control-run-missing`）和一次 held-out 评估
+（`claim-registry-held-out-missing`），两条都在 `experiments-running` 一节展开。
 
 ## 5. 阶段操作表
 
@@ -358,6 +361,17 @@ role（`run-log check` 报 `run-log-role-on-build`），构建运行不在任何
 claim registry 里 `polarity: effect` 且 supported 的实证 claim 必须引用至少一个
 `negative-control` 或 `ablation` 运行，否则报 `claim-registry-control-run-missing`：
 只有 treatment 结果时，混淆因素没有被排除。
+
+`data/held-out-plan.yaml`（可选）记录评估划分的生命周期。每条 split 写 `role`
+（`held-out` / `development`）、`artifact`、以及 held-out 必须有的 `frozen_at` 与
+`access_budget`（正整数）；`accesses` 每次访问写 `run_id` / `at` / `reason`。
+校验是 fail-closed 的：访问次数超过预算报 `held-out-budget-exceeded`，冻结日之前的
+访问报 `held-out-access-before-freeze`（那次评估不算 held-out），`run_id` 必须能在
+`experiments/log` 里找到否则 `held-out-unknown-run`，声明的 `artifact` 路径不存在
+报 `held-out-artifact-missing`。supported 的 `polarity: effect` 实证 claim 还必须
+引用至少一次这样的 held-out 评估，否则 `claim-registry-held-out-missing`；论文确实
+没有 held-out 划分时，在同一个文件里写 `no_held_out_reason`（至少 40 字、不能是
+placeholder）说明原因——豁免必须留下文字，而不是靠不写文件。
 
 ### `results-ready`：把 claim 绑定到证据
 

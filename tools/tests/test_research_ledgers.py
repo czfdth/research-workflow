@@ -36,6 +36,11 @@ class ResearchLedgerTests(unittest.TestCase):
             ' "declared_purpose": "experiment", "role": "negative-control"}\n',
             encoding="utf-8",
         )
+        (self.root / "experiments" / "log" / "run-2.json").write_text(
+            '{"run_id": "run-2", "status": "completed",'
+            ' "declared_purpose": "experiment", "role": "treatment"}\n',
+            encoding="utf-8",
+        )
         self._write_valid_ledgers()
 
     def _write(self, relative, payload):
@@ -61,7 +66,7 @@ class ResearchLedgerTests(unittest.TestCase):
                         "assumptions": ["A1"],
                         "limitations": ["L1"],
                         "proof": None,
-                        "experiments": ["run-1"],
+                        "experiments": ["run-1", "run-2"],
                         "figures": ["threat-model-lattice"],
                         "citations": ["gao2024ragsurvey"],
                     }
@@ -165,6 +170,32 @@ class ResearchLedgerTests(unittest.TestCase):
                         "mitigation": "Require human proof review.",
                         "evidence": ["data/claim-registry.yaml"],
                         "status": "open",
+                    }
+                ],
+            },
+        )
+
+        splits = self.root / "data" / "splits"
+        splits.mkdir(parents=True, exist_ok=True)
+        (splits / "held-out.jsonl").write_text('{"id": "q1"}\n', encoding="utf-8")
+        self._write(
+            "data/held-out-plan.yaml",
+            {
+                "version": 1,
+                "splits": [
+                    {
+                        "id": "he-test",
+                        "role": "held-out",
+                        "artifact": "data/splits/held-out.jsonl",
+                        "frozen_at": "2026-10-01",
+                        "access_budget": 1,
+                        "accesses": [
+                            {
+                                "run_id": "run-2",
+                                "at": "2026-10-05",
+                                "reason": "final held-out evaluation of the defense",
+                            }
+                        ],
                     }
                 ],
             },
@@ -369,6 +400,101 @@ class ResearchLedgerTests(unittest.TestCase):
             "claim-registry-null-experiment-missing",
             self._codes(problems),
         )
+
+    def _edit_held_out(self, mutate):
+        plan = yaml.safe_load(
+            (self.root / "data" / "held-out-plan.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        mutate(plan)
+        self._write("data/held-out-plan.yaml", plan)
+
+    def test_an_effect_claim_without_a_held_out_evaluation_is_a_problem(self):
+        registry = yaml.safe_load(
+            (self.root / "data" / "claim-registry.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        # The control run is not an evaluation of the reported effect.
+        registry["claims"][0]["experiments"] = ["run-1"]
+        self._write("data/claim-registry.yaml", registry)
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn(
+            "claim-registry-held-out-missing",
+            self._codes(problems),
+        )
+
+    def test_a_documented_absence_of_held_out_data_is_accepted(self):
+        self._edit_held_out(
+            lambda plan: (
+                plan.pop("splits"),
+                plan.update(
+                    no_held_out_reason=(
+                        "The corpus is a fixed public snapshot of published "
+                        "work, so there is no held-out split to evaluate."
+                    )
+                ),
+            )
+        )
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertNotIn(
+            "claim-registry-held-out-missing",
+            self._codes(problems),
+        )
+
+    def test_a_placeholder_absence_reason_is_rejected(self):
+        self._edit_held_out(
+            lambda plan: (
+                plan.pop("splits"),
+                plan.update(no_held_out_reason="pending"),
+            )
+        )
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn("held-out-invalid", self._codes(problems))
+
+    def test_exceeding_the_held_out_access_budget_is_a_problem(self):
+        def overspend(plan):
+            plan["splits"][0]["access_budget"] = 1
+            plan["splits"][0]["accesses"].append(
+                {
+                    "run_id": "run-1",
+                    "at": "2026-10-05",
+                    "reason": "second look at the frozen split",
+                }
+            )
+
+        self._edit_held_out(overspend)
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn("held-out-budget-exceeded", self._codes(problems))
+
+    def test_an_access_before_the_freeze_is_a_problem(self):
+        self._edit_held_out(
+            lambda plan: plan["splits"][0]["accesses"][0].update(at="2026-09-30")
+        )
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn("held-out-access-before-freeze", self._codes(problems))
+
+    def test_an_access_must_reference_a_real_run(self):
+        self._edit_held_out(
+            lambda plan: plan["splits"][0]["accesses"][0].update(
+                run_id="ghost-run"
+            )
+        )
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn("held-out-unknown-run", self._codes(problems))
 
     def test_a_supported_effect_claim_needs_a_control_run(self):
         (self.root / "experiments" / "log" / "run-1.json").write_text(

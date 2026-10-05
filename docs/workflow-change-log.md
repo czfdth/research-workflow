@@ -1101,3 +1101,19 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T200146Z-8387e0bd7e - Add an optional held-out evaluation plan ledger whose freeze date, access budget and every access are validated, and require a supported effect claim to cite one.
+
+- timestamp: `2026-10-05T20:01:46Z`
+- status: `complete`
+- author: `codex`
+- reason: Nothing recorded which data was never used for tuning, so an effect could be reported after unbounded looks at the same evaluation set; the run log said what ran but not whether the number came from a split that was frozen before it was read.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/research_ledgers.py`
+  - `tools/tests/test_research_ledgers.py`
+- tests:
+  - `ccfa.research_ledgers (worktree code) on papers/rag-attack-defense: 0 problems`
+  - `ruff check tools`
+  - `tools.tests.test_research_ledgers + test_docs_consistency + test_readiness (125 tests)`
+- notes: data/held-out-plan.yaml splits declare role (held-out/development), artifact and, for held-out, frozen_at plus a positive access_budget; each access records run_id/at/reason and must resolve to a real run. Fail-closed codes: held-out-budget-exceeded, held-out-access-before-freeze, held-out-unknown-run, held-out-artifact-missing, held-out-invalid. An effect empirical supported claim must cite a held-out access or the plan must carry a >=40 character non-placeholder no_held_out_reason (claim-registry-held-out-missing). Live paper unaffected: no effect claims and no plan file.
+
