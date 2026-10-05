@@ -1008,3 +1008,20 @@ rewrite historical entries.
   - `tools.tests.test_doctor + test_readiness + test_docs_consistency (123 tests)`
 - notes: doctor --imports-only imports each dependency in the running interpreter and prints JSON (module, capability, error), green in tools/.venv and naming pymupdf/z3/cvc5/cryptography under app/.venv. probe() runs it and fails closed with the module list; an older workflow without the flag degrades to "self-check unavailable" instead of failing. Two tests that asserted a fixed verdict against "the real workflow" now assert the contract, since whether that interpreter has the deps is a property of the machine.
 
+## WC-20261005T194731Z-3ebdb46b6e - Cap a decimal dataval claim rounding tolerance at a fraction of the source magnitude, so dropping precision stops making a mismatch easier to pass.
+
+- timestamp: `2026-10-05T19:47:31Z`
+- status: `complete`
+- author: `codex`
+- reason: The tolerance came only from the claim own decimals, so writing 0.1 (half unit 0.05) was accepted against a source of 0.143 while writing 0.143 (half unit 0.0005) was not: the rule rewarded losing precision, and a coarse claim stops constraining the value it claims to trace.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/datavalue.py`
+  - `tools/ccfa/trace_claims.py`
+  - `tools/tests/test_datavalue.py`
+  - `tools/tests/test_trace_claims.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_datavalue + test_trace_claims + test_trace_claims_e2e + test_dataval + test_claims_policy + test_readiness + test_docs_consistency (161 tests)`
+- notes: values_match gains max_rounding_error (default 0.05 = about two significant figures); the implied half-unit may not exceed it, integer claims are untouched (they were already exact). trace_claims.check and the CLI forward it, and a failure caused only by the cap says 小数位不足 plus the --max-rounding-error 0 escape. Verified against the live paper: all 58 dataval tags there are integers, readiness still reports 2 blockers and trace-claims still passes.
+

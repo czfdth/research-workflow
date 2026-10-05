@@ -348,6 +348,12 @@ scripts/trace-claims.ps1 --manuscript "$paper/manuscript" `
 如果 venue 主文件不叫 `main.tex`，把路径替换为实际文件。无法支撑的 claim 应标为
 provisional 或 dropped，不要为了过 gate 修改源数据。
 
+小数标记的舍入容差按小数位推（`0.143` 容忍 `0.0005`），但这条容差不得超过源值量级
+的 5%：拿 `0.1` 去追 `0.143` 会判 `dataval-mismatch` 并提示「小数位不足」，因为
+1 位小数的半单位已经占源值的 35%，那个标记其实什么都没约束住。整数标记不受影响
+（本来就要求精确相等）。确实需要放宽时用 `--max-rounding-error 0.1`，
+`--max-rounding-error 0` 则完全关掉这条上限、回到旧行为。
+
 ### `writing`：完成可编译草稿
 
 必须产出：正文、图表、引用和符合 venue 的页数。
