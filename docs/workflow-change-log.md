@@ -3,33 +3,6 @@
 Generated from `docs/workflow-change-log.jsonl`. Append-only; do not
 rewrite historical entries.
 
-## WC-20261006T000000Z-mandatory-log - Add an append-only, fail-closed workflow change log contract.
-
-- timestamp: `2026-10-06T00:00:00Z`
-- status: `complete`
-- author: `codex`
-- reason: 用户要求规定每次工作流修改都必须记录日志，不能用聊天记录代替可审计变更日志。
-- files:
-  - `.github/pull_request_template.md`
-  - `.github/workflows/tests.yml`
-  - `AGENTS.md`
-  - `README.md`
-  - `docs/workflow-change-log.jsonl`
-  - `docs/workflow-change-log.md`
-  - `docs/workflow-guide.md`
-  - `scripts/change-log.ps1`
-  - `tools/ccfa/change_log.py`
-  - `tools/tests/test_change_log.py`
-  - `tools/tests/test_docs_consistency.py`
-  - `tools/tests/test_github_workflows.py`
-  - `tools/tests/test_scripts.py`
-- tests:
-  - `tools.tests.test_change_log`
-  - `tools.tests.test_github_workflows`
-  - `tools.tests.test_docs_consistency`
-  - `tools.tests.test_scripts`
-- notes: The log itself and its generated Markdown are excluded from coverage checks, but listed here for traceability.
-
 ## WC-20261005T163310Z-a005adfa58 - Design the workbench UI as a three-pane operations surface on a Modex-MH-Agent style theme.
 
 - timestamp: `2026-10-05T16:33:10Z`
@@ -128,6 +101,17 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_change_log`
 
+## WC-20261005T165038Z-048c83d06d - Let the public mirror drop the private workflow change-log gate
+
+- timestamp: `2026-10-05T16:50:38Z`
+- status: `complete`
+- author: `codex`
+- reason: The mirror diff is not the private commit diff, so the change-log gate cannot be satisfied there; publish-public.ps1 now removes named workflow steps on the mirror via config.
+- files:
+  - `scripts/publish-public.ps1`
+- tests:
+  - `tools.tests.test_scripts`
+
 ## WC-20261005T165038Z-c0f50383ce - Make host-only tool end-to-end tests skip on a clean CI runner
 
 - timestamp: `2026-10-05T16:50:38Z`
@@ -153,17 +137,6 @@ rewrite historical entries.
   - `tools.tests.test_productization_e2e`
   - `tools.tests.test_venues`
   - `tools.tests.test_workflow_e2e`
-
-## WC-20261005T165038Z-048c83d06d - Let the public mirror drop the private workflow change-log gate
-
-- timestamp: `2026-10-05T16:50:38Z`
-- status: `complete`
-- author: `codex`
-- reason: The mirror diff is not the private commit diff, so the change-log gate cannot be satisfied there; publish-public.ps1 now removes named workflow steps on the mirror via config.
-- files:
-  - `scripts/publish-public.ps1`
-- tests:
-  - `tools.tests.test_scripts`
 
 ## WC-20261005T165530Z-89b92885fa - Add budgeted pilot execution and periodic upstream reference audit
 
@@ -547,6 +520,34 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T175113Z-ef2e542c53 - Extract candidate claims from PDFs and repository text
+
+- timestamp: `2026-10-05T17:51:13Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the PDF/repo-to-claim gap without allowing model auto-acceptance: candidates carry source hashes, page/line locations and verbatim quotes, are written to claim-candidates.yaml, and are checked before human promotion.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/claim-extract.ps1`
+  - `tools/ccfa/claim_extract.py`
+  - `tools/ccfa/pdftext.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_claim_extract.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_pdftext.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_claim_extract`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_pdftext`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
 ## WC-20261005T175202Z-3335c7e38c - Generate the design exports in both themes: the mockup generator now takes the palette from CCFA_MOCKUP_MODE and writes exports/dark.
 
 - timestamp: `2026-10-05T17:52:02Z`
@@ -573,6 +574,31 @@ rewrite historical entries.
 ## WC-20261005T175759Z-ad850411eb - Add a budgeted inner-loop parameter optimizer
 
 - timestamp: `2026-10-05T17:57:59Z`
+- status: `complete`
+- author: `codex`
+- reason: Replace the single-pilot executor gap with grid/random trial search, objective extraction, best tracking, patience/budget stops, append-only trial logs and a keep/revert proposal; claims and code remain human-reviewed.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/experiment-optimize.ps1`
+  - `tools/ccfa/experiment_optimizer.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_experiment_optimizer.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_experiment_optimizer`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
+## WC-20261005T175824Z-6bb05263a8 - Add a budgeted inner-loop parameter optimizer
+
+- timestamp: `2026-10-05T17:58:24Z`
 - status: `complete`
 - author: `codex`
 - reason: Replace the single-pilot executor gap with grid/random trial search, objective extraction, best tracking, patience/budget stops, append-only trial logs and a keep/revert proposal; claims and code remain human-reviewed.
@@ -656,6 +682,31 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T180709Z-90a6359694 - Add sandboxed automatic code mutation and research plan generation
+
+- timestamp: `2026-10-05T18:07:09Z`
+- status: `complete`
+- author: `codex`
+- reason: Implement the remaining autoresearch gap safely: model-generated plans and file replacements are written as candidates, code mutations run only in a disposable sandbox with tests and diffs, and neither claims nor the source repo are auto-accepted or modified.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/autoresearch.ps1`
+  - `tools/ccfa/autoresearch.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_autoresearch.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_autoresearch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
 ## WC-20261005T180937Z-40463a8128 - Give code blocks a mode-aware background and add the narrow/collapsed design screen (07) in both themes.
 
 - timestamp: `2026-10-05T18:09:37Z`
@@ -680,6 +731,43 @@ rewrite historical entries.
 ## WC-20261005T181502Z-728c97291b - Add cross-session task replay and independently installable skills
 
 - timestamp: `2026-10-05T18:15:02Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the remaining orchestration and packaging gaps: long tasks now replay a hash-chained event log from disk, and core capabilities are split into dependency-resolved skill packages that can be verified and installed independently.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/long-task.ps1`
+  - `scripts/skill-registry.ps1`
+  - `skills/ccfa-autoresearch/SKILL.md`
+  - `skills/ccfa-autoresearch/skill.yaml`
+  - `skills/ccfa-claims/SKILL.md`
+  - `skills/ccfa-claims/skill.yaml`
+  - `skills/ccfa-core/SKILL.md`
+  - `skills/ccfa-core/skill.yaml`
+  - `skills/ccfa-evidence/SKILL.md`
+  - `skills/ccfa-evidence/skill.yaml`
+  - `skills/ccfa-experiments/SKILL.md`
+  - `skills/ccfa-experiments/skill.yaml`
+  - `skills/registry.yaml`
+  - `tools/ccfa/long_task.py`
+  - `tools/ccfa/skill_registry.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_long_task.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_skill_registry.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_long_task`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
+## WC-20261005T181536Z-0606c5a773 - Add cross-session task replay and independently installable skills
+
+- timestamp: `2026-10-05T18:15:36Z`
 - status: `complete`
 - author: `codex`
 - reason: Close the remaining orchestration and packaging gaps: long tasks now replay a hash-chained event log from disk, and core capabilities are split into dependency-resolved skill packages that can be verified and installed independently.
@@ -829,6 +917,24 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T184756Z-5e249ff15e - Register external P0 skills and support multiple source roots
+
+- timestamp: `2026-10-05T18:47:56Z`
+- status: `complete`
+- author: `codex`
+- reason: Promote already-referenced global CCF skills into the workflow registry without copying their source, and derive content-hash versions for unversioned external skills while keeping missing external sources non-fatal unless strict validation is requested.
+- files:
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+  - `tools/ccfa/skill_registry.py`
+  - `tools/tests/test_skill_registry.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
 ## WC-20261005T185201Z-74478856dd - Register P1 Nature and Cell methodology skills
 
 - timestamp: `2026-10-05T18:52:01Z`
@@ -844,9 +950,49 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T185232Z-27436dd029 - Register P1 Nature and Cell methodology skills
+
+- timestamp: `2026-10-05T18:52:32Z`
+- status: `complete`
+- author: `codex`
+- reason: Expand the external-source registry with the selected Nature/Cell skill set now that source roots, content hashes, dependency resolution, packing and installation are in place.
+- files:
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
 ## WC-20261005T185818Z-1b96b722e0 - Add external-service adapter capability checks
 
 - timestamp: `2026-10-05T18:58:18Z`
+- status: `complete`
+- author: `codex`
+- reason: Separate installed skills from configured and functional external services, record only env-var names, and expose adapter probes without reading or printing secrets.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/external-adapters.ps1`
+  - `skills/adapters.yaml`
+  - `skills/registry.yaml`
+  - `tools/ccfa/external_adapters.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_external_adapters.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_external_adapters`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
+## WC-20261005T185842Z-29a8ef8bc1 - Add external-service adapter capability checks
+
+- timestamp: `2026-10-05T18:58:42Z`
 - status: `complete`
 - author: `codex`
 - reason: Separate installed skills from configured and functional external services, record only env-var names, and expose adapter probes without reading or printing secrets.
@@ -892,6 +1038,20 @@ rewrite historical entries.
 ## WC-20261005T190513Z-4b9c885c93 - Register drawio-skill as a local visual-composition capability
 
 - timestamp: `2026-10-05T19:05:13Z`
+- status: `complete`
+- author: `codex`
+- reason: The registry had CCF and Nature figure skills but no editable diagram authoring; drawio-skill produces editable .drawio architecture/UML/BPMN diagrams on Windows with no API key, so it is registered as a codex-root capability skill with a ccf-common dependency.
+- files:
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
+## WC-20261005T190625Z-dcd0351ab5 - Register drawio-skill as a local visual-composition capability
+
+- timestamp: `2026-10-05T19:06:25Z`
 - status: `complete`
 - author: `codex`
 - reason: The registry had CCF and Nature figure skills but no editable diagram authoring; drawio-skill produces editable .drawio architecture/UML/BPMN diagrams on Windows with no API key, so it is registered as a codex-root capability skill with a ccf-common dependency.
@@ -1065,6 +1225,30 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_talk_pipeline`
 
+## WC-20261005T195416Z-824712e3ea - Make the post-submission tail fail closed and give citation calibration a live gold set
+
+- timestamp: `2026-10-05T19:54:16Z`
+- status: `complete`
+- author: `codex`
+- reason: Two gaps from the GitHub comparison: the writing/rebuttal/resubmit/talk tail had contracts but no live run, and calibration had a harness but no data. readiness registered the tail gates only when their input files already existed, so a missing file silently deleted its own gate; and citation calibration had no producer of labels or predictions.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/citation_calibration.py`
+  - `tools/ccfa/post_submission.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/resubmit_pipeline.py`
+  - `tools/ccfa/talk_pipeline.py`
+  - `tools/tests/test_citation_calibration.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_citation_calibration`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_post_submission`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_resubmit_pipeline`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_talk_pipeline`
+
 ## WC-20261005T195621Z-9b382d19ae - Give a run a scientific role (treatment/negative-control/ablation/baseline) and require a supported effect claim to cite a control run.
 
 - timestamp: `2026-10-05T19:56:21Z`
@@ -1086,6 +1270,24 @@ rewrite historical entries.
 ## WC-20261005T200124Z-8ebfd7ce94 - Add post-submission init and make a tail stage require its own section
 
 - timestamp: `2026-10-05T20:01:24Z`
+- status: `complete`
+- author: `codex`
+- reason: The tail still passed while empty: a skeleton file satisfied the missing-file check and every section stayed not-started. init now derives a schema-correct ledger from the paper's real run/claim/figure ids without overwriting, and readiness requires the section a stage is named after to be complete.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/post_submission.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_post_submission.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_post_submission`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
+## WC-20261005T200139Z-c6134746ad - Add post-submission init and make a tail stage require its own section
+
+- timestamp: `2026-10-05T20:01:39Z`
 - status: `complete`
 - author: `codex`
 - reason: The tail still passed while empty: a skeleton file satisfied the missing-file check and every section stayed not-started. init now derives a schema-correct ledger from the paper's real run/claim/figure ids without overwriting, and readiness requires the section a stage is named after to be complete.
@@ -1144,9 +1346,47 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261005T201305Z-1f8150ba42 - Make the tool layer runnable without PowerShell
+
+- timestamp: `2026-10-05T20:13:05Z`
+- status: `complete`
+- author: `codex`
+- reason: Portability was the weakest axis: python -m ccfa did not exist, the ccfa.dispatch entry point was untested and its aliases were wrong for statistics/rigor-rubric/archive/experiment-optimize, and every tool was reachable only through 71 .ps1 wrappers. A portable dispatcher, a POSIX launcher and a fail-closed parity test make the same tools run on Linux and macOS, with a Linux CI job as evidence.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-guide.md`
+  - `pyproject.toml`
+  - `scripts/ccfa`
+  - `scripts/install-toolchain.ps1`
+  - `tools/ccfa/__main__.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_dispatch.py`
+  - `tools/tests/test_github_workflows.py`
+  - `tools/tests/test_packaging.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_packaging`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+
 ## WC-20261005T201620Z-a6490aa603 - Keep the paper CI deterministic gates identical on Windows and Linux
 
 - timestamp: `2026-10-05T20:16:20Z`
+- status: `complete`
+- author: `codex`
+- reason: The paper repository now runs the deterministic gates on ubuntu-latest through .github/scripts/deterministic-gates.sh as well as inline with pwsh on windows-latest. A fail-closed test asserts both runners exercise exactly the same ccfa tool set, so the Linux job cannot silently become a weaker check.
+- files:
+  - `tools/tests/test_github_workflows.py`
+- tests:
+  - `tools.tests.test_github_workflows`
+
+## WC-20261005T201635Z-0025570e27 - Keep the paper CI deterministic gates identical on Windows and Linux
+
+- timestamp: `2026-10-05T20:16:35Z`
 - status: `complete`
 - author: `codex`
 - reason: The paper repository now runs the deterministic gates on ubuntu-latest through .github/scripts/deterministic-gates.sh as well as inline with pwsh on windows-latest. A fail-closed test asserts both runners exercise exactly the same ccfa tool set, so the Linux job cannot silently become a weaker check.
@@ -1167,6 +1407,20 @@ rewrite historical entries.
   - `tools/tests/test_external_adapters.py`
 - tests:
   - `scripts/test-impact.ps1 run --suite tools --full (1812 tests)`
+  - `tools.tests.test_experiment_optimizer`
+  - `tools.tests.test_external_adapters`
+
+## WC-20261005T202534Z-67bb3895f9 - Fix the three machine-dependent tools-test failures that kept CI red
+
+- timestamp: `2026-10-05T20:25:34Z`
+- status: `complete`
+- author: `codex`
+- reason: The GitHub Windows runner failed tools-impact on every recent push. experiment_optimizer compared a spec path spelling (8.3 short name RUNNER~1) against a resolved paper_root and raised ValueError on a file inside the paper; two external-adapter tests asserted installed against whatever skills the developer machine had, so they failed on a clean runner. Confirmed against real Actions logs for runs 37360029400 and 37361015600, which failed identically before this branch existed.
+- files:
+  - `tools/ccfa/experiment_optimizer.py`
+  - `tools/tests/test_experiment_optimizer.py`
+  - `tools/tests/test_external_adapters.py`
+- tests:
   - `tools.tests.test_experiment_optimizer`
   - `tools.tests.test_external_adapters`
 
@@ -1216,4 +1470,31 @@ rewrite historical entries.
   - `ccfa.doctor --repo-root repo (0 problems, 0 advisories, functional zotero HTTP 200)`
   - `zotero-mcp.exe serve initialize + 41 tools + import/search/bibtex/delete round trip`
 - notes: Records the dedupe result precisely: if_exists=skip de-duplicates when the record carries an identifier (DOI), and does not fall back to fuzzy title matching. Three probe items were trashed and live items are back to zero; no Zotero account sync is configured, so nothing left the machine.
+
+## WC-20261006T000000Z-mandatory-log - Add an append-only, fail-closed workflow change log contract.
+
+- timestamp: `2026-10-06T00:00:00Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求规定每次工作流修改都必须记录日志，不能用聊天记录代替可审计变更日志。
+- files:
+  - `.github/pull_request_template.md`
+  - `.github/workflows/tests.yml`
+  - `AGENTS.md`
+  - `README.md`
+  - `docs/workflow-change-log.jsonl`
+  - `docs/workflow-change-log.md`
+  - `docs/workflow-guide.md`
+  - `scripts/change-log.ps1`
+  - `tools/ccfa/change_log.py`
+  - `tools/tests/test_change_log.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_github_workflows.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_change_log`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+- notes: The log itself and its generated Markdown are excluded from coverage checks, but listed here for traceability.
 
