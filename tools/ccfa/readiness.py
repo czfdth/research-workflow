@@ -122,6 +122,13 @@ LEDGER_GATE_NAMES = {
     "artifact-badge": "artifact-badge",
 }
 
+# A guard is only trustworthy once it has been seen to reject something. With
+# ~25 gates it is easy to accumulate guards that have never fired, and a guard
+# that cannot fail is indistinguishable from one that is not wired up. The
+# drill ledger records, per gate, how it was deliberately broken and where the
+# failing output lives; gates without one are reported as ``unproven-guard``.
+GATE_DRILLS_RELATIVE_PATH = Path("data") / "gate-failure-drills.yaml"
+
 
 @dataclass(frozen=True)
 class GitSummary:
@@ -432,6 +439,152 @@ def _load_structured(path: Path) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _load_gate_drills(paper_root: Path) -> tuple[dict[str, dict], list[Problem]]:
+    """Index valid failure-drill records by gate name.
+
+    A record only counts when it says the gate actually triggered *and* points
+    at an existing evidence file. A claim without evidence is a problem, not a
+    pass; a gate with no record at all is handled by the caller as unproven.
+    """
+    path = paper_root / GATE_DRILLS_RELATIVE_PATH
+    if not path.is_file():
+        return {}, []
+    payload = _load_structured(path)
+    if payload is None:
+        return {}, [
+            Problem(
+                "gate-drills-invalid",
+                str(path),
+                None,
+                "失败演练台账必须是合法 YAML 映射",
+            )
+        ]
+    drills = payload.get("drills")
+    if not isinstance(drills, list):
+        return {}, [
+            Problem(
+                "gate-drills-invalid",
+                str(path),
+                None,
+                "失败演练台账必须包含 drills 列表",
+            )
+        ]
+    index: dict[str, dict] = {}
+    problems: list[Problem] = []
+    for position, entry in enumerate(drills):
+        if not isinstance(entry, dict):
+            problems.append(
+                Problem(
+                    "gate-drills-invalid",
+                    str(path),
+                    None,
+                    f"drills[{position}] 必须是映射",
+                )
+            )
+            continue
+        gate = entry.get("gate")
+        if not isinstance(gate, str) or not gate.strip():
+            problems.append(
+                Problem(
+                    "gate-drills-invalid",
+                    str(path),
+                    None,
+                    f"drills[{position}] 缺少 gate",
+                )
+            )
+            continue
+        gate = gate.strip()
+        if entry.get("triggered") is not True:
+            problems.append(
+                Problem(
+                    "gate-drill-not-triggered",
+                    str(path),
+                    None,
+                    f"{gate}: triggered 必须为 true——"
+                    "没有被破坏输入触发过的 gate 不算已演练",
+                )
+            )
+            continue
+        method = entry.get("method")
+        if not isinstance(method, str) or not method.strip():
+            problems.append(
+                Problem(
+                    "gate-drill-invalid",
+                    str(path),
+                    None,
+                    f"{gate}: 缺少 method（说明如何故意破坏）",
+                )
+            )
+            continue
+        evidence = entry.get("evidence")
+        if not isinstance(evidence, str) or not evidence.strip():
+            problems.append(
+                Problem(
+                    "gate-drill-evidence-missing",
+                    str(path),
+                    None,
+                    f"{gate}: 缺少 evidence（失败输出的存放路径）",
+                )
+            )
+            continue
+        evidence_path = paper_root / evidence.strip()
+        if not evidence_path.is_file():
+            problems.append(
+                Problem(
+                    "gate-drill-evidence-missing",
+                    str(path),
+                    None,
+                    f"{gate}: evidence 不存在: {evidence.strip()}",
+                )
+            )
+            continue
+        if evidence_path.suffix.casefold() == ".json":
+            try:
+                payload = json.loads(
+                    evidence_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                payload = None
+            if (
+                isinstance(payload, dict)
+                and payload.get("triggered") is not True
+            ):
+                problems.append(
+                    Problem(
+                        "gate-drill-evidence-not-triggered",
+                        str(path),
+                        None,
+                        f"{gate}: evidence {evidence.strip()} 里 "
+                        "triggered 不是 true——失败必须真的发生过",
+                    )
+                )
+                continue
+        index[gate] = {
+            "gate": gate,
+            "method": method.strip(),
+            "evidence": evidence.strip(),
+        }
+    return index, problems
+
+
+def _gate_drill_advisories(
+    drills: dict[str, dict],
+    executed: list[str],
+) -> list[Problem]:
+    path = GATE_DRILLS_RELATIVE_PATH
+    return [
+        Problem(
+            "unproven-guard",
+            gate,
+            None,
+            f"{path} 里没有 {gate} 的失败演练记录；"
+            "没有失败过的 guard 与没接线的 guard 无法区分",
+        )
+        for gate in executed
+        if gate not in drills
+    ]
+
+
 def _human_review_status(paper_root: Path, profile: str) -> dict:
     if profile != "high-assurance":
         return {"status": "not-required", "pending": []}
@@ -505,6 +658,13 @@ def build_report(
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
     gate_results = _run_gates(paper_root, selected_profile)
+    executed_gates = [result["name"] for result in gate_results]
+    drills, drill_problems = _load_gate_drills(paper_root)
+    unproven_advisories = _gate_drill_advisories(drills, executed_gates)
+    gate_results.append(
+        _gate_result("gate-drills", drill_problems, unproven_advisories)
+    )
+    unproven_guards = [advisory.path for advisory in unproven_advisories]
 
     blocking = []
     if schema_problems:
@@ -601,6 +761,7 @@ def build_report(
         },
         "scientific_acceptance": scientific,
         "human_review": human_review,
+        "unproven_guards": unproven_guards,
         "blocking": blocking,
         "ready": not blocking,
     }

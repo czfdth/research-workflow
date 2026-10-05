@@ -379,5 +379,118 @@ class ReadinessTests(unittest.TestCase):
         self.assertTrue((self.paper_root / "reviews" / "readiness.md").is_file())
 
 
+class GateDrillTests(ReadinessTests):
+    def _write_drills(self, text: str) -> None:
+        path = self.paper_root / "data" / "gate-failure-drills.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def _gate_drills(self, report: dict) -> dict:
+        return next(
+            result
+            for result in report["gate_results"]
+            if result["name"] == "gate-drills"
+        )
+
+    def test_gates_without_a_drill_are_marked_unproven(self):
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertIn("schema-valid", report["unproven_guards"])
+        drills = self._gate_drills(report)
+        self.assertEqual(drills["status"], "pass")
+        self.assertTrue(drills["advisories"])
+        self.assertTrue(
+            all(advisory["code"] == "unproven-guard" for advisory in drills["advisories"])
+        )
+        # Unproven guards are visible but never block by themselves.
+        self.assertFalse(report["blocking"] and "gate-drills" in report["blocking"])
+
+    def test_a_valid_drill_record_clears_the_gate(self):
+        evidence = self.paper_root / "evidence"
+        evidence.mkdir()
+        (evidence / "schema.json").write_text(
+            '{"triggered": true}',
+            encoding="utf-8",
+        )
+        self._write_drills(
+            "version: 1\n"
+            "drills:\n"
+            "  - gate: schema-valid\n"
+            "    method: 把 ccfa.yaml 的 version 改成非法值\n"
+            "    triggered: true\n"
+            "    evidence: evidence/schema.json\n"
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertNotIn("schema-valid", report["unproven_guards"])
+        self.assertEqual(self._gate_drills(report)["status"], "pass")
+
+    def test_drill_without_existing_evidence_blocks(self):
+        self._write_drills(
+            "version: 1\n"
+            "drills:\n"
+            "  - gate: schema-valid\n"
+            "    method: 破坏 ccfa.yaml\n"
+            "    triggered: true\n"
+            "    evidence: evidence/missing.json\n"
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        drills = self._gate_drills(report)
+        self.assertEqual(drills["status"], "problem")
+        self.assertEqual(
+            drills["problems"][0]["code"],
+            "gate-drill-evidence-missing",
+        )
+        self.assertFalse(report["ready"])
+
+    def test_drill_that_never_triggered_blocks(self):
+        self._write_drills(
+            "version: 1\n"
+            "drills:\n"
+            "  - gate: schema-valid\n"
+            "    method: 没有真的破坏任何输入\n"
+            "    triggered: false\n"
+            "    evidence: evidence/anything.json\n"
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        drills = self._gate_drills(report)
+        self.assertEqual(drills["status"], "problem")
+        self.assertEqual(
+            drills["problems"][0]["code"],
+            "gate-drill-not-triggered",
+        )
+
+
+    def test_evidence_that_did_not_trigger_blocks(self):
+        evidence = self.paper_root / "evidence"
+        evidence.mkdir()
+        (evidence / "drill.json").write_text(
+            '{"triggered": false}',
+            encoding="utf-8",
+        )
+        self._write_drills(
+            "version: 1\n"
+            "drills:\n"
+            "  - gate: schema-valid\n"
+            "    method: 假装演练过，但证据显示没触发\n"
+            "    triggered: true\n"
+            "    evidence: evidence/drill.json\n"
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        drills = self._gate_drills(report)
+        self.assertEqual(drills["status"], "problem")
+        self.assertEqual(
+            drills["problems"][0]["code"],
+            "gate-drill-evidence-not-triggered",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

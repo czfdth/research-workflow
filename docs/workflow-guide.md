@@ -49,6 +49,27 @@ Codex 桌面版把 CLI 装在版本化目录（`%LOCALAPPDATA%\OpenAI\Codex\bin\
 
 工作流支持三个 readiness profile：`minimal` 用于构思和短稿，`standard` 用于普通会议论文，`high-assurance` 用于安全、医学、正式证明或高风险研究。默认是 `standard`，也可在 `ccfa.yaml` 写 `workflow.profile`。
 
+### 证明 guard 真的会失败：`data/gate-failure-drills.yaml`
+
+一个 guard 只有**被看到拒绝过东西**之后才可信。gate 一多，很容易积累从未触发过的守卫，
+而“不会失败的 guard”和“没接线的 guard”无法区分。所以 readiness 会对照
+`data/gate-failure-drills.yaml`：有演练记录的 gate 算已演练，其余进 `unproven_guards`
+并报 `unproven-guard`（advisory，不阻塞）。报告里的 `unproven_guards` 字段给出完整清单。
+
+```yaml
+version: 1
+drills:
+  - gate: formal-check
+    method: 声明 expected_status=proved、但实际输出 status=unknown 的检查
+    triggered: true
+    evidence: reviews/drills/formal-check.json
+    date: 2026-10-05
+```
+
+记录必须同时满足：`triggered: true`；`evidence` 指向真实存在的文件；若 evidence 是 JSON，
+文件里的 `triggered` 也必须是 `true`。缺证据或证据显示没触发都是 **problem（会阻塞）**，
+不是 advisory——声称演练过却拿不出失败证据，比不演练更糟。
+
 ## 3. 创建论文
 
 ```powershell
