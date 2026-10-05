@@ -1498,3 +1498,50 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
 - notes: The log itself and its generated Markdown are excluded from coverage checks, but listed here for traceability.
 
+## WC-20261005T221321Z-a43688691e - Reconcile the local workflow branch with origin/master and register e2e-check in the dispatch map and compile list.
+
+- timestamp: `2026-10-05T22:13:21Z`
+- status: `complete`
+- author: `codex`
+- reason: Local master and origin/master had diverged (42 ahead / 13 behind) with intersecting work, and the newly added e2e-check wrapper was missing from dispatch.COMMANDS and the CI py_compile list, which broke the dispatch parity tests.
+- files:
+  - `.github/workflows/tests.yml`
+  - `docs/workflow-change-log.jsonl`
+  - `docs/workflow-change-log.md`
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/dispatch.py`
+- tests:
+  - `tools.tests.test_dispatch (7 tests)`
+- notes: Merge commit 8ecb3bf. Conflicts in the change log were resolved by union of entry ids; workflow-guide.md kept the local side after verifying it is a strict superset of origin/master (0 remote-only lines).
+
+## WC-20261005T221325Z-baf9040305 - Backfill the change-log entry for semantic and hybrid retrieval in the shared literature library.
+
+- timestamp: `2026-10-05T22:13:25Z`
+- status: `complete`
+- author: `codex`
+- reason: Commit 76566b0 added semantic and hybrid retrieval to tools/ccfa/library.py plus 349 lines of tests, but landed without a change-log entry, so change-log check flagged both files as uncovered.
+- files:
+  - `tools/ccfa/library.py`
+  - `tools/tests/test_library.py`
+- tests:
+  - `tools.tests.test_library (65 tests)`
+- notes: Entry written after the fact to satisfy the append-only change-log contract; the tests were re-run before recording this entry.
+
+## WC-20261005T221338Z-03721b5e75 - Add the workflow assessment reports and refresh the gap summary.
+
+- timestamp: `2026-10-05T22:13:38Z`
+- status: `complete`
+- author: `codex`
+- reason: These analysis documents record the tooling inventory, the top-venue evaluation, the big-check and cleanup findings, the disk relocation, the toolchain install and the workflow fit audit; they were written to docs/ without accompanying change-log entries.
+- files:
+  - `docs/big-check-and-cleanup-2026-10-05.md`
+  - `docs/disk-relocation-2026-10-05.md`
+  - `docs/research-workflow-topvenue-evaluation-2026-10-05.md`
+  - `docs/toolchain-workflow-fit-2026-10-05.md`
+  - `docs/tooling-gaps-2026-10-05.md`
+  - `docs/tooling-install-2026-10-05.md`
+  - `docs/workflow-gap-summary.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Documentation only; no workflow code changed.
+

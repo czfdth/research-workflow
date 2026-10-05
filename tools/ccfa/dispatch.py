@@ -35,6 +35,7 @@ COMMANDS: dict[str, str] = {
     "cross-review": "ccfa.cross_review",
     "dashboard": "ccfa.dashboard",
     "doctor": "ccfa.doctor",
+    "e2e-check": "ccfa.e2e_check",
     "experiment-loop": "ccfa.experiment_loop",
     "experiment-optimize": "ccfa.experiment_optimizer",
     "external-adapters": "ccfa.external_adapters",
