@@ -1558,3 +1558,15 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Documentation corrected against the built artifact; the product-readiness table and the next-step list now say the installer is built and only the clean-machine acceptance remains.
 
+## WC-20261005T223117Z-b272b3d157 - Inventory the workflow's plugins, tools and skills, and analyse the remaining gaps against open-source research agents.
+
+- timestamp: `2026-10-05T22:31:17Z`
+- status: `complete`
+- author: `codex`
+- reason: The tool and plugin layer changed substantially (second provider, nine formal engines, installer, archive and compute adapters), so the earlier tooling-gaps document was stale and no single document listed the current inventory plus the remaining methodological gaps.
+- files:
+  - `docs/research-workflow-tooling-and-gaps-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Documentation only. Records 87 modules, 72 entries, 9 MCP servers, 28 plugins, 305 skills and the verified adoption of polarity / held-out / negative-control / gate drills; the remaining gaps are metrics (null-model baseline, attempt throughput), external links (remote compute, Zenodo DOI, clean-machine installer acceptance) and the six human checkpoints.
+
