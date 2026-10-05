@@ -29,3 +29,19 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
   - `tools.tests.test_scripts`
 - notes: The log itself and its generated Markdown are excluded from coverage checks, but listed here for traceability.
+
+## WC-20261005T163310Z-a005adfa58 - Design the workbench UI as a three-pane operations surface on a Modex-MH-Agent style theme.
+
+- timestamp: `2026-10-05T16:33:10Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求参考 Modex-MH-Agent 设计工作台 UI：原界面把项目列表、阶段标签和结果表放在同一视觉层级，坏项目与好项目难以区分，YAML 报错还会溢出到标题区。
+- files:
+  - `app/ccfa_gui/settings_dialog.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+- tests:
+  - `ruff check app`
+  - `unittest discover -s app/tests -t app (205 tests)`
+- notes: papers/ 未改动；未触碰工作区中其他未提交文件。
+
