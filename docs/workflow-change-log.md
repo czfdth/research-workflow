@@ -208,3 +208,19 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_github_workflows`
 
+## WC-20261005T165734Z-12b19b01d3 - Split audit strictness from depth: add an optional workflow.assurance axis (draft | submission) to ccfa.yaml.
+
+- timestamp: `2026-10-05T16:57:34Z`
+- status: `complete`
+- author: `codex`
+- reason: 参考上游 ARIS 的 effort x assurance 设计：把深度和审计严格度混在一个 profile 里，会让高预算的论文在探测器未命中时静默跳过投稿审计。这也是我们踩过的 present=pass 同类事故。
+- files:
+  - `docs/reference-aris-2026-10-06.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_dashboard + test_docs_consistency (61 tests)`
+  - `tools.tests.test_readiness (41 tests)`
+- notes: 默认行为不变：不写 assurance 时与之前完全一致；high-assurance 默认 submission。workflow-guide 段落待并发编辑落地后再补。
+

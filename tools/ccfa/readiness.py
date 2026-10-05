@@ -53,6 +53,13 @@ from ccfa.validate import validate_yaml
 PROFILES = ("minimal", "standard", "high-assurance")
 DEFAULT_PROFILE = "standard"
 
+# ARIS (the open-source workflow Modex-MH-Agent is built on) splits depth from
+# audit strictness: ``effort`` says how much work to do, ``assurance`` says
+# whether the audits are load-bearing. Conflating them let ``effort: beast``
+# skip every submission audit whenever a content detector said "not applicable".
+# We keep ``profile`` as the effort axis and add assurance on top of it.
+ASSURANCE_LEVELS = ("draft", "submission")
+
 EVIDENCE_LEDGER_PATHS = {
     "claim-registry": Path("data/claim-registry.yaml"),
     "assumptions-limitations": Path("data/assumptions-limitations.yaml"),
@@ -196,6 +203,41 @@ def _profile(state: dict, override: str | None) -> str:
             f"未知 readiness profile: {value!r}，应为 {', '.join(PROFILES)}"
         )
     return value
+
+
+def _assurance(state: dict) -> str | None:
+    """Read the optional audit-strictness axis; unknown values fail closed."""
+
+    workflow = state.get("workflow")
+    if not isinstance(workflow, dict):
+        return None
+    value = workflow.get("assurance")
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in ASSURANCE_LEVELS:
+        raise ValueError(
+            f"未知 assurance: {value!r}，应为 {', '.join(ASSURANCE_LEVELS)}"
+        )
+    return value
+
+
+def _default_assurance(profile: str) -> str:
+    return "submission" if profile == "high-assurance" else "draft"
+
+
+def _audit_profile(profile: str, assurance: str | None) -> str:
+    """Return the profile whose audit chain applies.
+
+    ``submission`` raises the audit chain to high-assurance regardless of how
+    much work the run does; ``draft`` is the explicit escape hatch for a
+    high-assurance-labelled project whose audits are advisory for now.
+    """
+
+    if assurance == "submission":
+        return "high-assurance"
+    if assurance == "draft" and profile == "high-assurance":
+        return "standard"
+    return profile
 
 
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -701,17 +743,19 @@ def build_report(
     paper_root = Path(paper_root).resolve()
     state = _load_state(paper_root)
     selected_profile = _profile(state, profile)
+    assurance = _assurance(state)
+    audit_profile = _audit_profile(selected_profile, assurance)
     state_path = paper_root / "ccfa.yaml"
     schema_problems = validate_yaml(state_path)
     stage = stage_report(paper_root)
     mode = state.get("target_venue", {}).get("mode", "conference")
     gate = gate_for(mode, stage["current"])
     due = due_report(paper_root, today or date.today())
-    ledgers = _ledger_status(paper_root, selected_profile)
-    human_review = _human_review_status(paper_root, selected_profile)
+    ledgers = _ledger_status(paper_root, audit_profile)
+    human_review = _human_review_status(paper_root, audit_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
-    gate_results = _run_gates(paper_root, selected_profile)
+    gate_results = _run_gates(paper_root, audit_profile)
     executed_gates = [result["name"] for result in gate_results]
     drills, drill_problems = _load_gate_drills(paper_root)
     unproven_advisories = _gate_drill_advisories(drills, executed_gates)
@@ -724,7 +768,7 @@ def build_report(
     if schema_problems:
         blocking.append("ccfa.yaml schema/state is invalid")
     blocking.extend(
-        f"missing required {selected_profile} ledger: {key}"
+        f"missing required {audit_profile} ledger: {key}"
         for key in ledgers["missing_required"]
     )
     if due.get("problems"):
@@ -748,9 +792,9 @@ def build_report(
         blocking.append("required human review is incomplete")
 
     review_status = "independent-evidence-present"
-    if selected_profile == "minimal":
+    if audit_profile == "minimal":
         review_status = "not-required"
-    elif selected_profile == "high-assurance":
+    elif audit_profile == "high-assurance":
         required_human = {"proof", "human-coding", "citation-support", "figure-support"}
         missing_human = required_human.intersection(ledgers["missing_required"])
         review_status = (
@@ -785,6 +829,8 @@ def build_report(
     return {
         "paper_root": str(paper_root),
         "profile": selected_profile,
+        "assurance": assurance or _default_assurance(selected_profile),
+        "audit_profile": audit_profile,
         "stage": {
             **stage,
             "gate_criterion": gate.criterion,
@@ -827,6 +873,8 @@ def render_markdown(report: dict) -> str:
         "",
         f"- paper: `{report['paper_root']}`",
         f"- profile: `{report['profile']}`",
+        f"- assurance: `{report.get('assurance')}` "
+        f"(audit chain `{report.get('audit_profile')}`)",
         f"- stage: `{report['stage']['current']}` / gate `{report['stage']['gate']}`",
         f"- ready: `{str(report['ready']).lower()}`",
         "",
