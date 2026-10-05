@@ -175,6 +175,8 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("JSON", prompt)
         self.assertIn("本次运行就是在生成当前有效的跨模型评审报告", prompt)
         self.assertIn("不要因为 reviews/cross-review.json 尚不存在", prompt)
+        self.assertIn("checks", prompt)
+        self.assertIn("sha256", prompt)
 
     def test_argv_has_exact_required_flags_and_stdin_prompt(self):
         runner = self._runner(payload=self._payload())
@@ -182,7 +184,9 @@ class TestPromptAndArgv(CrossReviewTests):
         self._run(runner)
 
         argv = runner.calls[0]["argv"]
-        self.assertEqual(argv[:2], ["codex", "exec"])
+        self.assertEqual(argv[1], "exec")
+        # The CLI is resolved to an absolute path when PATH lacks it.
+        self.assertIn("codex", Path(argv[0]).name.casefold())
         self.assertIn("-m", argv)
         self.assertEqual(argv[argv.index("-m") + 1], "gpt-5.6")
         self.assertIn("-s", argv)
@@ -774,6 +778,63 @@ class TestDeterministicContradictionGuard(CrossReviewTests):
         record = self._run(runner)
 
         self.assertEqual(record["verdict"], "pass")
+
+
+class TestCodexExecutableResolution(unittest.TestCase):
+    def _clear_override(self):
+        return mock.patch.dict(
+            os.environ, {"CCFA_CODEX_EXECUTABLE": ""}, clear=False
+        )
+
+    def test_env_override_wins(self):
+        with mock.patch.dict(
+            os.environ, {"CCFA_CODEX_EXECUTABLE": r"C:\custom\codex.exe"}
+        ):
+            self.assertEqual(
+                cross_review_module._resolve_codex_executable(),
+                r"C:\custom\codex.exe",
+            )
+
+    def test_path_is_preferred_when_available(self):
+        with self._clear_override(), mock.patch.object(
+            cross_review_module.shutil, "which", return_value="/usr/bin/codex"
+        ):
+            self.assertEqual(
+                cross_review_module._resolve_codex_executable(),
+                "/usr/bin/codex",
+            )
+
+    def test_falls_back_to_the_newest_localappdata_binary(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            old = root / "OpenAI" / "Codex" / "bin" / "aaa"
+            new = root / "OpenAI" / "Codex" / "bin" / "bbb"
+            old.mkdir(parents=True)
+            new.mkdir(parents=True)
+            (old / "codex.exe").write_text("old", encoding="utf-8")
+            (new / "codex.exe").write_text("new", encoding="utf-8")
+            os.utime(old / "codex.exe", (1, 1))
+            os.utime(new / "codex.exe", (2, 2))
+
+            with self._clear_override(), mock.patch.dict(
+                os.environ, {"LOCALAPPDATA": str(root)}, clear=False
+            ), mock.patch.object(
+                cross_review_module.shutil, "which", return_value=None
+            ):
+                resolved = cross_review_module._resolve_codex_executable()
+
+            self.assertEqual(resolved, str(new / "codex.exe"))
+
+    def test_falls_back_to_the_bare_name(self):
+        with tempfile.TemporaryDirectory() as raw, self._clear_override(), (
+            mock.patch.dict(os.environ, {"LOCALAPPDATA": raw}, clear=False)
+        ), mock.patch.object(
+            cross_review_module.shutil, "which", return_value=None
+        ):
+            self.assertEqual(
+                cross_review_module._resolve_codex_executable(),
+                "codex",
+            )
 
 
 class TestCheckReview(CrossReviewTests):

@@ -6,7 +6,9 @@ import argparse
 import difflib
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -554,6 +556,32 @@ def _write_records(
     )
 
 
+def _resolve_codex_executable() -> str:
+    """Locate the Codex CLI, including installs missing from the PATH.
+
+    The desktop app ships versioned binaries under ``%LOCALAPPDATA%`` and does
+    not always export that directory, so a plain terminal would otherwise fail
+    with "无法运行 codex exec". ``CCFA_CODEX_EXECUTABLE`` overrides the lookup.
+    """
+    override = os.environ.get("CCFA_CODEX_EXECUTABLE", "").strip()
+    if override:
+        return override
+    found = shutil.which("codex")
+    if found:
+        return found
+    root = Path(os.environ.get("LOCALAPPDATA", "")) / "OpenAI" / "Codex" / "bin"
+    try:
+        candidates = [
+            path for path in root.glob("*/codex.exe") if path.is_file()
+        ]
+    except OSError:
+        candidates = []
+    if candidates:
+        newest = max(candidates, key=lambda path: path.stat().st_mtime)
+        return str(newest)
+    return "codex"
+
+
 def _default_runner(argv, cwd, timeout, prompt):
     try:
         completed = subprocess.run(
@@ -751,7 +779,7 @@ def run_review(
     last_message_path.unlink(missing_ok=True)
 
     argv = [
-        "codex",
+        _resolve_codex_executable(),
         "exec",
         *(["-c", f"model_provider={provider}"] if provider else []),
         *(
