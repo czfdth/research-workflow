@@ -71,3 +71,20 @@ rewrite historical entries.
 - tests:
   - `app.tests.test_chat_e2e`
 
+## WC-20261005T164251Z-c08422da28 - Adopt Modex-MH-Agent's checkpoint shape: expand each pending human ledger into a question with an explicit answer location.
+
+- timestamp: `2026-10-05T16:42:51Z`
+- status: `complete`
+- author: `codex`
+- reason: 参考 Modex-MH-Agent 工作流设计：他们把人工决定建模成 checkpoint（类型/展示数据/回复）。我们的 readiness 只输出 pending key 列表，人看不出到底要被问什么、答案写哪里。
+- files:
+  - `docs/reference-modex-mh-agent-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `ruff check tools/ccfa/readiness.py tools/tests/test_readiness.py`
+  - `tools.tests.test_dashboard + test_docs_consistency (53 tests)`
+  - `tools.tests.test_readiness (33 tests)`
+- notes: worktree 缺 tools/.venv，test_scripts 在本目录跑不动；已在主仓库验证 tests.test_scripts 116 项通过。
+
