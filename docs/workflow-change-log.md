@@ -1570,3 +1570,18 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Documentation only. Records 87 modules, 72 entries, 9 MCP servers, 28 plugins, 305 skills and the verified adoption of polarity / held-out / negative-control / gate drills; the remaining gaps are metrics (null-model baseline, attempt throughput), external links (remote compute, Zenodo DOI, clean-machine installer acceptance) and the six human checkpoints.
 
+## WC-20261005T223656Z-834aa52586 - Add the missing cryptography pin to the tools lock and guard against lock drift
+
+- timestamp: `2026-10-05T22:36:56Z`
+- status: `complete`
+- author: `codex`
+- reason: CI installs tools/requirements.lock, not requirements.txt, and cryptography existed only in the latter. A clean runner therefore had no cryptography, so test_doctor's fully-provisioned assertion failed there while passing on a developer machine. Observed in Actions run 37381530489 (7890a6e): missing [cryptography], ok=false. The failure is masked on docs-only pushes because impact selection runs about 17 tests, so only the nightly full run would have caught it.
+- files:
+  - `tools/requirements.lock`
+  - `tools/tests/test_packaging.py`
+- tests:
+  - `clean venv + uv pip install -r tools/requirements.lock + doctor --imports-only`
+  - `tools.tests.test_doctor`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_packaging`
+
