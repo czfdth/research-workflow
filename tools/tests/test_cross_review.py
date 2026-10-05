@@ -11,6 +11,7 @@ from unittest import mock
 import yaml
 
 import ccfa.cross_review as cross_review_module
+from ccfa.cli import Problem as CliProblem
 from ccfa.cross_review import (
     REVIEW_SCHEMA,
     build_prompt,
@@ -121,6 +122,9 @@ class CrossReviewTests(unittest.TestCase):
             "stage": "internal-review",
             "paths": [Path("manuscript/main.tex")],
             "codex_config": self.codex_config,
+            # The deterministic-contradiction guard is exercised by its own
+            # tests; these tests focus on the run/provenance mechanics.
+            "contradiction_probe": lambda root: [],
         }
         values.update(overrides)
         return run_review(self.paper_root, runner=runner, **values)
@@ -620,7 +624,115 @@ class TestRunReview(CrossReviewTests):
         self.assertNotIn("...[truncated]", record["raw_last_message"])
 
 
+class TestDeterministicContradictionGuard(CrossReviewTests):
+    def test_probe_turns_argument_problems_into_blocking_items(self):
+        problem = CliProblem(
+            "proof-review-not-verified",
+            "data/proof-audit.yaml",
+            None,
+            "prop:noncomp: status='pending'，未通过人工复核",
+        )
+        with mock.patch.object(
+            cross_review_module,
+            "argument_audit_check",
+            return_value=([problem], []),
+        ):
+            blockers = cross_review_module._deterministic_contradictions(
+                self.paper_root
+            )
+
+        self.assertEqual(len(blockers), 1)
+        self.assertIn("proof-review-not-verified", blockers[0]["title"])
+        self.assertIn("data/proof-audit.yaml", blockers[0]["evidence"])
+
+    def test_probe_failure_is_itself_blocking(self):
+        with mock.patch.object(
+            cross_review_module,
+            "argument_audit_check",
+            side_effect=RuntimeError("boom"),
+        ):
+            blockers = cross_review_module._deterministic_contradictions(
+                self.paper_root
+            )
+
+        self.assertEqual(len(blockers), 1)
+        self.assertIn("failed to run", blockers[0]["title"])
+
+    def test_pass_is_downgraded_when_a_gate_disagrees(self):
+        runner = self._runner(payload=self._payload())
+
+        record = self._run(
+            runner,
+            contradiction_probe=lambda root: [
+                {
+                    "title": "review-contradiction: proof-review-not-verified",
+                    "evidence": "data/proof-audit.yaml: pending",
+                }
+            ],
+        )
+
+        self.assertEqual(record["model_verdict"], "pass")
+        self.assertEqual(record["verdict"], "blocking")
+        self.assertTrue(record["deterministic_contradiction"])
+        self.assertEqual(len(record["blocking"]), 1)
+        self.assertIn("review-contradiction", record["summary"])
+
+    def test_clean_gate_keeps_the_model_pass(self):
+        runner = self._runner(payload=self._payload())
+
+        record = self._run(runner)
+
+        self.assertEqual(record["verdict"], "pass")
+        self.assertFalse(record["deterministic_contradiction"])
+        self.assertEqual(record["blocking"], [])
+
+
 class TestCheckReview(CrossReviewTests):
+    def setUp(self):
+        super().setUp()
+        # These tests cover the audit mechanics; the deterministic-contradiction
+        # guard has its own dedicated tests below.
+        patcher = mock.patch.object(
+            cross_review_module,
+            "_deterministic_contradictions",
+            return_value=[],
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_stored_pass_contradicting_a_gate_is_flagged(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+
+        with mock.patch.object(
+            cross_review_module,
+            "_deterministic_contradictions",
+            return_value=[{"title": "x", "evidence": "y"}],
+        ):
+            problems = check_review(self.paper_root)
+
+        self.assertIn("review-contradiction", [p.code for p in problems])
+
+    def test_contradiction_downgrade_is_accepted_by_the_auditor(self):
+        runner = self._runner(payload=self._payload())
+        self._run(
+            runner,
+            contradiction_probe=lambda root: [
+                {
+                    "title": "review-contradiction: proof-review-not-verified",
+                    "evidence": "data/proof-audit.yaml: pending",
+                }
+            ],
+        )
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        # The pass->blocking downgrade is legitimate here, and the item comes
+        # from the deterministic gate rather than from the model.
+        self.assertNotIn("review-record-invalid", codes)
+        self.assertNotIn("review-uncited-blocking", codes)
+        self.assertIn("review-blocking", codes)
+
     def test_missing_record_is_review_missing(self):
         problems = check_review(self.paper_root)
         self.assertEqual([problem.code for problem in problems], ["review-missing"])

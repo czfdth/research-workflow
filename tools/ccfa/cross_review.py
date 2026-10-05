@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from ccfa.argument_audit import check as argument_audit_check
 from ccfa.cli import Problem, emit, save_text_atomically, tool_error
 from ccfa.stages import gate_for
 
@@ -498,6 +499,42 @@ def _default_runner(argv, cwd, timeout, prompt):
     return int(completed.returncode), completed.stderr or ""
 
 
+def _deterministic_contradictions(paper_root: Path) -> list[dict]:
+    """Blocking items where a claimed ``pass`` contradicts machine evidence.
+
+    A review model may drive work but never acquit the paper. If it returns
+    ``pass`` while a deterministic gate still reports problems, the record is
+    downgraded to blocking instead of quietly turning the gate green. This is
+    the mechanical guard against the local reviewer that declared the human
+    review ledgers complete while ``argument_audit`` reported 15 problems.
+    """
+    try:
+        problems, _advisories = argument_audit_check(Path(paper_root))
+    except Exception as exc:  # a probe must never crash the review
+        return [
+            {
+                "title": "review-contradiction: deterministic gate failed to run",
+                "evidence": (
+                    f"argument_audit raised {type(exc).__name__}: {exc}"
+                ),
+            }
+        ]
+    blockers: list[dict] = []
+    for problem in problems:
+        location = (
+            f"{problem.path}:{problem.line}"
+            if problem.line is not None
+            else str(problem.path)
+        )
+        blockers.append(
+            {
+                "title": f"review-contradiction: {problem.code}",
+                "evidence": f"{location}: {problem.message}",
+            }
+        )
+    return blockers
+
+
 def run_review(
     paper_root: Path,
     *,
@@ -513,6 +550,7 @@ def run_review(
     out_dir: Path | None = None,
     force: bool = False,
     codex_config: Path | None = None,
+    contradiction_probe=None,
 ) -> dict:
     """Run codex exec and write a structured review record."""
     paper_root = Path(paper_root).resolve()
@@ -688,6 +726,18 @@ def run_review(
                 + normalized["summary"]
             )
 
+    contradictions: list[dict] = []
+    if effective_verdict == "pass":
+        probe = contradiction_probe or _deterministic_contradictions
+        contradictions = probe(paper_root)
+        if contradictions:
+            effective_verdict = "blocking"
+            effective_summary = (
+                f"模型返回 pass，但确定性 gate 仍报告 {len(contradictions)} "
+                "项问题，判定为 review-contradiction：模型不得开释确定性 gate。 "
+                + effective_summary
+            )
+
     record = {
         "status": "complete",
         "model": model,
@@ -700,7 +750,8 @@ def run_review(
         "family_override": allow_same_family,
         "family_override_reason": override_reason,
         "verdict": effective_verdict,
-        "blocking": normalized["blocking"],
+        "blocking": [*normalized["blocking"], *contradictions],
+        "deterministic_contradiction": bool(contradictions),
         "summary": effective_summary,
         "input_hashes": input_hashes,
         "prompt_sha256": prompt_sha256,
@@ -783,11 +834,12 @@ def check_review(
     )
     stored_family = record.get("family_judgement")
     model_verdict = record.get("model_verdict")
+    contradiction_downgrade = record.get("deterministic_contradiction") is True
     if model_verdict is not None:
         verdict_is_consistent = model_verdict == payload["verdict"] or (
             model_verdict == "pass"
             and payload["verdict"] == "blocking"
-            and computed_family != "cross-family"
+            and (computed_family != "cross-family" or contradiction_downgrade)
         )
         if model_verdict not in ("pass", "blocking") or not verdict_is_consistent:
             problems.append(
@@ -798,7 +850,8 @@ def check_review(
                     "评审记录 model_verdict="
                     f"{model_verdict!r} 与 effective verdict="
                     f"{payload['verdict']!r} 不一致；"
-                    "只有同族/未知族的 pass→blocking 降级是允许的",
+                    "只有同族/未知族或确定性矛盾的 pass→blocking "
+                    "降级是允许的",
                 )
             )
     provenance_complete = (
@@ -1064,6 +1117,11 @@ def check_review(
         )
         corpus = _input_corpus(paper_root, hashes)
         for index, item in enumerate(payload["blocking"]):
+            if item["title"].startswith("review-contradiction:"):
+                # These items are copied from the deterministic gates, not
+                # produced by the model, so the "evidence must be a verbatim
+                # quote from the review inputs" rule does not apply.
+                continue
             evidence = _normalize_whitespace(item["evidence"])
             if not _quote_is_cited(evidence, corpus):
                 problems.append(
@@ -1076,6 +1134,19 @@ def check_review(
                         "逐字出现在评审输入文件中",
                     )
                 )
+    if payload["verdict"] == "pass":
+        contradictions = _deterministic_contradictions(paper_root)
+        if contradictions:
+            problems.append(
+                Problem(
+                    "review-contradiction",
+                    str(path),
+                    None,
+                    "评审记录返回 pass，但确定性 gate 仍报告 "
+                    f"{len(contradictions)} 项问题；"
+                    "模型不得开释确定性 gate（假 pass）",
+                )
+            )
     return problems
 
 
