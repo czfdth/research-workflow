@@ -455,3 +455,15 @@ rewrite historical entries.
   - `ruff check app`
 - notes: 实测截图确认：工具栏标记+图标、侧栏选中主色条、状态栏圆点、空白状态占位。
 
+## WC-20261005T173725Z-5f27688374 - Require the CI compile list and its modules to move in one commit
+
+- timestamp: `2026-10-05T17:37:25Z`
+- status: `complete`
+- author: `codex`
+- reason: A parallel commit listed tools/ccfa/repro_container.py in tests.yml py_compile before the file existed, which failed CI at Compile core modules. The engineering contract now states the rule and a guard test asserts every listed path exists.
+- files:
+  - `AGENTS.md`
+  - `tools/tests/test_github_workflows.py`
+- tests:
+  - `tools.tests.test_github_workflows`
+
