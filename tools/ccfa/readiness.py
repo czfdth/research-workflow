@@ -21,6 +21,7 @@ from ccfa import (
     argument_audit,
     artifact_badge,
     artifact_store,
+    autoresearch,
     citation_guard,
     claim_extract,
     cross_review,
@@ -87,6 +88,8 @@ EVIDENCE_LEDGER_PATHS = {
 }
 CLAIM_CANDIDATES_PATH = Path("data") / "claim-candidates.yaml"
 OPTIMIZATION_PROPOSALS_PATH = Path("data") / "experiment-optimization-proposals.yaml"
+RESEARCH_PLAN_CANDIDATES_PATH = Path("data") / "research-plan-candidates.yaml"
+CODE_MUTATION_PROPOSALS_PATH = Path("data") / "code-mutation-proposals.yaml"
 
 PROFILE_REQUIRED_LEDGERS = {
     "minimal": ("novelty",),
@@ -193,6 +196,18 @@ HUMAN_CHECKPOINT_SPECS = {
         "stage": "experiments-running",
         "question": "自动优化产生的 keep/revert proposal 是否接受？接受项如何写回内层实验循环？",
         "answer_with": "逐条审阅 best trial、objective 与预算，把接受项写入 data/experiment-loop.yaml",
+    },
+    "research-plans": {
+        "type": "approve",
+        "stage": "idea",
+        "question": "自动生成的研究方案中，哪些值得进入 pilot，哪些应拒绝或合并？",
+        "answer_with": "逐条审阅 problem/gap/hypothesis/实验设计与 kill criterion，把接受项写入实验循环台账",
+    },
+    "code-mutations": {
+        "type": "approve",
+        "stage": "experiments-running",
+        "question": "沙箱中的代码变异 patch 是否接受？测试证据是否足以进入下一轮？",
+        "answer_with": "逐条审阅 diff、sandbox_status 与输出，再决定是否应用 patch",
     },
 }
 
@@ -544,6 +559,16 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         specs["experiment-optimization"] = lambda: experiment_optimizer.check_spec(
             paper_root
         )
+    if (paper_root / RESEARCH_PLAN_CANDIDATES_PATH).is_file():
+        specs["research-plan-candidates"] = lambda: autoresearch.check_plan_candidates(
+            paper_root,
+            RESEARCH_PLAN_CANDIDATES_PATH,
+        )
+    if (paper_root / CODE_MUTATION_PROPOSALS_PATH).is_file():
+        specs["code-mutation-proposals"] = lambda: autoresearch.check_mutation_proposals(
+            paper_root,
+            CODE_MUTATION_PROPOSALS_PATH,
+        )
     return list(specs.items())
 
 
@@ -762,6 +787,20 @@ def _human_review_status(
         and proposals_payload["proposals"]
     ):
         pending.append("optimization-proposals")
+    plan_payload = _load_structured(paper_root / RESEARCH_PLAN_CANDIDATES_PATH)
+    if (
+        isinstance(plan_payload, dict)
+        and isinstance(plan_payload.get("plans"), list)
+        and plan_payload["plans"]
+    ):
+        pending.append("research-plans")
+    mutation_payload = _load_structured(paper_root / CODE_MUTATION_PROPOSALS_PATH)
+    if (
+        isinstance(mutation_payload, dict)
+        and isinstance(mutation_payload.get("proposals"), list)
+        and mutation_payload["proposals"]
+    ):
+        pending.append("code-mutations")
     pending = list(dict.fromkeys(pending))
     if not pending:
         status = "human-attested" if profile == "high-assurance" else "not-required"
@@ -784,6 +823,10 @@ def _human_checkpoints(pending: list[str]) -> list[dict]:
             if key == "claim-candidates"
             else OPTIMIZATION_PROPOSALS_PATH
             if key == "optimization-proposals"
+            else RESEARCH_PLAN_CANDIDATES_PATH
+            if key == "research-plans"
+            else CODE_MUTATION_PROPOSALS_PATH
+            if key == "code-mutations"
             else EVIDENCE_LEDGER_PATHS.get(key)
         )
         checkpoints.append(
