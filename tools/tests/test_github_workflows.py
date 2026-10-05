@@ -157,7 +157,7 @@ class GitHubWorkflowTests(unittest.TestCase):
             "scripts/test-impact.ps1 run --suite app",
             workflow,
         )
-        self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 2)
+        self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 3)
 
     def test_ci_installs_hash_locked_requirements(self):
         workflow_texts = [
@@ -176,6 +176,23 @@ class GitHubWorkflowTests(unittest.TestCase):
             with self.subTest(workflow=text.splitlines()[0]):
                 self.assertNotIn("requirements.txt", text)
                 self.assertIn("requirements.lock", text)
+
+    def test_ci_runs_lint_and_dependency_audit(self):
+        workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("ruff==0.16.10", workflow)
+        self.assertIn("pip-audit==2.10.1", workflow)
+        self.assertIn("ruff check tools app", workflow)
+        self.assertIn(
+            "pip-audit -r tools/requirements.lock --disable-pip",
+            workflow,
+        )
+        self.assertIn(
+            "pip-audit -r app/requirements.lock --disable-pip",
+            workflow,
+        )
 
     def test_ci_covers_cross_review_downstream_e2e_modules(self):
         selection = select_tests(
