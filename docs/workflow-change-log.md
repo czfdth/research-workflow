@@ -338,3 +338,15 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
 - notes: 04-human-checkpoints 是新提的界面：数据来自 readiness.human_review.checkpoints，尚未在 Qt 里实现。
 
+## WC-20261005T171603Z-0bb348e1bc - Fail closed on an empty citation calibration gold set
+
+- timestamp: `2026-10-05T17:16:03Z`
+- status: `complete`
+- author: `codex`
+- reason: The calibration report treated zero gold rows as a threshold pass, which let missing live evidence masquerade as calibrated citation support.
+- files:
+  - `tools/ccfa/citation_calibration.py`
+  - `tools/tests/test_citation_calibration.py`
+- tests:
+  - `tools.tests.test_citation_calibration`
+
