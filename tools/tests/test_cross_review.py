@@ -356,6 +356,20 @@ class TestRunReview(CrossReviewTests):
         self.assertEqual(result["family_judgement"], "cross-family")
         self.assertFalse(result["family_override"])
 
+    def test_reasoning_effort_is_passed_and_recorded(self):
+        runner = self._runner(payload=self._payload("pass"))
+
+        result = self._run(
+            runner,
+            model="qwen-local",
+            provider="other-provider",
+            reasoning_effort="none",
+        )
+
+        argv = runner.calls[0]["argv"]
+        self.assertIn("model_reasoning_effort=none", argv)
+        self.assertEqual(result["reasoning_effort"], "none")
+
     def test_provider_is_passed_to_codex_and_recorded(self):
         runner = self._runner(payload=self._payload("pass"))
 

@@ -239,6 +239,39 @@ effective verdict 也会被检查器重算为 blocking。Rigor rubric 的六个�
 逐项绑定 claim、run id 或仓库内文件；模型可以写 `model-advisory`，但不能把
 rubric 标成 `complete`。
 
+本机没有外部第二 family API 时，可以用 Docker + Ollama 提供一个真实的本地
+跨族 provider。容器只绑定 `127.0.0.1`：
+
+```powershell
+docker run -d --name ccfa-ollama --restart unless-stopped `
+    --gpus all -p 127.0.0.1:11434:11434 `
+    -v ccfa-ollama:/root/.ollama ollama/ollama:latest
+docker exec ccfa-ollama ollama pull qwen2.5:3b
+docker exec ccfa-ollama ollama cp qwen2.5:3b qwen-local
+```
+
+Codex 配置需要注册一个 Responses API provider；非 thinking 本地模型必须显式
+传 `--reasoning-effort none`，否则 Codex 会发送 Ollama 不支持的 reasoning
+参数：
+
+```toml
+[model_providers.local-qwen]
+name = "Ollama Qwen"
+base_url = "http://127.0.0.1:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false
+```
+
+```powershell
+scripts/cross-review.ps1 run --paper-root $paper `
+    --model qwen-local `
+    --provider local-qwen `
+    --reasoning-effort none
+```
+
+本地 3B 评审模型属于真实不同 family，但推理能力明显弱于云端大模型。
+它解决的是 provider/family 独立性，不应被当作高质量人类评审的替代品。
+
 ### `submission-check`：冻结投稿包
 
 必须产出：终稿检查、治理台账、复现环境和可实际验证的复现包。

@@ -166,3 +166,33 @@ informational 报告不再可能被当成最终放行依据。
 2. cross-review 需要真实跨族 provider。
 
 换句话说，**工作流本身已经不再阻塞论文；阻塞论文的只剩人力和外部资源**。下一步的价值不在写代码，而在找到一位能独立复核 Proposition 4 的人，以及接入第二个模型 family。
+
+## 九、跨族 provider 已接入（第九轮补记）
+
+第二个 family provider 已落地为本机 Docker + Ollama 的 Qwen provider：
+
+```text
+provider: local-qwen
+endpoint: http://127.0.0.1:11434/v1
+model: qwen-local
+remote model: qwen2.5:3b
+reasoning: none
+```
+
+容器已设置 `--restart unless-stopped`，并使用 RTX 5060 GPU。Codex 配置中新增
+了 Responses API provider 和 `cross-family` profile。`cross-review` 已支持
+`--reasoning-effort`，用于非 thinking 的本地模型。
+
+真实验证结果：
+
+```text
+family_judgement: cross-family
+family_override: false
+model_verdict: pass
+status: complete
+cross-review check: 0 problems
+```
+
+因此 `cross-review` 已从 blocking 变为 pass；readiness 现在只剩人工证明、
+引用语义、图表语义与后续人工验证阻塞。需要保留的边界是：本地 Qwen 3B 是
+真实不同 family，但推理能力弱于云端大模型，不能替代高质量人工复核。

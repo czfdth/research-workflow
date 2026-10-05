@@ -93,6 +93,7 @@ _TEXT_SUFFIXES = frozenset(
         ".yml",
     }
 )
+_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
 
 
 def _now_iso() -> str:
@@ -493,6 +494,7 @@ def run_review(
     *,
     model: str | None = None,
     provider: str | None = None,
+    reasoning_effort: str | None = None,
     allow_same_family: bool = False,
     override_reason: str | None = None,
     stage: str,
@@ -515,6 +517,13 @@ def run_review(
             "工作流不再替调用方选择评审模型"
         )
     model = model.strip()
+    if reasoning_effort is not None:
+        reasoning_effort = str(reasoning_effort).strip().casefold()
+        if reasoning_effort not in _REASONING_EFFORTS:
+            raise ValueError(
+                f"reasoning_effort 非法: {reasoning_effort!r}，"
+                f"应为 {' / '.join(_REASONING_EFFORTS)}"
+            )
     provenance = _load_model_provenance(
         codex_config or (Path.home() / ".codex" / "config.toml"),
         provider,
@@ -562,6 +571,11 @@ def run_review(
         "codex",
         "exec",
         *(["-c", f"model_provider={provider}"] if provider else []),
+        *(
+            ["-c", f"model_reasoning_effort={reasoning_effort}"]
+            if reasoning_effort
+            else []
+        ),
         "-m",
         model,
         "-s",
@@ -591,6 +605,7 @@ def run_review(
             "provider": provider,
             **provenance,
             "execution_model": execution_model,
+            "reasoning_effort": reasoning_effort,
             "family_judgement": family,
             "family_override": allow_same_family,
             "family_override_reason": override_reason,
@@ -625,6 +640,7 @@ def run_review(
             "provider": provider,
             **provenance,
             "execution_model": execution_model,
+            "reasoning_effort": reasoning_effort,
             "family_judgement": family,
             "family_override": allow_same_family,
             "family_override_reason": override_reason,
@@ -670,6 +686,7 @@ def run_review(
         "provider": provider,
         **provenance,
         "execution_model": execution_model,
+        "reasoning_effort": reasoning_effort,
         "family_judgement": family,
         "family_override": allow_same_family,
         "family_override_reason": override_reason,
@@ -1073,6 +1090,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="显式指定独立评审模型；不提供默认值",
     )
     run.add_argument("--provider")
+    run.add_argument(
+        "--reasoning-effort",
+        choices=_REASONING_EFFORTS,
+        help="传给 codex exec 的 model_reasoning_effort；非 thinking 本地模型用 none",
+    )
     run.add_argument("--allow-same-family", action="store_true")
     run.add_argument(
         "--override-reason",
@@ -1119,6 +1141,7 @@ def main(argv: list[str]) -> int:
             Path(args.paper_root),
             model=args.model,
             provider=args.provider,
+            reasoning_effort=args.reasoning_effort,
             allow_same_family=args.allow_same_family,
             override_reason=args.override_reason,
             stage=args.stage,
