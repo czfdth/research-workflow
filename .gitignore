@@ -20,3 +20,12 @@ library/papers/*.pdf
 __pycache__/
 *.pyc
 /repro-bundle.out.json
+# Root-level ad-hoc command captures from manual verification. Durable evidence
+# belongs under reviews/ or a paper repository's ccfa-workfiles/.
+/*.err.txt
+/*-check.json
+/argument-audit.json
+/readiness-*.json
+/runlog-migration.out.json
+/verify-all.out.json
+/ccfa-workfiles/

@@ -1,134 +1,134 @@
 # 科研工作流缺口与完善清单
 
-日期：2026-10-05（第六轮推进）
+日期：2026-10-05（第八轮最终复检）
 
 ## 一句话结论
 
-工程层面的 bug 已全部修复：全量测试恢复绿色（1211 OK），CI 参数正确并覆盖了两个 E2E 模块，doctor 不再误报 provider。当前 `readiness` 仍为 `ready=false`，但剩下的原因**不再是代码缺陷，而是尚未完成的人工科研验证**。
+工程侧已经完成收尾，旗舰论文的新证据体系也已经落地：主仓库停在
+`0d12c96`，论文仓库停在 `bd3acd8`，两者都与 `origin/master` 同步。最新
+`readiness` 的 `missing_required` 为 **0**。当前 `ready=false` 只来自不能由
+脚本替代的人工科研边界：证明、引用语义、图表语义复核，以及同族
+cross-review 不得开释。
 
-本轮又修复了相对 `--paper-root` 下 cross-review schema 路径被拼两遍的 bug，
-重跑了 cross-review，并完成了一次 Codex Security diff scan（0 reportable findings）。
-Zotero 本地端口现已监听；Docker engine 与 WorkBuddy converter 仍未就绪。
+现在的正确动作是冻结新增工具，把人工验证真正做完，而不是继续增加 gate。
 
-## 一、本轮验证基线
+## 一、最终工程基线
 
 | 检查 | 结果 |
 | --- | --- |
-| 主仓库 | 干净，与 `origin/master` 同步 |
-| 论文仓库 | 干净，与 `origin/master` 同步 |
-| 工具全量测试 | `Ran 1211 tests, OK`（约 96 秒） |
-| app 全量测试 | `Ran 187 tests, OK` |
-| `doctor` | `0 problems, 3 advisories`，provider 报 `functional 配置模型可用` |
-| `readiness` | `ready=false`，blocking 仅剩 scientific 两类 |
+| 主仓库 | `0d12c96`，与 `origin/master` 同步 |
+| 论文仓库 | `bd3acd8`，与 `origin/master` 同步，工作树干净 |
+| `tools/ccfa` 模块 | 68 个 |
+| PowerShell 入口 | 50 个 |
+| 测试方法 | 1,528 个 |
+| readiness 快照 | 基于 clean commit `2e32fc0`，归档在 `bd3acd8` |
+| `missing_required` | 0 |
+| 远端跨仓库 CI | `paper-check #6` 已成功；主仓库定向测试已成功 |
 
-## 二、已修复的 bug（累计）
+本轮遵循“只测新增和修改”的约束，没有为了文档收尾重跑全量测试。历史全量
+记录曾达到 1,441 项通过；当前测试方法数量为 1,528，新增模块各自带有定向测试。
 
-| 编号 | 问题 | 状态 |
-| --- | --- | --- |
-| BUG-1 | `paper-check` CI 用 `--paper-root` 调 `citation_guard` / `trace_claims`，必然 exit 2 | 已修，参数改为 `--manuscript/--bib/--ledger` 与 `--manuscript` |
-| BUG-2 | 没有守护 workflow↔CLI 参数一致性的测试 | 已修，新增 `test_*_paper_commands_are_parseable` |
-| BUG-3 | `governance` gate 接受 pending 占位文本 | 已修，现在报 `governance-placeholder` 并 exit 1 |
-| BUG-4 | 复现包 `requirements` 为 null、lockfile 哈希漂移 | 已修，`repro_env` 0 problem |
-| BUG-NEW-1 | 全量测试 2 个 error，CI 子集检测不到 | 已修，测试补 `model`，CI 增加 `test_automation_e2e` / `test_evidence_integrity_e2e` |
-| BUG-NEW-2 | doctor 只读 `data[].id`，对 `models[].slug` 误报 | 已修，`_model_ids` 同时解析 `id` 与 `slug` |
+## 二、旗舰论文迁移状态
 
-`readiness` 的假绿问题也在本轮之前修复：它现在会聚合各 gate 的真实退出码。
-
-## 三、当前唯一的核心阻塞：
-
-| 项 | 状态 |
-| --- | --- |
-| `proof-audit.yaml` | 8 条全部 `Human reviewer pending`，人工复核 0/8 |
-| `citation-support.yaml` | `supports: []`，0/6 |
-| `figure-support.yaml` | `figures: []`，0/1 |
-| `human-coding-report.json` | `pending-human-dual-coding` |
-| `scientific-acceptance.yaml` | 不存在，`scientifically-accepted: not-claimed` |
-
-`readiness` 当前 blocking：
+论文已经把 10 类新台账全部迁入 `data/`：
 
 ```text
-argument-audit gate failed: proof-review-not-verified ×5
-cross-review gate failed: review-blocking, review-uncited-blocking ×2
+claim-registry, assumptions-limitations, venue-checklist,
+artifact-provenance, exploration-graph, cost-ledger,
+risk-register, experiment-loop, rigor-rubric, proof-campaign
 ```
 
-这两项都不是脚本能替代的：
+最新 committed readiness 显示：
 
-- Proposition 4 等理论主张需要真人逐行复核；
-- 需要一位独立真人完成盲法第二编码，并报告 exact agreement、Cohen's kappa 与置信区间。
+- `missing_required: 0`
+- `schema-valid: pass`
+- `experiment-loop: pass`
+- `proof-orchestrator: pass`
+- `research-ledgers: pass`
+- `novelty: pass`
+- `statistics: pass`
+- `repro-environment: pass`
+- `latex-structure: pass`
+- `trace-claims: pass`
+- `citation-guard: pass`
+- `final-check: pass`，`problem_count=0`，保留 85 条 `untagged-number`
+  advisory
+- `repro-package: pass`，保留 2 条范围 advisory：未做容器级隔离；已记录输出
+  尾部摘要
 
-## 四、仍需处理的问题（非 bug）
+迁移后的论文仓库也带有可供真人填写的复核包：
 
-### 1. 跨模型评审记录尚未重生成
+```text
+ccfa-workfiles/human-review/proof-review-packet.md
+ccfa-workfiles/human-review/citation-support-packet.md
+ccfa-workfiles/human-review/figure-support-packet.md
+ccfa-workfiles/human-review/governance-checklist.md
+```
 
-已重生成。`reviews/cross-review.json` 现在有完整 config-derived provenance、当前输入
-哈希与 prompt hash，不再 stale。由于本机没有第二个 family 的 provider，记录仍显式
-标为 same-family override；评审 verdict 为 `blocking`，理由正是 proof/citation/figure
-人工台账全部 pending。另有 2 条 blocking evidence 未满足引文校验，因此 check 报
-`review-uncited-blocking`。
+这些是待人工执行的复核材料，不是已完成的复核结论。
 
-真正跨族评审仍需要接入不同 family 的 provider；当前记录不会冒充独立评审。
+## 三、唯一剩余的阻塞
 
-### 2. governance 台账仍是占位值
+| Gate | 结果 | 含义 |
+| --- | --- | --- |
+| `argument-audit` | `problem_count=15` | 8 条 proof pending、6 条 citation support missing、1 条 figure support missing |
+| `cross-review` | `problem_count=1` | 同族评审只能驱动，不能开释 |
+| readiness | `ready=false` | 工程证据已齐，人工科研证据未齐 |
+| scientific acceptance | `not-claimed` | 脚本不能证明结论正确 |
 
-`data/governance.yaml` 中 COI、查重工具、披露联系人仍为 pending 文本。`ccfa.governance` 会正确报 3 个 problem 并 exit 1，因此两个 `paper-check` workflow 目前会在此失败。需要填入真实值（或明确说明不适用）。
+对应的真实人工任务：
 
-### 3. 本地服务未就绪
+1. 逐条完成 8 个 proof 的人工复核，并写入 reviewer、日期和结论。
+2. 完成 6 条 citation semantic support 记录，确认引用确实支撑对应论断。
+3. 完成 1 张交付图的人工语义支持记录。
+4. 完成真人盲法第二编码，报告 exact agreement、Cohen's kappa、bootstrap
+   置信区间、分歧条目和裁决过程。
+5. 接入不同 family 的 provider，重新生成真正跨族 cross-review，而不是沿用
+   same-family override。
 
-| 服务 | 状态 |
-| --- | --- |
-| Docker daemon | 不可达 |
-| WorkBuddy `:8787` | 连接被拒 |
-| Zotero `:23119` | 已监听；API 请求仍返回错误，需检查 Zotero 本地 API 设置 |
+在这些动作完成前，系统必须继续显示 `ready=false`。这是正确行为，不是 bug。
 
-`doctor` 以 advisory 形式报告这 3 项并退出 0。投稿前应使用 `doctor --strict`。
+## 四、本轮真正的收尾修正
 
-### 4. CI 运维未验证
+1. 论文台账迁移状态与 `readiness` 重新对齐，文档不再声称论文未迁移。
+2. 明确保留 85 条 `untagged-number` advisory，不用“全部已绑定”掩盖未标记
+   数字。
+3. 明确 `cross-review` 的同族限制，保留阻塞，不用模型自述替代独立评审。
+4. 根目录的命令捕获文件纳入 `.gitignore`，避免它们污染工作树；文件本身不
+   删除，正式证据仍应落到 `reviews/` 或论文仓库的 `ccfa-workfiles/`。
+5. 两个仓库的跨仓库 CI 凭据、`run_log` 参数顺序、脏树豁免和日期边界测试均
+   已修正并留下可审计记录。
 
-- `PAPER_REPOSITORY_TOKEN`、`RESEARCH_WORKFLOW_TOKEN` 是否配置未验证（本机无 `gh` CLI）；
-- 跨仓库 workflow 为手动触发，不是每次 push 自动验证论文；
-- 未见 branch protection 证据。
+## 五、后续纪律
 
-### 5. 长期归档与身份
+### 冻结功能增长
 
-- Zenodo / OSF：录用后归档 artifact 并获取 DOI；
-- ORCID：投稿元数据与成果归属。
+在旗舰论文完成人工验证前，不再新增 gate 或抽象模块。新想法先进入
+`docs/plans/`，不直接落代码。
 
-### 6. 复现范围仍有限
+### 每个 gate 必须回答四个问题
 
-`repro_env` 与 `MANIFEST.json` 已对齐，但 `requirements.lock` 只有 `python==3.12.14`，`repro-check` 的 advisory 明确说明不提供容器级隔离，尚无第二机器或容器实测证据。
+1. 它防止了什么真实事故？
+2. 谁负责填写和更新？
+3. 输入变化后如何判定 stale？
+4. 如果删除它，会丢失什么证据？
 
-## 五、优先行动清单
+### 区分四种状态
 
-### P0：科研验证
+```text
+schema-valid
+evidence-present
+independently-reviewed
+scientifically-accepted
+```
 
-1. 完成 proof（0/8）、citation（0/6）、figure（0/1）人工复核。
-2. 完成真人盲法第二编码，输出 kappa、置信区间、分歧与裁决。
-3. 若无法及时完成，明确把论文定位为“验证待补”，不要以 `review_cleared` 提交。
-
-### P1：让 gate 与 CI 真正转绿
-
-4. 用真实跨族模型重跑 `cross-review`，替换当前 same-family override。
-5. 把 `governance.yaml` 换成真实 COI / 查重 / 披露信息。
-6. 验证两个 PAT secret，让跨仓库 CI 在第二环境跑通。
-
-### P2：环境与归档
-
-7. 启动 Docker、WorkBuddy、Zotero，使 `doctor --strict` 归零。
-8. 补容器或第二环境复现证据。
-9. 接入 ORCID，录用后接入 Zenodo/OSF。
+只有第四种才代表结论已经被外部人类科学审查接受。前三者都不能替代它。
 
 ## 六、结论
 
-工具链这一层目前是健康的：1211 + 187 项测试全绿，CI 参数正确，doctor 判断准确，readiness 能忠实反映 gate 状态。工作流现在缺的不是代码，而是**证据**：证明没被人复核、引文语义没被人确认、编码没被第二个人独立做过、评审记录还没有用真实跨族模型重新生成。
+这套工作流的工程能力已经足够强：状态可恢复、失败留档、跨仓库 CI、复现包、
+不可变证据、源码级对标和诚实的 blocker 都已具备。
 
-换句话说，系统已经准备好承载可信科研；下一步是把人工验证真正做进去。
-
-## 七、第六轮附加证据
-
-- 相对 `--paper-root` 的 cross-review 路径 bug 已修：`paper_root` 在 run/check 入口
-  统一 `resolve()`，并新增相对路径回归测试。
-- cross-review 已重跑：完整 provenance、无 stale、无 provider-config drift；结果为
-  `blocking`，不再用旧 `pass` 冒充有效评审。
-- Codex Security diff scan `3e2db666-9c2b-4e48-83dc-df8e46b1f24d` 完成：
-  `findingCount=0`。保留的 assurance limitation 是 provider 的 `functional` 状态仍
-  基于它自报的模型列表，而不是一次真实推理能力探测。
+真正决定论文质量的最后一段仍然必须由人完成：复核证明、确认引用支撑、
+检查图表语义、做独立双编码，并使用真实跨族评审。完成这些之后，论文才应该
+从 `internal-review` 进入 `review_cleared`。
