@@ -115,6 +115,17 @@ git -C $paper status --short
 
 `readiness` 会执行当前 profile 对应的 gate。`evidence-present` 只表示文件齐全；`gate-verified` 才表示下游检查器真实通过。人工审计仍是 pending、cross-review provenance 不完整或 lockfile 漂移时，报告必须为 `ready=false`。
 
+每个 gate 现在带一个**结论词**，把"该跑没跑"和"跑了没过"分开：
+
+| 结论 | 含义 | 你该做什么 |
+| --- | --- | --- |
+| `pass` | 跑了，没问题 | 不用动 |
+| `fail` | 跑了，检查器拒绝了 | 改内容 |
+| `blocked` | 前置台账缺失，gate 根本没跑 | 先补输入 |
+| `error` | 检查器本身报错 | 修工具或环境 |
+
+过去这些一律显示 `problem`，所以"缺文件"和"内容不过"看起来一样。
+
 `human_review.checkpoints` 把每条待人工项展开成**可回答的问题**：
 
 - `question`：要人判断的到底是什么；

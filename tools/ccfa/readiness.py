@@ -373,6 +373,36 @@ def _gate_result(
     }
 
 
+def _verdicts(
+    gate_results: list[dict],
+    missing_required: list[str],
+) -> dict[str, str]:
+    """One verdict per gate, in ARIS's vocabulary.
+
+    ``blocked`` is the important one: the gate never got to decide because its
+    input is missing, which calls for a different action than ``fail`` (the
+    audit ran and rejected the work). Collapsing both into "problem" is what
+    made the old report hard to act on.
+    """
+
+    verdicts: dict[str, str] = {}
+    for key in missing_required:
+        gate = LEDGER_GATE_NAMES.get(key)
+        if gate:
+            verdicts[gate] = "blocked"
+    for result in gate_results:
+        name = result["name"]
+        if name in verdicts:
+            continue
+        if result["status"] == "error":
+            verdicts[name] = "error"
+        elif result["status"] == "problem":
+            verdicts[name] = "fail"
+        else:
+            verdicts[name] = "pass"
+    return verdicts
+
+
 def _run_gate(name: str, runner) -> dict:
     try:
         outcome = runner()
@@ -971,6 +1001,8 @@ def build_report(
     elif ledgers["missing_required"]:
         gate_verified = "not-run"
 
+    verdicts = _verdicts(gate_results, ledgers["missing_required"])
+
     collaboration_ready = (
         git.present and bool(git.remotes) and git.workflows_present
     )
@@ -1000,6 +1032,7 @@ def build_report(
             "advisories": due.get("advisories", []),
         },
         "gate_results": gate_results,
+        "verdicts": verdicts,
         "git": {
             "present": git.present,
             "dirty": git.dirty,
@@ -1060,10 +1093,18 @@ def render_markdown(report: dict) -> str:
         codes = ", ".join(
             problem["code"] for problem in result["problems"]
         ) or "none"
+        verdict = report.get("verdicts", {}).get(result["name"], "?")
         lines.append(
-            f"- `{result['name']}`: `{result['status']}` "
+            f"- `{result['name']}`: `{verdict}` (`{result['status']}`) "
             f"(problems: {result['problem_count']}; codes: {codes})"
         )
+    for name, verdict in sorted(report.get("verdicts", {}).items()):
+        if verdict == "blocked" and all(
+            item["name"] != name for item in report["gate_results"]
+        ):
+            lines.append(
+                f"- `{name}`: `blocked` (前置台账缺失，gate 没跑)"
+            )
     lines.extend(["", "## Git And CI", ""])
     git = report["git"]
     lines.append(f"- git: `{'present' if git['present'] else 'missing'}`")

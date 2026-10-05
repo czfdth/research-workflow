@@ -746,3 +746,18 @@ rewrite historical entries.
   - `tools.tests.test_argument_audit + test_figure_audit + test_readiness + test_proof_orchestrator (134 tests)`
 - notes: 必录文件：引用=记录里的 source_path，图表=manifest 里的 file；新增 citation-support-unbound/-stale 与 figure-support-unbound/-stale。
 
+## WC-20261005T182608Z-cb45d21fd1 - Give every readiness gate a verdict (pass / fail / blocked / error) so missing inputs no longer look like rejected content.
+
+- timestamp: `2026-10-05T18:26:08Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS 审计里我们还没抄的最后一条：过去 gate 只有 pass/problem，缺前置台账和内容不过显示成一样，人看不出下一步该补输入还是改内容。顺带核实 resume 已经由 tools/ccfa/long_task.py 实现。
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_readiness (61 tests)`
+- notes: verdicts 由缺失台账映射（LEDGER_GATE_NAMES）+ gate 自身 status 推导；markdown 里每个 gate 行带 verdict，未执行的 blocked gate 单独列一行。
+

@@ -549,6 +549,30 @@ class ReadinessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_report(self.paper_root)
 
+    def test_gate_verdicts_mark_missing_inputs_as_blocked(self):
+        report = build_report(self.paper_root)
+
+        self.assertEqual(report["verdicts"]["argument-audit"], "blocked")
+        self.assertIn("blocked", render_markdown(report))
+
+    def test_a_gate_that_ran_and_rejected_is_a_fail_verdict(self):
+        self._touch_ledgers(["novelty"])
+        (self.paper_root / "data" / "novelty-audit.yaml").write_text(
+            "version: 1\n"
+            "search:\n"
+            "  databases: [arXiv]\n"
+            "  queries: [q]\n"
+            "  searched_at: '2026-10-04'\n"
+            "  cutoff: '2026-10-04'\n"
+            "claims: [claim-1]\n"
+            "neighbors: []\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertEqual(report["verdicts"]["novelty"], "fail")
+
     def test_checkpoints_only_returns_the_human_queue_without_running_gates(self):
         self._write_state("workflow:\n  profile: high-assurance\n")
         data = self.paper_root / "data"
