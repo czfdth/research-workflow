@@ -4,8 +4,9 @@
 
 ## 一句话结论
 
-工程侧已经完成收尾，旗舰论文的新证据体系也已经落地：主仓库停在
-`0d12c96`，论文仓库停在 `bd3acd8`，两者都与 `origin/master` 同步。最新
+工程侧已经完成收尾，旗舰论文的新证据体系也已经落地。本次最终审计覆盖主仓库
+cross-review 解析器修复 `a14b998`，以及论文证据与评审记录修正
+`aea807f`；两个仓库都已与 `origin/master` 同步。最新 clean-tree
 `readiness` 的 `missing_required` 为 **0**。当前 `ready=false` 只来自不能由
 脚本替代的人工科研边界：证明、引用语义、图表语义复核，以及同族
 cross-review 不得开释。
@@ -16,14 +17,14 @@ cross-review 不得开释。
 
 | 检查 | 结果 |
 | --- | --- |
-| 主仓库 | `0d12c96`，与 `origin/master` 同步 |
-| 论文仓库 | `bd3acd8`，与 `origin/master` 同步，工作树干净 |
+| 主仓库最终审计点 | `a14b998`，与 `origin/master` 同步 |
+| 论文仓库最终审计点 | `aea807f`，与 `origin/master` 同步，工作树干净 |
 | `tools/ccfa` 模块 | 68 个 |
 | PowerShell 入口 | 50 个 |
 | 测试方法 | 1,528 个 |
 | readiness 快照 | 基于 clean commit `2e32fc0`，归档在 `bd3acd8` |
 | `missing_required` | 0 |
-| 远端跨仓库 CI | `paper-check #6` 已成功；主仓库定向测试已成功 |
+| 远端跨仓库 CI | 前序 `paper-check #6` 与主仓库定向测试已成功；最终解析器修复另有 73 项本地定向测试通过 |
 
 本轮遵循“只测新增和修改”的约束，没有为了文档收尾重跑全量测试。历史全量
 记录曾达到 1,441 项通过；当前测试方法数量为 1,528，新增模块各自带有定向测试。
@@ -98,6 +99,10 @@ ccfa-workfiles/human-review/governance-checklist.md
    删除，正式证据仍应落到 `reviews/` 或论文仓库的 `ccfa-workfiles/`。
 5. 两个仓库的跨仓库 CI 凭据、`run_log` 参数顺序、脏树豁免和日期边界测试均
    已修正并留下可审计记录。
+6. `cross-review` 现在接受“裸 JSON”或“单个 Markdown 代码围栏中的 JSON”，
+   并拒绝多个围栏；真实同族 blocking 输出因此能正常落盘，检查只剩
+   `review-blocking`，不再出现 `malformed`、`review-stale` 或
+   `review-provider-config-drift`。
 
 ## 五、后续纪律
 
