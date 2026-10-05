@@ -224,3 +224,14 @@ rewrite historical entries.
   - `tools.tests.test_readiness (41 tests)`
 - notes: 默认行为不变：不写 assurance 时与之前完全一致；high-assurance 默认 submission。workflow-guide 段落待并发编辑落地后再补。
 
+## WC-20261005T170010Z-cea660be07 - Normalize README workflow-row line endings
+
+- timestamp: `2026-10-05T17:00:10Z`
+- status: `complete`
+- author: `codex`
+- reason: Remove CRLF trailing whitespace flagged by git diff --check on the newly added workflow rows.
+- files:
+  - `README.md`
+- tests:
+  - `git diff --check`
+
