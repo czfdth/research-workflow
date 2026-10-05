@@ -257,3 +257,14 @@ rewrite historical entries.
   - `tools.tests.test_skillpack (12 tests, including the encrypted round-trip)`
 - notes: 实测打包 ccf-common（16 文件）并在明文与加密两种模式下 verify 通过；加密包无口令返回 skillpack-locked。
 
+## WC-20261005T170408Z-0990e86d3a - Install the public venue template library and MiKTeX in CI
+
+- timestamp: `2026-10-05T17:04:08Z`
+- status: `complete`
+- author: `codex`
+- reason: The derivation and compile end-to-end suites were skipping on runners because the host ccf-latex-templates library and pdflatex were absent. Both are publicly installable (mikubaka88/CCFA-Skills, MiKTeX), so the tools job now installs them with continue-on-error; a failed install degrades to the existing explicit skips instead of a red job.
+- files:
+  - `.github/workflows/tests.yml`
+- tests:
+  - `tools.tests.test_github_workflows`
+
