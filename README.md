@@ -73,6 +73,7 @@ git -C $paper status --short
 | `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |
 | `tools/ccfa/repro_container.py` | 在固定 digest 的 Docker 镜像中重跑复现包，关闭网络并写出第二环境 receipt | `scripts/repro-container.ps1` |
 | `tools/ccfa/skillpack.py` | 把技能目录打成可校验的 `.skillpack`（逐文件 sha256、确定性打包、可选 AES-256-GCM），`verify` 能发现篡改与夹带成员 | `scripts/skillpack.ps1` |
+| `tools/ccfa/skill_registry.py` | 维护可组合 skill registry，解析依赖、拒绝环、生成可验证 `.skillpack`，并能把一个 skill 及其依赖独立安装到目标目录 | `scripts/skill-registry.ps1` |
 | `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
 | `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |
 | `tools/ccfa/library.py` | 索引和检索共享文献库（metadata + 笔记，不含 PDF 全文）；`index --embed` 用本地 bge-m3 建向量，`search --mode` 支持 keyword / semantic / hybrid 三种模式，hybrid 按倒数排名融合 | `scripts/library.ps1` |
@@ -106,6 +107,7 @@ git -C $paper status --short
 | `tools/ccfa/worktree_audit.py` | 对照 change log 审计工作树漂移，列出已覆盖与未覆盖的工作流文件 | `scripts/worktree-audit.ps1` |
 | `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id；`run-next` 可在预算内执行 pilot 并同时写 run-log 与 compute ledger | `scripts/experiment-loop.ps1` |
 | `tools/ccfa/experiment_optimizer.py` | 按声明的搜索空间生成多 trial，预算内执行，读取 objective、更新 best、patience 早停，并只写 `experiment-optimization-proposals.yaml`；不自动修改 claim registry | `scripts/experiment-optimize.ps1` |
+| `tools/ccfa/long_task.py` | 用 hash-chained append-only events 保存跨会话任务状态；`resume` 从磁盘重放当前步骤，`run-next` 可执行有命令的下一步并写 run-log | `scripts/long-task.ps1` |
 | `tools/ccfa/autoresearch.py` | 生成候选研究方案；并让模型对白名单文件提出完整替换 patch，在 disposable sandbox 中应用和测试，记录 diff 与 sandbox 结果，原仓库不改 | `scripts/autoresearch.ps1` |
 | `tools/ccfa/post_submission.py` | 校验 rebuttal 回复矩阵、resubmit venue 差异与 talk 大纲的产出物契约 | `scripts/post-submission.ps1` |
 | `tools/ccfa/resubmit_pipeline.py` | 校验 resubmit 物理隔离、bib 冻结、无新增 run、匿名泄漏与 forbidden path | `scripts/resubmit-pipeline.ps1` |

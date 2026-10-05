@@ -677,3 +677,40 @@ rewrite historical entries.
   - `ruff check app`
 - notes: Qt 的 markdown 导入器忽略样式表里的块背景，改用 nonBreakableLines 标记识别代码块并直接设置 block 背景；深浅色采样确认 #eef0f3 / #2b2b34 生效。
 
+## WC-20261005T181502Z-728c97291b - Add cross-session task replay and independently installable skills
+
+- timestamp: `2026-10-05T18:15:02Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the remaining orchestration and packaging gaps: long tasks now replay a hash-chained event log from disk, and core capabilities are split into dependency-resolved skill packages that can be verified and installed independently.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/long-task.ps1`
+  - `scripts/skill-registry.ps1`
+  - `skills/ccfa-autoresearch/SKILL.md`
+  - `skills/ccfa-autoresearch/skill.yaml`
+  - `skills/ccfa-claims/SKILL.md`
+  - `skills/ccfa-claims/skill.yaml`
+  - `skills/ccfa-core/SKILL.md`
+  - `skills/ccfa-core/skill.yaml`
+  - `skills/ccfa-evidence/SKILL.md`
+  - `skills/ccfa-evidence/skill.yaml`
+  - `skills/ccfa-experiments/SKILL.md`
+  - `skills/ccfa-experiments/skill.yaml`
+  - `skills/registry.yaml`
+  - `tools/ccfa/long_task.py`
+  - `tools/ccfa/skill_registry.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_long_task.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_skill_registry.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_long_task`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+

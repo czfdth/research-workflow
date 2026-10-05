@@ -24,6 +24,8 @@ This checklist turns the live GitHub comparison into explicit work items.
 | P1-3 | Portability: no pipx/console entry | Resolved | Root `pyproject.toml` + `ccfa.dispatch:run` expose `ccfa <module> ...`; devcontainer is still optional |
 | P1-4 | Reference audit is not periodic | Code-resolved | `docs/reference-registry.yaml` pins audited commits; `reference-audit.yml` checks monthly and fails closed on upstream drift |
 | P1-5 | Automatic code mutation and new research-plan generation | Sandboxed code-resolved | `autoresearch.py` generates `research-plan-candidates.yaml` and model-authored file replacements for explicitly allowed files; mutations are applied and tested in a disposable sandbox, recorded as diffs, and never modify the source repo or claim registry |
+| P1-6 | Cross-session long-task continuation | Code-resolved | `long_task.py` stores a task spec and hash-chained append-only events under `ccfa-workfiles/tasks/`; `resume` replays state from disk and `run-next` executes the next command with run-log evidence |
+| P1-7 | Skill composability and independent installation | Code-resolved | `skills/registry.yaml` plus `skill_registry.py` validate dependencies, reject cycles, build verifiable `.skillpack` archives, and install a selected skill together with its dependencies |
 
 ## P2
 

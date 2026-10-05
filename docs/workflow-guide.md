@@ -248,6 +248,32 @@ scripts/autoresearch.ps1 check-mutations --paper-root $paper
 测试，记录 unified diff、sandbox status 和输出，原仓库不会改变。`proposed`
 只表示沙箱通过，不表示方案或代码已被科学接受。
 
+跨会话长任务：
+
+```powershell
+scripts/long-task.ps1 start --paper-root $paper --spec data/long-task.yaml
+scripts/long-task.ps1 checkpoint --paper-root $paper --task T1 `
+    --step S1 --status complete --evidence artifacts/a.txt
+scripts/long-task.ps1 resume --paper-root $paper --task T1
+scripts/long-task.ps1 run-next --paper-root $paper --task T1 --execute
+scripts/long-task.ps1 check --paper-root $paper --task T1
+```
+
+任务状态由 hash-chained append-only `events.jsonl` 在磁盘上重放得到；新会话
+只凭 `paper-root` 和 task id 即可恢复当前步骤与 next action。
+
+独立 skill package：
+
+```powershell
+scripts/skill-registry.ps1 check --root .
+scripts/skill-registry.ps1 resolve --skill ccfa-autoresearch
+scripts/skill-registry.ps1 pack --skill ccfa-core --out dist/skillpacks
+scripts/skill-registry.ps1 install --skill ccfa-autoresearch --target $target
+```
+
+registry 会解析并安装依赖，拒绝依赖环；每个 skill 使用可校验 `.skillpack`
+安装，不要求把整个 monorepo 一起复制过去。
+
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
 ### `experiments-running`：运行并留档
