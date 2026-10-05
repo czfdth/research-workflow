@@ -1204,3 +1204,16 @@ rewrite historical entries.
   - `tools.tests.test_scripts inventory/contract + test_docs_consistency (19 tests)`
 - notes: Read-only: without --out it prints and writes nothing, and it never touches the paper tracked files. Output leads with an auto-generated headline (ready/blocking/gate pass count) then the gate table with de-duplicated problem codes, the human checkpoint table with its destination ledger, the doctor problems/advisories plus the installed/reachable inventory, git/CI and the countdown. discover_paper refuses to guess when papers/ holds more than one project. Exit code reports whether the snapshot was produced, not whether the paper is ready.
 
+## WC-20261005T215837Z-36be525a3c - Update the e2e snapshot with the Zotero verification results and the fact that the environment is now fully green.
+
+- timestamp: `2026-10-05T21:58:37Z`
+- status: `complete`
+- author: `codex`
+- reason: The committed snapshot listed Zotero 23119 as the one remaining environment gap; leaving it that way after the link was verified and doctor went to 0 advisories would make a dated record quietly wrong.
+- files:
+  - `docs/e2e-check-2026-10-06.md`
+- tests:
+  - `ccfa.doctor --repo-root repo (0 problems, 0 advisories, functional zotero HTTP 200)`
+  - `zotero-mcp.exe serve initialize + 41 tools + import/search/bibtex/delete round trip`
+- notes: Records the dedupe result precisely: if_exists=skip de-duplicates when the record carries an identifier (DOI), and does not fall back to fuzzy title matching. Three probe items were trashed and live items are back to zero; no Zotero account sync is configured, so nothing left the machine.
+
