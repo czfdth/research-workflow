@@ -98,6 +98,11 @@ def stylesheet() -> str:
         border-color: #fecdca;
         color: {PROBLEM};
     }}
+    QLabel[role="badge"][state="advisory"] {{
+        background: #fffaeb;
+        border-color: #fedf89;
+        color: {ADVISORY};
+    }}
 
     QPushButton {{
         background: {PANEL};
@@ -137,6 +142,21 @@ def stylesheet() -> str:
         background: #f2f4f7;
         border: 1px solid {LINE};
         color: {MUTED};
+    }}
+    QFrame#checkpointCard {{
+        background: {PANEL};
+        border: 1px solid {LINE};
+        border-radius: 6px;
+    }}
+    QScrollArea#checkpoint_scroll {{ background: transparent; border: none; }}
+    QWidget#checkpoint_container {{ background: transparent; }}
+    QLabel#checkpointQuestion {{
+        font-size: 10pt;
+    }}
+    QLabel#checkpointMeta {{
+        color: {MUTED};
+        font-family: {MONO};
+        font-size: 8pt;
     }}
 
     QListWidget {{
@@ -198,4 +218,21 @@ def stylesheet() -> str:
     QStatusBar {{ background: {PANEL}; border-top: 1px solid {LINE}; }}
     QSplitter::handle {{ background: {CANVAS}; }}
     QSplitter::handle:horizontal {{ width: 8px; }}
+    QScrollBar:vertical {{
+        background: transparent;
+        width: 10px;
+        margin: 0;
+    }}
+    QScrollBar::handle:vertical {{
+        background: #d0d5dd;
+        border-radius: 5px;
+        min-height: 24px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+        width: 0;
+    }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+        background: transparent;
+    }}
     """

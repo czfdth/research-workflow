@@ -84,9 +84,11 @@ cd app
 | 运行 milestones | `ccfa.milestones due` | 倒排截止与 gate 缺口 |
 | 待人工复核 | `ccfa.readiness --checkpoints-only` | 人工复核队列：要判断什么、写进哪个台账 |
 
-`--checkpoints-only` 只解析人工台账、不跑 gate，所以点它是秒级返回；结果表上方会
-出现状态横幅（待人工/已完成/不要求）。设计稿见仓库
-`docs/design/exports/04-human-checkpoints.svg`。
+`--checkpoints-only` 只解析人工台账、不跑 gate，所以点它是秒级返回。结果区会切换成
+卡片列表：每条 checkpoint 一张卡（类型 chip、问题、`台账 — 答案要求`），卡片上的
+`打开台账` 直接打开要写的 YAML/JSON（文件还不存在时打开最近的已存在目录，
+并且绝不允许台账路径把用户带出项目目录）；上方是状态横幅（待人工/已完成/不要求）。
+设计稿见仓库 `docs/design/exports/04-human-checkpoints.svg`。
 
 ## 红线
 

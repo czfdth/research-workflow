@@ -17,8 +17,10 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QStyle,
     QTableWidget,
     QTableWidgetItem,
@@ -281,6 +283,10 @@ class MainWindow(QMainWindow):
         self.checkpoint_banner.setVisible(False)
         column.addWidget(self.checkpoint_banner)
 
+        # Two ways to show the same pane: check results (table) and the human
+        # decision queue (cards). A stack keeps each one's layout honest.
+        self.detail_stack = QStackedWidget()
+
         self.results_table = QTableWidget(0, 3)
         self.results_table.setObjectName("results_table")
         self.results_table.setHorizontalHeaderLabels(["来源", "代码", "消息"])
@@ -295,7 +301,23 @@ class MainWindow(QMainWindow):
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        column.addWidget(self.results_table, stretch=1)
+        self.detail_stack.addWidget(self.results_table)
+
+        self.checkpoint_scroll = QScrollArea()
+        self.checkpoint_scroll.setObjectName("checkpoint_scroll")
+        self.checkpoint_scroll.setWidgetResizable(True)
+        self.checkpoint_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.checkpoint_container = QWidget()
+        self.checkpoint_container.setObjectName("checkpoint_container")
+        self.checkpoint_layout = QVBoxLayout(self.checkpoint_container)
+        self.checkpoint_layout.setContentsMargins(0, 0, 0, 0)
+        self.checkpoint_layout.setSpacing(8)
+        self.checkpoint_layout.addStretch(1)
+        self.checkpoint_scroll.setWidget(self.checkpoint_container)
+        self.detail_stack.addWidget(self.checkpoint_scroll)
+        self.detail_stack.setCurrentIndex(0)
+        self._checkpoint_cards: list[QFrame] = []
+        column.addWidget(self.detail_stack, stretch=1)
         panel.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -325,6 +347,7 @@ class MainWindow(QMainWindow):
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _set_results(self, rows) -> None:
+        self.detail_stack.setCurrentIndex(0)
         self.results_table.setRowCount(0)
         actionable = 0
         for source, code, message in rows:
@@ -441,6 +464,7 @@ class MainWindow(QMainWindow):
         ref = self._selected_ref()
         self._set_results([])
         self._hide_checkpoint_banner()
+        self._clear_checkpoint_cards()
         if ref is None:
             self._clear_stage_panel()
             self.chat_panel.set_project(None)
@@ -551,42 +575,122 @@ class MainWindow(QMainWindow):
         ref = self._selected_ref()
         if ref is None or ref.error:
             self._hide_checkpoint_banner()
+            self._clear_checkpoint_cards()
             self._set_results([("readiness", "错误", "先选择一个可读取的项目")])
             return
         try:
             result = load_checkpoints(ref.dir)
         except CheckError as exc:
             self._hide_checkpoint_banner()
+            self._clear_checkpoint_cards()
             self._set_results([("readiness", "错误", str(exc))])
             return
         human = (result.report or {}).get("human_review")
         human = human if isinstance(human, dict) else {}
-        rows = [
-            (
-                "checkpoint",
-                str(item.get("type") or "review"),
-                " ".join(
-                    part
-                    for part in (
-                        str(item.get("question") or item.get("id") or ""),
-                        f"[{item.get('ledger')}]" if item.get("ledger") else "",
-                        str(item.get("answer_with") or ""),
-                    )
-                    if part
-                ),
-            )
+        checkpoints = [
+            item
             for item in human.get("checkpoints", [])
             if isinstance(item, dict)
         ]
-        if rows:
-            self._set_results(rows)
-            self.results_summary.setText(f"{len(rows)} 项待人工")
+        self._clear_checkpoint_cards()
+        if checkpoints:
+            for item in checkpoints:
+                self._add_checkpoint_card(item)
+            self.detail_stack.setCurrentIndex(1)
+            self.results_summary.setText(f"{len(checkpoints)} 项待人工")
             self.results_summary.setStyleSheet(f"color: {theme.PROBLEM};")
         else:
             self._set_results(
                 [("readiness", "OK", "当前没有待人工复核项")]
             )
-        self._show_checkpoint_banner(str(human.get("status", "unknown")), len(rows))
+        self._show_checkpoint_banner(
+            str(human.get("status", "unknown")),
+            len(checkpoints),
+        )
+
+    def checkpoint_card_count(self) -> int:
+        return len(self._checkpoint_cards)
+
+    def _clear_checkpoint_cards(self) -> None:
+        while self.checkpoint_layout.count() > 1:
+            item = self.checkpoint_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self._checkpoint_cards = []
+
+    def _add_checkpoint_card(self, checkpoint: dict) -> None:
+        card = QFrame()
+        card.setObjectName("checkpointCard")
+        body = QVBoxLayout(card)
+        body.setContentsMargins(12, 10, 12, 10)
+        body.setSpacing(6)
+
+        top = QHBoxLayout()
+        top.setSpacing(6)
+        kind = str(checkpoint.get("type") or "review")
+        chip = QLabel(kind)
+        chip.setProperty("role", "badge")
+        if kind == "feedback":
+            chip.setProperty("state", "advisory")
+        top.addWidget(chip)
+        top.addStretch(1)
+        ledger = str(checkpoint.get("ledger") or "")
+        open_button = QPushButton("打开台账")
+        open_button.setObjectName("open_ledger_button")
+        open_button.setEnabled(bool(ledger))
+        open_button.setToolTip(f"打开 {ledger}" if ledger else "该 checkpoint 没有指定台账")
+        open_button.clicked.connect(
+            lambda _checked=False, target=ledger: self._open_ledger(target)
+        )
+        top.addWidget(open_button)
+        body.addLayout(top)
+
+        question = QLabel(
+            str(checkpoint.get("question") or checkpoint.get("id") or "待人工复核")
+        )
+        question.setObjectName("checkpointQuestion")
+        question.setWordWrap(True)
+        body.addWidget(question)
+
+        meta_text = " — ".join(
+            part
+            for part in (ledger, str(checkpoint.get("answer_with") or ""))
+            if part
+        )
+        meta = QLabel(meta_text)
+        meta.setObjectName("checkpointMeta")
+        meta.setWordWrap(True)
+        body.addWidget(meta)
+
+        self.checkpoint_layout.insertWidget(
+            self.checkpoint_layout.count() - 1,
+            card,
+        )
+        self._checkpoint_cards.append(card)
+
+    def _open_ledger(self, relative: str) -> None:
+        ref = self._selected_ref()
+        if ref is None or not relative:
+            return
+        project_root = Path(ref.dir).resolve()
+        target = (project_root / relative).resolve()
+        # The ledger path comes from the workflow's JSON: never leave the
+        # project directory because of it.
+        if project_root not in target.parents and target != project_root:
+            return
+        if target.is_file() or target.is_dir():
+            opened = target
+        else:
+            # The ledger does not exist yet: open the nearest existing ancestor
+            # so the user can create it, never a path outside the project.
+            opened = target.parent
+            while not opened.exists() and project_root in opened.parents:
+                opened = opened.parent
+            if not opened.exists():
+                opened = project_root
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(opened)))
 
     def _update_credential_status(self) -> None:
         try:

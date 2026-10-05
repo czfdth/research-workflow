@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QLineEdit
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 
 from ccfa_core.checks import CheckResult
 from ccfa_core.secrets import SecretStoreUnavailable
@@ -187,12 +187,32 @@ class GuiSmokeTests(unittest.TestCase):
             self.window.checkpoints_button.click()
             APP.processEvents()
 
-        self.assertEqual(self.window.results_table.rowCount(), 1)
-        message = self.window.results_table.item(0, 2).text()
-        self.assertIn("主证明逐行成立吗？", message)
-        self.assertIn("data/proof-audit.yaml", message)
+        self.assertEqual(self.window.checkpoint_card_count(), 1)
+        self.assertEqual(self.window.detail_stack.currentIndex(), 1)
+        card = self.window._checkpoint_cards[0]
+        question = card.findChild(QLabel, "checkpointQuestion")
+        self.assertIn("主证明逐行成立吗？", question.text())
+        meta = card.findChild(QLabel, "checkpointMeta")
+        self.assertIn("data/proof-audit.yaml", meta.text())
+        self.assertIn("写 reviewer 与复核证据路径", meta.text())
         self.assertTrue(self.window.checkpoint_banner.isVisible())
         self.assertIn("待人工复核", self.window.checkpoint_banner.text())
+
+        self.window.validate_button.click()
+        APP.processEvents()
+        self.assertEqual(self.window.detail_stack.currentIndex(), 0)
+        self.assertFalse(self.window.checkpoint_banner.isVisible())
+
+    def test_open_ledger_refuses_paths_outside_the_project(self):
+        self._select("good")
+        fake = mock.Mock()
+
+        with mock.patch("ccfa_gui.window.QDesktopServices", fake):
+            self.window._open_ledger("../../evil.yaml")
+            fake.openUrl.assert_not_called()
+
+            self.window._open_ledger("data/proof-audit.yaml")
+            fake.openUrl.assert_called_once()
 
     def test_run_validate_on_bad_project_shows_error_row(self):
         self._select("bad")

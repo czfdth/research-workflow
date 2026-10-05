@@ -396,3 +396,20 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_citation_calibration`
 
+## WC-20261005T172224Z-b23ba49ddd - Render the human-checkpoint queue as cards with an 打开台账 action instead of table rows.
+
+- timestamp: `2026-10-05T17:22:24Z`
+- status: `complete`
+- author: `codex`
+- reason: 表格形态放不下问题原文与台账说明，也没有直接跳到要写的文件的入口；设计稿 04 本来就是卡片。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `app unittest discover (208 tests)`
+  - `ruff check app`
+- notes: 打开台账做了路径约束：解析后的目标必须留在项目目录内，文件不存在时打开最近的已存在祖先目录。
+
