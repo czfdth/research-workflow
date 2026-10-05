@@ -413,3 +413,19 @@ rewrite historical entries.
   - `ruff check app`
 - notes: 打开台账做了路径约束：解析后的目标必须留在项目目录内，文件不存在时打开最近的已存在祖先目录。
 
+## WC-20261005T173212Z-932a491227 - Align artifact dependency edges with advisory and verified semantics
+
+- timestamp: `2026-10-05T17:32:12Z`
+- status: `complete`
+- author: `codex`
+- reason: Adopt the useful part of open-science's provenance graph without overclaiming: static dependencies stay advisory, verified edges require existing evidence, dangling links fail, and cycles are rejected.
+- files:
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/research_ledgers.py`
+  - `tools/tests/test_research_ledgers.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_research_ledgers`
+
