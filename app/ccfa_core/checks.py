@@ -135,3 +135,29 @@ def run_checkpoints(project, *, client: WorkflowClient | None = None) -> CheckRe
         problems=checkpoints,
         report=report,
     )
+
+
+def run_readiness(project, *, client: WorkflowClient | None = None) -> CheckResult:
+    """Run the workflow's readiness report for *project*.
+
+    Readiness is the one command that answers "what is the state of this paper
+    right now": the six dimensions, the per-gate verdicts and the blocking list.
+    It exits 1 when the paper is not ready, so the JSON payload - not the exit
+    code - is what matters here.
+    """
+
+    project_dir = _project_dir(project)
+    report = _run(
+        client or WorkflowClient(),
+        "readiness",
+        ("--paper-root", str(project_dir)),
+        "readiness",
+    )
+    blocking = report.get("blocking")
+    blocking = blocking if isinstance(blocking, list) else []
+    return CheckResult(
+        name="readiness",
+        ok=bool(report.get("ready")),
+        problems=tuple(str(item) for item in blocking),
+        report=report,
+    )

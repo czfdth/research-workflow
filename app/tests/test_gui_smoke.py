@@ -121,6 +121,7 @@ class GuiSmokeTests(unittest.TestCase):
             self.window.refresh_button,
             self.window.validate_button,
             self.window.milestones_button,
+            self.window.readiness_button,
             self.window.settings_button,
             self.window.checkpoints_button,
         ):
@@ -208,6 +209,49 @@ class GuiSmokeTests(unittest.TestCase):
         APP.processEvents()
         self.assertEqual(self.window.detail_stack.currentIndex(), 0)
         self.assertFalse(self.window.checkpoint_banner.isVisible())
+
+    def test_readiness_button_renders_dimensions_verdicts_and_blocking(self):
+        self._select("good")
+        payload = {
+            "ready": False,
+            "profile": "standard",
+            "assurance": "draft",
+            "dimensions": {
+                "schema-valid": "pass",
+                "gate-verified": "problem",
+            },
+            "verdicts": {
+                "novelty": "blocked",
+                "research-ledgers": "fail",
+            },
+            "blocking": ["missing required standard ledger: novelty"],
+        }
+        problems = ("missing required standard ledger: novelty",)
+
+        with mock.patch(
+            "ccfa_gui.window.load_readiness",
+            return_value=CheckResult(
+                name="readiness",
+                ok=False,
+                problems=problems,
+                report=payload,
+            ),
+        ):
+            self.window.readiness_button.click()
+            APP.processEvents()
+
+        messages = [
+            self.window.results_table.item(row, 2).text()
+            for row in range(self.window.results_table.rowCount())
+        ]
+        self.assertIn("schema-valid", messages)
+        self.assertIn("novelty", messages)
+        self.assertIn("research-ledgers", messages)
+        self.assertIn("missing required standard ledger: novelty", messages)
+        self.assertIn("ready=false", self.window.results_summary.text())
+        self.assertTrue(self.window.checkpoint_banner.isVisible())
+        self.assertIn("ready=false", self.window.checkpoint_banner.text())
+        self.assertIn("blocked=1", self.window.checkpoint_banner.text())
 
     def test_open_ledger_refuses_paths_outside_the_project(self):
         self._select("good")

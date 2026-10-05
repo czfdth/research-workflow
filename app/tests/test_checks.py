@@ -14,6 +14,7 @@ from ccfa_core.checks import (
     CheckResult,
     run_checkpoints,
     run_milestones_due,
+    run_readiness,
     run_validate,
 )
 from ccfa_core.projects import load_project
@@ -93,6 +94,19 @@ class CheckTests(unittest.TestCase):
             result.report["human_review"]["status"],
             "pending-human-review",
         )
+
+    def test_run_readiness_returns_dimensions_and_verdicts(self):
+        project_dir = write_project(self.root, "demo")
+
+        result = run_readiness(project_dir)
+
+        self.assertEqual(result.name, "readiness")
+        self.assertFalse(result.ok)
+        report = result.report or {}
+        self.assertIn("dimensions", report)
+        self.assertIn("verdicts", report)
+        self.assertIn("schema-valid", report["dimensions"])
+        self.assertTrue(result.problems)
 
     def test_run_milestones_due_sequential_report(self):
         project_dir = write_project(self.root, "demo")

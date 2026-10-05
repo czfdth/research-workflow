@@ -138,7 +138,13 @@ cd app
 | --- | --- | --- |
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |
 | 运行 milestones | `ccfa.milestones due` | 倒排截止与 gate 缺口 |
+| 运行 readiness | `ccfa.readiness` | 一屏给出六个维度、每个 gate 的结论与阻塞清单 |
 | 待人工复核 | `ccfa.readiness --checkpoints-only` | 人工复核队列：要判断什么、写进哪个台账 |
+
+readiness 视图把三样东西排进同一张表：**维度**（`schema-valid` / `evidence-present` /
+`gate-verified` / `independently-reviewed` / `scientifically-accepted` /
+`collaboration-ready`）、**gate 结论**（只列非 `pass` 的：`blocked` 琥珀、`fail` 红）、
+**阻塞项**；右侧汇总 `ready=... · N 条阻塞`，横幅给出第一条阻塞与 gate 结论计数。
 
 `--checkpoints-only` 只解析人工台账、不跑 gate，所以点它是秒级返回。结果区会切换成
 卡片列表：每条 checkpoint 一张卡（类型 chip、问题、`台账 — 答案要求`），卡片上的

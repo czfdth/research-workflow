@@ -35,6 +35,7 @@ from ccfa_core.checks import (
     run_validate,
 )
 from ccfa_core.checks import run_checkpoints as load_checkpoints
+from ccfa_core.checks import run_readiness as load_readiness
 from ccfa_core.projects import ProjectError, find_projects, load_project
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from ccfa_core.settings import default_settings_path, load_settings
@@ -196,6 +197,7 @@ class MainWindow(QMainWindow):
         self.open_dir_button.setIcon(icons.icon("folder", colour=muted))
         self.validate_button.setIcon(icons.icon("validate", colour="#ffffff"))
         self.milestones_button.setIcon(icons.icon("milestones", colour=ink))
+        self.readiness_button.setIcon(icons.icon("readiness", colour=ink))
         self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=ink))
         self.chat_panel.send_button.setIcon(icons.icon("send", colour=ink))
         self.placeholder_icon.setPixmap(
@@ -410,6 +412,14 @@ class MainWindow(QMainWindow):
         self.milestones_button.setToolTip("检查倒排里程碑与到期项")
         self.milestones_button.clicked.connect(self.run_milestones)
         actions.addWidget(self.milestones_button)
+        self.readiness_button = QPushButton("运行 readiness")
+        self.readiness_button.setObjectName("readiness_button")
+        self.readiness_button.setIcon(icons.icon("readiness", colour=theme.INK))
+        self.readiness_button.setToolTip(
+            "跑一遍 readiness：六个维度、每个 gate 的结论、阻塞清单"
+        )
+        self.readiness_button.clicked.connect(self.run_readiness)
+        actions.addWidget(self.readiness_button)
         self.checkpoints_button = QPushButton("待人工复核")
         self.checkpoints_button.setObjectName("checkpoints_button")
         self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=theme.INK))
@@ -752,23 +762,88 @@ class MainWindow(QMainWindow):
     def _hide_checkpoint_banner(self) -> None:
         self.checkpoint_banner.setVisible(False)
 
-    def _show_checkpoint_banner(self, status: str, count: int) -> None:
-        if status == "pending-human-review":
-            state = "pending"
-            text = (
-                f"待人工复核：{count} 项。脚本只能证明它还没被回答，不能替你回答。"
+    def run_readiness(self) -> None:
+        """Render the workflow's readiness report for the selected project."""
+
+        ref = self._selected_ref()
+        if ref is None or ref.error:
+            self._hide_checkpoint_banner()
+            self._clear_checkpoint_cards()
+            self._set_results([("readiness", "错误", "先选择一个可读取的项目")])
+            return
+        try:
+            result = load_readiness(ref.dir)
+        except CheckError as exc:
+            self._hide_checkpoint_banner()
+            self._clear_checkpoint_cards()
+            self._set_results([("readiness", "错误", str(exc))])
+            return
+        report = result.report or {}
+        dimensions = report.get("dimensions")
+        dimensions = dimensions if isinstance(dimensions, dict) else {}
+        verdicts = report.get("verdicts")
+        verdicts = verdicts if isinstance(verdicts, dict) else {}
+
+        rows: list[tuple[str, str, str]] = [
+            ("维度", str(status), str(name))
+            for name, status in dimensions.items()
+        ]
+        rows.extend(
+            ("gate", str(verdict), str(name))
+            for name, verdict in sorted(verdicts.items())
+            if verdict not in {"pass"}
+        )
+        rows.extend(("阻塞", "问题", str(item)) for item in result.problems)
+        self._clear_checkpoint_cards()
+        self._set_results(rows or [("readiness", "OK", "报告里没有维度信息")])
+
+        counts: dict[str, int] = {}
+        for verdict in verdicts.values():
+            key = str(verdict)
+            counts[key] = counts.get(key, 0) + 1
+        self.results_summary.setText(
+            f"ready={str(bool(report.get('ready'))).lower()} · "
+            f"{len(result.problems)} 条阻塞"
+        )
+        self.results_summary.setStyleSheet(
+            f"color: {self._palette['ok'] if result.ok else self._palette['problem']};"
+        )
+        profile = report.get("profile")
+        assurance = report.get("assurance")
+        if result.ok:
+            self._show_banner(
+                "ok",
+                f"ready=true（profile {profile} / assurance {assurance}）",
             )
-        elif status == "human-attested":
-            state = "ok"
-            text = "人工复核账本已完成，没有待办。"
         else:
-            state = "muted"
-            text = f"当前 profile 不要求人工复核（status={status}）。"
+            first = result.problems[0] if result.problems else "见 gate 结论"
+            gates = " ".join(f"{name}={count}" for name, count in sorted(counts.items()))
+            self._show_banner(
+                "pending",
+                f"ready=false · 阻塞 {len(result.problems)} 条 · {first}"
+                + (f" · gate {gates}" if gates else ""),
+            )
+
+    def _show_banner(self, state: str, text: str) -> None:
         self.checkpoint_banner.setText(text)
         self.checkpoint_banner.setProperty("state", state)
         self.checkpoint_banner.style().unpolish(self.checkpoint_banner)
         self.checkpoint_banner.style().polish(self.checkpoint_banner)
         self.checkpoint_banner.setVisible(True)
+
+    def _show_checkpoint_banner(self, status: str, count: int) -> None:
+        if status == "pending-human-review":
+            self._show_banner(
+                "pending",
+                f"待人工复核：{count} 项。脚本只能证明它还没被回答，不能替你回答。"
+            )
+        elif status == "human-attested":
+            self._show_banner("ok", "人工复核账本已完成，没有待办。")
+        else:
+            self._show_banner(
+                "muted",
+                f"当前 profile 不要求人工复核（status={status}）。",
+            )
 
     def run_checkpoints(self) -> None:
         ref = self._selected_ref()

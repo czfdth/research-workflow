@@ -869,3 +869,23 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T190205Z-8e86b0dd3f - Add a readiness view to the workbench: a 运行 readiness action that renders the six dimensions, the non-pass gate verdicts and the blocking list in one table.
+
+- timestamp: `2026-10-05T19:02:05Z`
+- status: `complete`
+- author: `codex`
+- reason: 工作台只驱动 validate/milestones/checkpoints 三条命令，而日常循环的核心是 readiness；报告里的维度、gate 结论和阻塞清单此前只能在终端看。
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/checks.py`
+  - `app/ccfa_gui/icon_paths.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_checks.py`
+  - `app/tests/test_gui_smoke.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `app unittest discover (229 tests)`
+  - `ruff check app`
+- notes: 表格三段：维度 / 非 pass 的 gate 结论 / 阻塞项；横幅给第一条阻塞与结论计数。
+

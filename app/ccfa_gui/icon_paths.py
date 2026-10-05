@@ -44,6 +44,10 @@ ICONS: dict[str, tuple[str, ...]] = {
         '<circle cx="10" cy="8" r="5"/>',
         '<path d="m16 19 2 2 4-4"/>',
     ),
+    "readiness": (
+        '<path d="m12 14 4-4"/>',
+        '<path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+    ),
     "send": (
         '<path d="m5 12 7-7 7 7"/>',
         '<path d="M12 19V5"/>',

@@ -117,6 +117,15 @@ STATUS_CODES = {
     "警告": "advisory",
     "approve": "accent",
     "feedback": "advisory",
+    # Readiness dimensions and gate verdicts.
+    "blocked": "advisory",
+    "not-run": "advisory",
+    "not-claimed": "advisory",
+    "pending-human-review": "advisory",
+    "independent-evidence-present": "ok",
+    "human-attested": "ok",
+    "missing-human-evidence": "problem",
+    "invalid-attestation": "problem",
     "ok": "ok",
     "OK": "ok",
 }
