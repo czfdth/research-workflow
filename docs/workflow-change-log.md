@@ -45,3 +45,18 @@ rewrite historical entries.
   - `unittest discover -s app/tests -t app (205 tests)`
 - notes: papers/ 未改动；未触碰工作区中其他未提交文件。
 
+## WC-20261005T163719Z-cc4d566f97 - Fix app tests that broke on GitHub runners and make the workflow probe verify its directory
+
+- timestamp: `2026-10-05T16:37:19Z`
+- status: `complete`
+- author: `codex`
+- reason: App E2E tests scaffolded projects from the host ccf-latex-templates library, which does not exist on a clean runner, and WorkflowClient.probe() reported a bogus directory as reachable because it never checked tools/ccfa.
+- files:
+  - `app/ccfa_core/workflow.py`
+  - `app/tests/__init__.py`
+- tests:
+  - `app.tests.test_chat_e2e`
+  - `app.tests.test_tools_bridge`
+  - `app.tests.test_workbench_e2e`
+  - `app.tests.test_workflow`
+

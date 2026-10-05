@@ -213,6 +213,14 @@ class WorkflowClient:
             payload = self.json("stages", ("--mode", "conference"))
         except WorkflowError as exc:
             return False, str(exc)
+        # A call can still succeed through an inherited PYTHONPATH, so a
+        # successful probe only counts when the configured root is a real
+        # workflow checkout.
+        if not (self.root / "tools" / "ccfa").is_dir():
+            return (
+                False,
+                f"不是工作流目录：{self.root}（缺少 tools/ccfa）",
+            )
         stages = payload.get("stages")
         count = len(stages) if isinstance(stages, list) else 0
         return (
