@@ -844,3 +844,28 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T185818Z-1b96b722e0 - Add external-service adapter capability checks
+
+- timestamp: `2026-10-05T18:58:18Z`
+- status: `complete`
+- author: `codex`
+- reason: Separate installed skills from configured and functional external services, record only env-var names, and expose adapter probes without reading or printing secrets.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/external-adapters.ps1`
+  - `skills/adapters.yaml`
+  - `skills/registry.yaml`
+  - `tools/ccfa/external_adapters.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_external_adapters.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_external_adapters`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+

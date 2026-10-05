@@ -165,3 +165,43 @@ skills:
     source: {root: codex, path: cell-cns-figure}
     description: Create, polish and review Cell/Nature/Science-style quantitative figures.
     dependencies: [ccf-common]
+  - id: pyzotero
+    source: {root: agents, path: pyzotero}
+    description: Programmatic Zotero library management through Web API or local API.
+    dependencies: [ccf-common]
+  - id: zotero-obsidian-bridge
+    source: {root: agents, path: zotero-obsidian-bridge}
+    description: Bridge Zotero source notes into project knowledge and writing.
+    dependencies: [ccf-common]
+  - id: cnki-search
+    source: {root: agents, path: cnki-search}
+    description: Search CNKI through an authenticated browser session.
+    dependencies: [ccf-common]
+  - id: exa-search
+    source: {root: agents, path: exa-search}
+    description: Exa scientific and technical web search and extraction.
+    dependencies: [ccf-common]
+  - id: parallel-web
+    source: {root: agents, path: parallel-web}
+    description: Parallel web search, deep research and enrichment.
+    dependencies: [ccf-common]
+  - id: firecrawl-research-papers
+    source: {root: codex, path: firecrawl-research-papers}
+    description: Firecrawl paper search, reading and web evidence extraction.
+    dependencies: [ccf-common]
+  - id: paperclip
+    source: {root: agents, path: paperclip}
+    description: GXL Paperclip biomedical search, full-text grep and claim verification.
+    dependencies: [ccf-common]
+  - id: pubmed-database
+    source: {root: agents, path: pubmed-database}
+    description: PubMed and NCBI database retrieval.
+    dependencies: [ccf-common]
+  - id: literature-search-openalex
+    source: {root: agents, path: literature-search-openalex}
+    description: OpenAlex scholarly search and citation graph retrieval.
+    dependencies: [ccf-common]
+  - id: hugging-science
+    source: {root: agents, path: hugging-science}
+    description: Discover scientific models, datasets, Spaces and methodology posts.
+    dependencies: [ccf-common]
