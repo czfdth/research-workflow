@@ -6,7 +6,7 @@ import re
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QUrl
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QThreadPool, Qt, QUrl
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QFont, QImage
 from PySide6.QtWidgets import (
     QDialog,
@@ -52,6 +52,7 @@ from ccfa_core.state import (
 )
 
 from .chat_panel import ChatPanel
+from .collaboration_probe import CollaborationProbe
 from .flow_layout import FlowLayout
 from .stage_dialog import StageTransitionDialog
 from .settings_dialog import SettingsDialog
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
         settings_path: Path | None = None,
         parent=None,
         animations: bool | None = None,
+        collaboration_probes: bool = True,
     ):
         super().__init__(parent)
         if animations is None:
@@ -150,6 +152,20 @@ class MainWindow(QMainWindow):
             if settings_path is not None
             else default_settings_path(self._repo_root)
         )
+        # Collaboration probes run off the GUI thread; each refresh bumps the
+        # generation so a result from a stale scan is dropped instead of
+        # painting an old answer onto a rebuilt list.
+        self._refs: list = []
+        self._git_states: dict = {}
+        self._probe_generation = 0
+        self._probe_tasks: list = []
+        # One shared pool: probing a paper costs a workflow subprocess, so the
+        # app must not start a fresh pool per window.
+        self._probe_pool = QThreadPool.globalInstance()
+        self._probe_pool.setMaxThreadCount(
+            min(4, max(1, self._probe_pool.maxThreadCount()))
+        )
+        self._collaboration_probes = bool(collaboration_probes)
         self._build_ui()
         self.refresh_projects()
         self._update_credential_status()
@@ -668,6 +684,8 @@ class MainWindow(QMainWindow):
         self.project_list.blockSignals(True)
         self.project_list.clear()
         refs = find_projects(self._repo_root)
+        self._refs = refs
+        self._git_states = {}
         for ref in refs:
             if ref.error is None:
                 text = f"● {ref.slug}"
@@ -681,15 +699,7 @@ class MainWindow(QMainWindow):
             else:
                 item.setToolTip(f"papers/{ref.slug}")
             self.project_list.addItem(item)
-        count = len(refs)
-        broken = sum(1 for ref in refs if ref.error)
-        if count:
-            self.summary_label.setText(
-                f"{count} 个项目"
-                + (f" · {broken} 个无法读取" if broken else "")
-            )
-        else:
-            self.summary_label.setText("papers/ 下没有项目")
+        self._update_summary()
         self.project_list.blockSignals(False)
         if refs:
             self.project_list.setCurrentRow(0)
@@ -702,6 +712,7 @@ class MainWindow(QMainWindow):
                 "--year 2027 --mode conference 创建第一篇，然后点「刷新」。",
             )
             self.chat_panel.set_project(None)
+        self._start_collaboration_probes()
 
     def _select_slug(self, slug: str) -> None:
         """Re-select one project by slug after the list has been rebuilt."""
@@ -712,6 +723,92 @@ class MainWindow(QMainWindow):
             if ref is not None and ref.slug == slug:
                 self.project_list.setCurrentRow(row)
                 return
+
+    def _start_collaboration_probes(self) -> None:
+        """Ask the workflow about each readable project, off the GUI thread."""
+
+        self._probe_generation += 1
+        generation = self._probe_generation
+        self._probe_pool.clear()
+        self._probe_tasks = []
+        if not self._collaboration_probes:
+            return
+        for ref in self._refs:
+            if ref.error is not None:
+                continue
+            task = CollaborationProbe(generation, ref.slug, ref.dir)
+            task.signals.done.connect(self._apply_collaboration)
+            # The pool owns the C++ side; keeping the Python wrapper and its
+            # signal object alive keeps the queued emission deliverable.
+            self._probe_tasks.append(task)
+            self._probe_pool.start(task)
+
+    def _apply_collaboration(self, generation: int, slug: str, state) -> None:
+        if generation != self._probe_generation:
+            return
+        self._git_states[slug] = state
+        self._update_project_row(slug, state)
+        self._update_summary()
+
+    def _update_project_row(self, slug: str, state) -> None:
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            ref = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if ref is None or ref.error is not None or ref.slug != slug:
+                continue
+            warnings = state.warnings
+            # The glyph and the colour are the whole row signal: a long slug
+            # would push any inline reason into "· 有未提", and the sidebar
+            # tooltip already names each problem in full.
+            marker = "◆" if warnings else "●"
+            item.setText(f"{marker} {slug}")
+            if warnings:
+                item.setForeground(
+                    QBrush(QColor(self._palette["advisory"]))
+                )
+            else:
+                item.setForeground(QBrush(QColor(self._palette["ink"])))
+            item.setToolTip(self._collaboration_tooltip(ref, state))
+            return
+
+    def _collaboration_tooltip(self, ref, state) -> str:
+        lines = [f"papers/{ref.slug}"]
+        if state.error:
+            lines.append(state.error)
+        elif not state.present:
+            lines.append("不是 git 仓库：版本、快照与 run-log commit 都会落空")
+        else:
+            lines.append(f"提交 {state.commit or '未知'}")
+            lines.append("remote：" + ("、".join(state.remotes) or "无"))
+            lines.append(
+                "CI workflows：有" if state.workflows_present else "CI workflows：无"
+            )
+            lines.append(
+                "未提交改动：有" if state.dirty else "未提交改动：无"
+            )
+        for reason in state.blocking:
+            lines.append(f"· {reason}")
+        return "\n".join(lines)
+
+    def _update_summary(self) -> None:
+        refs = self._refs
+        if not refs:
+            self.summary_label.setText("papers/ 下没有项目")
+            return
+        broken = sum(1 for ref in refs if ref.error)
+        risky = sum(
+            1
+            for ref in refs
+            if ref.error is None
+            and ref.slug in self._git_states
+            and bool(self._git_states[ref.slug].warnings)
+        )
+        parts = [f"{len(refs)} 个项目"]
+        if broken:
+            parts.append(f"{broken} 个无法读取")
+        if risky:
+            parts.append(f"{risky} 个有协作风险")
+        self.summary_label.setText(" · ".join(parts))
 
     def _on_project_selected(self, _current, _previous) -> None:
         ref = self._selected_ref()

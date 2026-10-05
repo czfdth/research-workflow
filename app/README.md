@@ -113,6 +113,15 @@ cd app
 阶段/门禁/截止徽章与检查结果，右栏对话。中栏每个动作都走工作流自己的 CLI
 （`ccfa_core` 只解析 JSON，不重复实现工具语义）：
 
+项目行还会带上协作状态：`●` 正常，`◆` 表示 `ccfa.readiness --collaboration-only`
+报了问题（非 git 仓库、有未提交改动、无 remote、无 CI workflows），颜色为琥珀，鼠标
+悬停的 tooltip 逐条列出原因与提交号，工具栏汇总 `N 个项目 · … · M 个有协作风险`。
+行里不写第二段文字：侧栏只有 180px，「有未提交改动」这类后缀会被省略成「· 有未提」，
+所以状态由字形+颜色表达，细节放 tooltip。探针走 `QThreadPool` 后台线程（`ccfa_gui/
+collaboration_probe.py`），因为一次 `--collaboration-only` 约 0.6s，不能卡住刷新；
+每次刷新会递增 generation，过期结果直接丢弃。测试用
+`MainWindow(..., collaboration_probes=False)` 关掉它，只留一个真跑子进程的集成用例。
+
 界面图标来自 `ccfa_gui/icon_paths.py` 的线性路径（无 Qt 依赖，同一条路径数据
 也供 `docs/design/generate_mockups.py` 生成设计稿），工具栏最左侧是产品标记；
 没有项目可显示时中栏是空白状态（图标 + 一行提示），不是一张空表。

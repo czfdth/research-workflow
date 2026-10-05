@@ -1,6 +1,8 @@
 import json
 import os
+import subprocess
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -17,6 +19,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 
 from ccfa_core.checks import CheckResult
+from ccfa_core.collaboration import CollaborationState
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.settings_dialog import SettingsDialog
@@ -70,12 +73,15 @@ class GuiSmokeTests(unittest.TestCase):
         self.secrets = RecordingSecretStore()
         self.window = self._window()
 
-    def _window(self, secret_store=None):
+    def _window(self, secret_store=None, *, probes=False):
+        # Collaboration probes shell out to the workflow once per project, so
+        # only the tests that assert on them pay for them.
         window = MainWindow(
             repo_root=self.root,
             secret_store=secret_store or self.secrets,
             settings_path=self.settings_path,
             animations=False,
+            collaboration_probes=probes,
         )
         window.resize(1000, 700)
         window.show()
@@ -102,6 +108,33 @@ class GuiSmokeTests(unittest.TestCase):
         path = self.root / name
         self.assertTrue(image.save(str(path), "PNG"))
         return image, path
+
+    def _item(self, slug):
+        for row in range(self.window.project_list.count()):
+            item = self.window.project_list.item(row)
+            ref = item.data(Qt.ItemDataRole.UserRole)
+            if ref is not None and ref.slug == slug:
+                return item
+        self.fail(f"project {slug} not found in list")
+
+    def _git_init(self, project_dir):
+        """Make one paper directory a committed worktree with a remote."""
+
+        for args in (
+            ["git", "init"],
+            ["git", "config", "user.email", "test@example.com"],
+            ["git", "config", "user.name", "Test"],
+            ["git", "add", "ccfa.yaml"],
+            ["git", "commit", "-m", "init"],
+            ["git", "remote", "add", "origin", "https://example.test/p.git"],
+        ):
+            subprocess.run(
+                args,
+                cwd=project_dir,
+                check=True,
+                capture_output=True,
+            )
+        (Path(project_dir) / ".github" / "workflows").mkdir(parents=True)
 
     def test_offscreen_render_is_non_blank_and_controls_are_visible(self):
         image, path = self._screenshot()
@@ -287,6 +320,7 @@ class GuiSmokeTests(unittest.TestCase):
             secret_store=self.secrets,
             settings_path=empty_root / "settings.json",
             animations=False,
+            collaboration_probes=False,
         )
         window.show()
         APP.processEvents()
@@ -352,6 +386,7 @@ class GuiSmokeTests(unittest.TestCase):
             secret_store=self.secrets,
             settings_path=self.settings_path,
             animations=True,
+            collaboration_probes=False,
         )
         self.addCleanup(window.deleteLater)
         window.resize(1300, 800)
@@ -602,6 +637,89 @@ class GuiSmokeTests(unittest.TestCase):
             )
         )
         self.assertEqual(state["stage"]["current"], "idea")
+
+    def test_collaboration_state_marks_the_project_row(self):
+        state = CollaborationState(
+            present=True,
+            dirty=True,
+            commit="abc1234",
+            remotes=(),
+            workflows_present=False,
+            ready=False,
+            blocking=("paper git remote is missing",),
+        )
+
+        self.window._apply_collaboration(
+            self.window._probe_generation,
+            "good",
+            state,
+        )
+
+        item = self._item("good")
+        self.assertTrue(item.text().startswith("◆"), item.text())
+        # The row stays one short token wide; the tooltip carries the detail.
+        self.assertEqual(item.text(), "◆ good")
+        tooltip = item.toolTip()
+        self.assertIn("未提交改动：有", tooltip)
+        self.assertIn("remote：无", tooltip)
+        self.assertIn("CI workflows：无", tooltip)
+        self.assertIn("paper git remote is missing", tooltip)
+        self.assertIn("1 个有协作风险", self.window.summary_label.text())
+
+    def test_clean_collaboration_state_leaves_the_row_plain(self):
+        state = CollaborationState(
+            present=True,
+            dirty=False,
+            commit="abc1234",
+            remotes=("origin",),
+            workflows_present=True,
+            ready=True,
+        )
+
+        self.window._apply_collaboration(
+            self.window._probe_generation,
+            "good",
+            state,
+        )
+
+        item = self._item("good")
+        self.assertTrue(item.text().startswith("●"), item.text())
+        self.assertEqual(item.text(), "● good")
+        self.assertIn("未提交改动：无", item.toolTip())
+        self.assertIn("remote：origin", item.toolTip())
+        self.assertNotIn("协作风险", self.window.summary_label.text())
+
+    def test_a_stale_collaboration_result_is_dropped(self):
+        state = CollaborationState.unavailable("旧扫描的结果")
+
+        self.window._apply_collaboration(
+            self.window._probe_generation - 1,
+            "good",
+            state,
+        )
+
+        self.assertNotIn("good", self.window._git_states)
+
+    def test_collaboration_probe_fills_the_row_from_the_workflow(self):
+        self._git_init(self.root / "papers" / "good")
+        window = self._window(probes=True)
+        try:
+            deadline = time.time() + 60
+            while "good" not in window._git_states and time.time() < deadline:
+                APP.processEvents()
+                time.sleep(0.05)
+            APP.processEvents()
+
+            self.assertIn("good", window._git_states)
+            state = window._git_states["good"]
+            self.assertTrue(state.present)
+            self.assertEqual(state.remotes, ("origin",))
+            self.assertTrue(state.workflows_present)
+            self.assertFalse(state.dirty)
+        finally:
+            window.close()
+            window.deleteLater()
+            APP.processEvents()
 
     def test_action_buttons_never_elide_at_the_collapse_width(self):
         # 1000px is the narrowest window that still shows the conversation

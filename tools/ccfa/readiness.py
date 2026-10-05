@@ -332,6 +332,41 @@ def _is_generated_readiness_record(line: str) -> bool:
     )
 
 
+COLLABORATION_BLOCKERS = (
+    "paper git worktree is dirty",
+    "paper is not a git worktree",
+    "paper git remote is missing",
+    "GitHub Actions workflows are missing",
+)
+
+
+def collaboration_blocking(git: GitSummary, profile: str) -> list[str]:
+    """Return the git/collaboration blocking reasons for *profile*.
+
+    Kept beside the full report's own inline checks (and pinned by a test that
+    compares the two) so ``--collaboration-only`` cannot quietly disagree with
+    the readiness a user sees when they run the whole thing.
+    """
+
+    blocking = []
+    if git.present and git.dirty:
+        blocking.append("paper git worktree is dirty")
+    if profile != "minimal":
+        if not git.present:
+            blocking.append("paper is not a git worktree")
+        elif not git.remotes:
+            blocking.append("paper git remote is missing")
+        if not git.workflows_present:
+            blocking.append("GitHub Actions workflows are missing")
+    return blocking
+
+
+def collaboration_is_ready(git: GitSummary) -> bool:
+    """The ``collaboration-ready`` dimension, from its one definition."""
+
+    return git.present and bool(git.remotes) and git.workflows_present
+
+
 def _ledger_status(paper_root: Path, profile: str) -> dict:
     required = set(PROFILE_REQUIRED_LEDGERS[profile])
     ledgers = {}
@@ -1003,9 +1038,7 @@ def build_report(
 
     verdicts = _verdicts(gate_results, ledgers["missing_required"])
 
-    collaboration_ready = (
-        git.present and bool(git.remotes) and git.workflows_present
-    )
+    collaboration_ready = collaboration_is_ready(git)
 
     return {
         "paper_root": str(paper_root),
@@ -1138,6 +1171,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="只输出人工复核 checkpoint，不执行 gate（给桌面工作台用）",
     )
+    parser.add_argument(
+        "--collaboration-only",
+        action="store_true",
+        help="只输出 git/GitHub 协作状态，不执行 gate（给桌面工作台用）",
+    )
     return parser
 
 
@@ -1158,6 +1196,29 @@ def main(argv: list[str]) -> int:
                 "assurance": assurance or _default_assurance(selected_profile),
                 "audit_profile": audit_profile,
                 "human_review": _human_review_status(paper_root, audit_profile),
+            }
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.collaboration_only:
+            # The project list needs the collaboration facts, not 25 gate
+            # subprocesses: same git probe, same dirty definition (generated
+            # readiness records still do not count as user changes).
+            state = _load_state(paper_root)
+            selected_profile = _profile(state, args.profile)
+            git = _git_summary(paper_root)
+            payload = {
+                "paper_root": str(paper_root),
+                "profile": selected_profile,
+                "git": {
+                    "present": git.present,
+                    "dirty": git.dirty,
+                    "commit": git.commit,
+                    "remotes": git.remotes,
+                    "workflows_present": git.workflows_present,
+                    "error": git.error,
+                },
+                "blocking": collaboration_blocking(git, selected_profile),
+                "collaboration_ready": collaboration_is_ready(git),
             }
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
             return 0

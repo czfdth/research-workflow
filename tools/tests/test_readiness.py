@@ -57,6 +57,23 @@ class ReadinessTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _git_init(self):
+        """Make the paper root a committed worktree with no remote yet."""
+
+        for args in (
+            ["git", "init"],
+            ["git", "config", "user.email", "test@example.com"],
+            ["git", "config", "user.name", "Test"],
+            ["git", "add", "ccfa.yaml"],
+            ["git", "commit", "-m", "init"],
+        ):
+            subprocess.run(
+                args,
+                cwd=self.paper_root,
+                check=True,
+                capture_output=True,
+            )
+
     def _touch_ledgers(self, names):
         paths = {
             "proof": "data/proof-audit.yaml",
@@ -602,6 +619,62 @@ class ReadinessTests(unittest.TestCase):
         self.assertIn("proof", by_id)
         self.assertTrue(by_id["proof"]["question"])
         self.assertEqual(by_id["proof"]["ledger"], "data/proof-audit.yaml")
+
+    def test_collaboration_only_agrees_with_the_full_report(self):
+        self._git_init()
+        stream = StringIO()
+
+        with redirect_stdout(stream):
+            code = main(
+                [
+                    "readiness",
+                    "--paper-root",
+                    str(self.paper_root),
+                    "--profile",
+                    "standard",
+                    "--collaboration-only",
+                ]
+            )
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(code, 0)
+        self.assertNotIn("gate_results", payload)
+        self.assertTrue(payload["git"]["present"])
+        self.assertFalse(payload["git"]["dirty"])
+        self.assertEqual(payload["git"]["remotes"], [])
+        self.assertFalse(payload["collaboration_ready"])
+        self.assertIn("paper git remote is missing", payload["blocking"])
+        self.assertIn("GitHub Actions workflows are missing", payload["blocking"])
+
+        # The slim report must not invent its own definition of "blocked":
+        # every collaboration reason it lists is one the full report lists too.
+        report = build_report(self.paper_root, profile="standard")
+        self.assertEqual(
+            payload["blocking"],
+            [
+                item
+                for item in report["blocking"]
+                if item in readiness.COLLABORATION_BLOCKERS
+            ],
+        )
+
+        # An uncommitted file is the other half of the same contract.
+        (self.paper_root / "notes.md").write_text("scratch\n", encoding="utf-8")
+        stream = StringIO()
+        with redirect_stdout(stream):
+            main(
+                [
+                    "readiness",
+                    "--paper-root",
+                    str(self.paper_root),
+                    "--profile",
+                    "standard",
+                    "--collaboration-only",
+                ]
+            )
+        dirty = json.loads(stream.getvalue())
+        self.assertTrue(dirty["git"]["dirty"])
+        self.assertIn("paper git worktree is dirty", dirty["blocking"])
 
     def test_git_remote_and_workflow_status_are_reported(self):
         subprocess.run(["git", "init"], cwd=self.paper_root, check=True, capture_output=True)

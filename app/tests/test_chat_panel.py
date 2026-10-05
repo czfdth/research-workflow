@@ -754,6 +754,7 @@ class ChatPanelTests(unittest.TestCase):
             repo_root=self.root,
             secret_store=self.secrets,
             settings_path=self.settings_path,
+            collaboration_probes=False,
         )
         window.resize(1100, 760)
         window.show()

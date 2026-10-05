@@ -940,3 +940,28 @@ rewrite historical entries.
   - `ruff check app`
 - notes: The transition dialog only offers targets from the workflow stage table, requires a reason, and calls ccfa.state --confirm; the window then re-scans papers/ so the badges show what the workflow wrote. The action row uses a small FlowLayout so narrow panes wrap to a second line.
 
+## WC-20261005T192704Z-8bb03b2cbc - Show each paper git/GitHub collaboration state in the project list, via a new ccfa.readiness --collaboration-only report.
+
+- timestamp: `2026-10-05T19:27:04Z`
+- status: `complete`
+- author: `codex`
+- reason: A dirty tree or a missing remote is a readiness blocker that only showed up deep inside the readiness report, so the list could not tell a wired-up paper from one whose version history and CI do not exist.
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/collaboration.py`
+  - `app/ccfa_gui/collaboration_probe.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_chat_e2e.py`
+  - `app/tests/test_chat_panel.py`
+  - `app/tests/test_collaboration.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_workbench_e2e.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `app unittest discover (256 tests)`
+  - `ruff check app tools`
+  - `tools.tests.test_readiness + test_docs_consistency (80 tests)`
+- notes: The slim report reuses the full report own git probe and dirty rule (generated readiness records do not count), pinned by a test that compares both blockers lists. Rows show a marker instead of an inline reason because the 180px sidebar elides any suffix; the probe runs on a shared QThreadPool with a generation guard, and tests disable it except one real subprocess case.
+
