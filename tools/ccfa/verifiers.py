@@ -173,10 +173,10 @@ def probe_engine(
     wsl_probe: Callable[[str], str | None] | None = None,
 ) -> EngineStatus:
     """Report whether *engine* is present on this host."""
-    which = which or shutil.which
+    which = which or _default_which
     module_probe = module_probe or _default_module_probe
     for executable in engine.executables:
-        found = _resolve_executable(executable, which)
+        found = which(executable)
         if found:
             return EngineStatus(
                 engine,
@@ -270,19 +270,14 @@ def default_wsl_probe(command: str) -> str | None:
     return f"{first_line} (WSL {distro})" if first_line else None
 
 
-def _resolve_executable(
-    name: str,
-    which: Callable[[str], str | None],
-) -> str | None:
-    """Resolve *name*, including extensionless launchers on Windows.
+def _path_scan(name: str) -> str | None:
+    """Find an extensionless launcher on PATH, which ``shutil.which`` misses.
 
-    ``shutil.which`` on Windows only matches files carrying a ``PATHEXT``
-    suffix, so it misses launchers such as Isabelle's ``bin/isabelle`` shell
-    script. Fall back to a direct PATH scan for the exact file name.
+    Windows resolves executables through ``PATHEXT``, so a plain shell script
+    such as Isabelle's ``bin/isabelle`` is invisible to ``shutil.which``. Only
+    the *default* locator does this scan; an injected ``which`` stays in full
+    control so tests never depend on the host environment.
     """
-    found = which(name)
-    if found:
-        return found
     if os.name != "nt":
         return None
     for entry in os.environ.get("PATH", "").split(os.pathsep):
@@ -295,6 +290,10 @@ def _resolve_executable(
         except OSError:
             continue
     return None
+
+
+def _default_which(name: str) -> str | None:
+    return shutil.which(name) or _path_scan(name)
 
 
 def inventory(

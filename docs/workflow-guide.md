@@ -242,16 +242,20 @@ effective verdict 也会被检查器重算为 blocking。Rigor rubric 的六个�
 逐项绑定 claim、run id 或仓库内文件；模型可以写 `model-advisory`，但不能把
 rubric 标成 `complete`。
 
-本机没有外部第二 family API 时，可以用 Docker + Ollama 提供一个真实的本地
-跨族 provider。容器只绑定 `127.0.0.1`：
+`cross-review` 对模型的 pass 有三道机械否决，都不依赖人工判断：
 
-```powershell
-docker run -d --name ccfa-ollama --restart unless-stopped `
-    --gpus all -p 127.0.0.1:11434:11434 `
-    -v ccfa-ollama:/root/.ollama ollama/ollama:latest
-docker exec ccfa-ollama ollama pull qwen2.5:3b
-docker exec ccfa-ollama ollama cp qwen2.5:3b qwen-local
-```
+| 否决项 | 触发条件 | 结果 |
+| --- | --- | --- |
+| `review-advisory-only` | 评审模型参数量 ≤ 32B，或来自本地 provider | pass 降级为 blocking：模型可以驱动流程，不能单独开释 `review_cleared` |
+| `review-contradiction` | 模型返回 pass，但 `argument-audit` 仍报问题 | 降级为 blocking，并逐条列出确定性 gate 的问题 |
+| `review-unevidenced-pass` | pass 缺少 `checks[{gate,path,evidence}]`，或 evidence 既不是被引用文件的原文也不是它的 sha256 | 降级为 blocking，按未验证处理 |
+
+所以 `verdict=pass` 现在要求三件事同时成立：模型足够强（>32B 且非本地）、
+给出了可核验的正面证据、确定性 gate 没有反对。缺任何一条，记录只能是 blocking。
+更早版本写下的 pass 记录会在 `check` 时被重算，并报 `review-contradiction`。
+
+本机没有外部第二 family API 时，可以用 Ollama 提供真实的本地跨族 provider
+（默认 `127.0.0.1:11434`；`OLLAMA_HOST` 如被改动，provider 的 `base_url` 必须同步）：
 
 Codex 配置需要注册一个 Responses API provider；非 thinking 本地模型必须显式
 传 `--reasoning-effort none`，否则 Codex 会发送 Ollama 不支持的 reasoning
@@ -267,13 +271,13 @@ requires_openai_auth = false
 
 ```powershell
 scripts/cross-review.ps1 run --paper-root $paper `
-    --model qwen-local `
+    --model qwen3:30b `
     --provider local-qwen `
     --reasoning-effort none
 ```
 
-本地 3B 评审模型属于真实不同 family，但推理能力明显弱于云端大模型。
-它解决的是 provider/family 独立性，不应被当作高质量人类评审的替代品。
+本地模型属于真实不同 family，但按上面的规则只能是 advisory-only：
+它解决的是 provider/family 独立性，不能替代高质量人类评审，也不能单独开释 gate。
 
 ### `submission-check`：冻结投稿包
 

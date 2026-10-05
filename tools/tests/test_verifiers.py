@@ -153,13 +153,12 @@ class ProbeEngineTests(unittest.TestCase):
             bin_dir = Path(raw)
             launcher = bin_dir / "isabelle"
             launcher.write_text("#!/bin/sh\n", encoding="utf-8")
-            fake_path = str(bin_dir) + verifiers.os.pathsep + os.environ.get(
-                "PATH", ""
-            )
-            with mock.patch.dict(os.environ, {"PATH": fake_path}, clear=False):
-                resolved = verifiers._resolve_executable(
-                    "isabelle", lambda name: None
-                )
+            with mock.patch.dict(
+                os.environ, {"PATH": str(bin_dir)}, clear=False
+            ), mock.patch.object(
+                verifiers.shutil, "which", return_value=None
+            ):
+                resolved = verifiers._default_which("isabelle")
 
             self.assertEqual(resolved, str(launcher))
 

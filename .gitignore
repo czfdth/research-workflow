@@ -19,6 +19,10 @@ library/papers/*.pdf
 /papers/
 __pycache__/
 *.pyc
+# Tool caches and plugin scratch state; all regenerable, never evidence.
+.ruff_cache/
+.pytest_cache/
+.superpowers/
 /repro-bundle.out.json
 # Root-level ad-hoc command captures from manual verification. Durable evidence
 # belongs under reviews/ or a paper repository's ccfa-workfiles/.
