@@ -105,6 +105,7 @@ git -C $paper status --short
 | `tools/ccfa/reference_audit.py` | 对照 `docs/reference-registry.yaml` 检查已做源码审计的参照仓库是否出现新 commit | `scripts/reference-audit.ps1` |
 | `tools/ccfa/worktree_audit.py` | 对照 change log 审计工作树漂移，列出已覆盖与未覆盖的工作流文件 | `scripts/worktree-audit.ps1` |
 | `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id；`run-next` 可在预算内执行 pilot 并同时写 run-log 与 compute ledger | `scripts/experiment-loop.ps1` |
+| `tools/ccfa/experiment_optimizer.py` | 按声明的搜索空间生成多 trial，预算内执行，读取 objective、更新 best、patience 早停，并只写 `experiment-optimization-proposals.yaml`；不自动修改 claim registry | `scripts/experiment-optimize.ps1` |
 | `tools/ccfa/post_submission.py` | 校验 rebuttal 回复矩阵、resubmit venue 差异与 talk 大纲的产出物契约 | `scripts/post-submission.ps1` |
 | `tools/ccfa/resubmit_pipeline.py` | 校验 resubmit 物理隔离、bib 冻结、无新增 run、匿名泄漏与 forbidden path | `scripts/resubmit-pipeline.ps1` |
 | `tools/ccfa/talk_pipeline.py` | 校验 conference talk 的 slide、claim/figure 复用、speaker notes 与 Q&A | `scripts/talk-pipeline.ps1` |

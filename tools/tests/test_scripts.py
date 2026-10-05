@@ -53,6 +53,7 @@ CCFA_WRAPPERS = {
     "test_impact": "test-impact.ps1",
     "change_log": "change-log.ps1",
     "experiment_loop": "experiment-loop.ps1",
+    "experiment_optimizer": "experiment-optimize.ps1",
     "post_submission": "post-submission.ps1",
     "rigor": "rigor-rubric.ps1",
     "proof_orchestrator": "proof-orchestrator.ps1",

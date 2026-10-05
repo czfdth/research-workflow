@@ -488,6 +488,26 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(checkpoint["id"], "claim-candidates")
         self.assertEqual(checkpoint["ledger"], "data/claim-candidates.yaml")
 
+    def test_optimization_proposals_have_a_review_checkpoint(self):
+        (self.paper_root / "data").mkdir(exist_ok=True)
+        (self.paper_root / "data" / "experiment-optimization-proposals.yaml").write_text(
+            "version: 1\n"
+            "proposals:\n"
+            "  - optimization_id: TEST\n"
+            "    status: proposed\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertEqual(report["human_review"]["status"], "pending-human-review")
+        checkpoint = report["human_review"]["checkpoints"][0]
+        self.assertEqual(checkpoint["id"], "optimization-proposals")
+        self.assertEqual(
+            checkpoint["ledger"],
+            "data/experiment-optimization-proposals.yaml",
+        )
+
     def test_high_assurance_defaults_to_submission_assurance(self):
         self._touch_ledgers(["novelty"])
         self._write_state("workflow:\n  profile: high-assurance\n")

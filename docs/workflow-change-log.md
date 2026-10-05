@@ -570,3 +570,28 @@ rewrite historical entries.
   - `generator byte-stability (both modes)`
 - notes: 浅色四屏也变了：选中行改用主题里的 row_selected(#eef1ff)，与 app 对齐；同一份生成器对同一棵树是确定性的。
 
+## WC-20261005T175759Z-ad850411eb - Add a budgeted inner-loop parameter optimizer
+
+- timestamp: `2026-10-05T17:57:59Z`
+- status: `complete`
+- author: `codex`
+- reason: Replace the single-pilot executor gap with grid/random trial search, objective extraction, best tracking, patience/budget stops, append-only trial logs and a keep/revert proposal; claims and code remain human-reviewed.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/experiment-optimize.ps1`
+  - `tools/ccfa/experiment_optimizer.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_experiment_optimizer.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_experiment_optimizer`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
