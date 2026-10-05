@@ -130,6 +130,7 @@ jobs:
             tools/ccfa/doctor.py `
             tools/ccfa/experiment_loop.py `
             tools/ccfa/experiment_optimizer.py `
+            tools/ccfa/external_adapters.py `
             tools/ccfa/formal_check.py `
             tools/ccfa/governance_map.py `
             tools/ccfa/long_task.py `

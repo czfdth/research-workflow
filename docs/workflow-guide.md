@@ -280,6 +280,19 @@ registry 会解析并安装依赖，拒绝依赖环；每个 skill 使用可校�
 当前 registry 已登记 5 个仓库内 `ccfa-*` 技能、15 个 P0 CCF 技能，以及
 18 个 `nature-*` 加 `cell-cns-figure` 的 P1 方法学技能，共 39 个。
 
+外部服务 adapter 检查：
+
+```powershell
+scripts/external-adapters.ps1 list --root .
+scripts/external-adapters.ps1 check --root .
+scripts/external-adapters.ps1 probe --root . --adapter pubmed --functional
+scripts/external-adapters.ps1 probe --root . --adapter exa
+```
+
+adapter 检查只读取环境变量名和运行最小健康检查，不读取或输出密钥值；
+`configured=no/manual` 与 `functional=fail` 会如实保留，不能把“装了 skill”
+误当成“服务已经可用”。
+
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
 ### `experiments-running`：运行并留档

@@ -74,6 +74,7 @@ git -C $paper status --short
 | `tools/ccfa/repro_container.py` | 在固定 digest 的 Docker 镜像中重跑复现包，关闭网络并写出第二环境 receipt | `scripts/repro-container.ps1` |
 | `tools/ccfa/skillpack.py` | 把技能目录打成可校验的 `.skillpack`（逐文件 sha256、确定性打包、可选 AES-256-GCM），`verify` 能发现篡改与夹带成员 | `scripts/skillpack.ps1` |
 | `tools/ccfa/skill_registry.py` | 维护可组合 skill registry，支持仓库内与 `~/.codex/skills`、`~/.agents/skills` 外部 source root；解析依赖、拒绝环、内容哈希版本、可验证 `.skillpack` 与独立安装 | `scripts/skill-registry.ps1` |
+| `tools/ccfa/external_adapters.py` | 检查 CNKI、Zotero、Exa、Parallel、Firecrawl、Paperclip、PubMed、OpenAlex、Hugging Face 等外部服务 adapter 的 installed/configured/functional 等级；只读 env var 名称，不读取或输出密钥 | `scripts/external-adapters.ps1` |
 | `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
 | `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |
 | `tools/ccfa/library.py` | 索引和检索共享文献库（metadata + 笔记，不含 PDF 全文）；`index --embed` 用本地 bge-m3 建向量，`search --mode` 支持 keyword / semantic / hybrid 三种模式，hybrid 按倒数排名融合 | `scripts/library.ps1` |
