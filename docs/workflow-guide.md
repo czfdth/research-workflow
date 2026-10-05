@@ -70,6 +70,10 @@ drills:
 文件里的 `triggered` 也必须是 `true`。缺证据或证据显示没触发都是 **problem（会阻塞）**，
 不是 advisory——声称演练过却拿不出失败证据，比不演练更糟。
 
+**新增 gate 的纪律**：每加一个 gate，必须在同一个提交里附上它的失败演练记录，否则下一次
+readiness 会把它列进 `unproven_guards`。演练要指出「破坏了什么、gate 用什么错误码拒绝」，
+而且必须排除崩溃、模块缺失、CLI 用法错误这些假失败——那几种都不是 gate 在工作。
+
 ## 3. 创建论文
 
 ```powershell
