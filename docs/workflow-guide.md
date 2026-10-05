@@ -325,6 +325,11 @@ scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
     --paper-root $paper run -- <command...>
 
 scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
+    --paper-root $paper run --role treatment -- <command...>
+scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
+    --paper-root $paper run --role negative-control -- <command...>
+
+scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
     --paper-root $paper check
 scripts/run-ledger.ps1 sync --paper-root $paper
 scripts/run-ledger.ps1 check --paper-root $paper
@@ -345,6 +350,14 @@ scripts/experiment-loop.ps1 next --paper-root $paper
 
 长任务优先使用 `scripts/queue.ps1`。需要隔离时使用 Docker 沙箱，不要在 daemon
 不可用时静默改成宿主机执行。T-30 后的 build 豁免和脏树运行都必须写具体理由。
+
+`--role` 说明这次 experiment 运行在实验里扮演哪一边：`treatment` /
+`negative-control` / `ablation` / `baseline`。它和 `--purpose` 是两个问题——purpose
+回答「这是不是一次实验」，role 回答「它是实验里的哪一边」。声明为 build 的运行不能带
+role（`run-log check` 报 `run-log-role-on-build`），构建运行不在任何实验条件下。
+claim registry 里 `polarity: effect` 且 supported 的实证 claim 必须引用至少一个
+`negative-control` 或 `ablation` 运行，否则报 `claim-registry-control-run-missing`：
+只有 treatment 结果时，混淆因素没有被排除。
 
 ### `results-ready`：把 claim 绑定到证据
 

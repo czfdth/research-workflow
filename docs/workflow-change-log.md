@@ -1065,3 +1065,21 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_talk_pipeline`
 
+## WC-20261005T195621Z-9b382d19ae - Give a run a scientific role (treatment/negative-control/ablation/baseline) and require a supported effect claim to cite a control run.
+
+- timestamp: `2026-10-05T19:56:21Z`
+- status: `complete`
+- author: `codex`
+- reason: A run log said whether a run was an experiment and how it ended, but never which side of the experiment it was, so an effect claim could be marked supported on a log that only ever contained the treatment: nothing in the record ruled out the obvious confound.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/research_ledgers.py`
+  - `tools/ccfa/run_log.py`
+  - `tools/tests/test_research_ledgers.py`
+  - `tools/tests/test_run_log.py`
+- tests:
+  - `ccfa.research_ledgers + ccfa.run_log check on papers/rag-attack-defense (0 problems)`
+  - `ruff check tools`
+  - `tools.tests.test_run_log + test_research_ledgers + test_docs_consistency + test_experiment_loop + test_readiness (201 tests)`
+- notes: record_run validates role against VALID_ROLES and refuses a role on a purpose=build run; run-log check reports run-log-role-invalid and run-log-role-on-build for hand-edited records. research_ledgers now reads run roles and reports claim-registry-control-run-missing for a supported empirical polarity=effect claim whose referenced runs contain no negative-control/ablation. Backfill note: the live paper has no experiment-purpose runs at all (all 7 run-log records are builds), and its 5 supported claims are descriptive, so there was nothing to label and the new rule does not fire on it.
+

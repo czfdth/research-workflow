@@ -193,6 +193,40 @@ def _run_ids(paper_root: Path) -> set[str]:
     return ids
 
 
+# Runs that rule out the obvious confound behind an effect claim.
+CONTROL_ROLES = {"negative-control", "ablation"}
+KNOWN_RUN_ROLES = CONTROL_ROLES | {"treatment", "baseline"}
+
+
+def _run_roles(paper_root: Path) -> dict[str, str]:
+    """Map run id -> declared role, ignoring records without a valid one.
+
+    An unreadable or role-less record simply has no role: the claim rule that
+    needs a control must fail closed, not treat a missing role as a control.
+    """
+
+    log_dir = paper_root / "experiments" / "log"
+    if not log_dir.is_dir():
+        return {}
+    roles: dict[str, str] = {}
+    for path in log_dir.glob("*.json"):
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        run_id = payload.get("run_id")
+        role = payload.get("role")
+        if (
+            is_nonempty_str(run_id)
+            and isinstance(role, str)
+            and role in KNOWN_RUN_ROLES
+        ):
+            roles[run_id.strip()] = role
+    return roles
+
+
 def _claim_registry(
     paper_root: Path,
     payload: dict,
@@ -203,6 +237,7 @@ def _claim_registry(
     figure_ids: set[str],
     citation_ids: set[str],
     run_ids: set[str],
+    run_roles: dict[str, str],
 ) -> tuple[list[Problem], set[str]]:
     path = paper_root / CLAIM_REGISTRY
     problems: list[Problem] = []
@@ -382,6 +417,31 @@ def _claim_registry(
                     None,
                     f"{claim_id}: polarity=null 的 supported claim 必须绑定 experiment；"
                     "「没有差异」只能由真的对照实验支撑，citation/figure 不算",
+                )
+            )
+        referenced = (
+            claim.get("experiments")
+            if isinstance(claim.get("experiments"), list)
+            else []
+        )
+        if (
+            status == "supported"
+            and claim_type == "empirical"
+            and polarity == "effect"
+            and not any(
+                run_roles.get(run) in CONTROL_ROLES
+                for run in referenced
+                if isinstance(run, str)
+            )
+        ):
+            problems.append(
+                problem(
+                    "claim-registry-control-run-missing",
+                    path,
+                    None,
+                    f"{claim_id}: supported 的 effect 实证 claim 必须引用至少一个"
+                    " role=negative-control 或 ablation 的运行；只有 treatment"
+                    " 结果时，无法排除混淆因素",
                 )
             )
     return problems, ids
@@ -950,6 +1010,7 @@ def check(
     figure_ids = _figure_ids(paper_root)
     citation_ids = _citation_ids(paper_root)
     run_ids = _run_ids(paper_root)
+    run_roles = _run_roles(paper_root)
     if claim_payload is not None:
         claim_problems, claim_ids = _claim_registry(
             paper_root,
@@ -960,6 +1021,7 @@ def check(
             figure_ids=figure_ids,
             citation_ids=citation_ids,
             run_ids=run_ids,
+            run_roles=run_roles,
         )
         problems.extend(claim_problems)
 

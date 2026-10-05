@@ -32,7 +32,8 @@ class ResearchLedgerTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.root / "experiments" / "log" / "run-1.json").write_text(
-            '{"run_id": "run-1", "status": "completed"}\n',
+            '{"run_id": "run-1", "status": "completed",'
+            ' "declared_purpose": "experiment", "role": "negative-control"}\n',
             encoding="utf-8",
         )
         self._write_valid_ledgers()
@@ -366,6 +367,46 @@ class ResearchLedgerTests(unittest.TestCase):
 
         self.assertIn(
             "claim-registry-null-experiment-missing",
+            self._codes(problems),
+        )
+
+    def test_a_supported_effect_claim_needs_a_control_run(self):
+        (self.root / "experiments" / "log" / "run-1.json").write_text(
+            '{"run_id": "run-1", "status": "completed",'
+            ' "declared_purpose": "experiment", "role": "treatment"}\n',
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn(
+            "claim-registry-control-run-missing",
+            self._codes(problems),
+        )
+
+    def test_a_treatment_plus_a_control_satisfies_the_effect_claim(self):
+        (self.root / "experiments" / "log" / "run-1.json").write_text(
+            '{"run_id": "run-1", "status": "completed",'
+            ' "declared_purpose": "experiment", "role": "negative-control"}\n',
+            encoding="utf-8",
+        )
+        (self.root / "experiments" / "log" / "run-2.json").write_text(
+            '{"run_id": "run-2", "status": "completed",'
+            ' "declared_purpose": "experiment", "role": "treatment"}\n',
+            encoding="utf-8",
+        )
+        registry = yaml.safe_load(
+            (self.root / "data" / "claim-registry.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        registry["claims"][0]["experiments"] = ["run-2", "run-1"]
+        self._write("data/claim-registry.yaml", registry)
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertNotIn(
+            "claim-registry-control-run-missing",
             self._codes(problems),
         )
 
