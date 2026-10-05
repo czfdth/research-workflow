@@ -200,8 +200,13 @@ class TestVerifyBundle(BaseCase):
 
     def test_nonzero_rerun_is_reported(self):
         bundle = self._bundle()
-        install_runner = lambda argv, cwd, timeout: (0, "installed\n")
-        run_runner = lambda argv, cwd, timeout: (3, "boom\n")
+
+        def install_runner(argv, cwd, timeout):
+            return 0, "installed\n"
+
+        def run_runner(argv, cwd, timeout):
+            return 3, "boom\n"
+
         problems, _ = verify_bundle(
             bundle,
             venv_factory=self._venv,

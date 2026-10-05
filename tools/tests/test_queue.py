@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,7 +12,6 @@ from pathlib import Path
 from unittest import mock
 
 from ccfa.queue import (
-    GpuMeter,
     QueueLock,
     QueueLocked,
     QueueStalled,

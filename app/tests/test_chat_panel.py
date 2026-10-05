@@ -17,7 +17,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from ccfa_core.engines.base import ChatMessage, EngineError, EngineReply
+from ccfa_core.engines.base import EngineError, EngineReply
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.chat_panel import ChatPanel

@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from ccfa_core.engines.base import EngineError, EngineReply
+from ccfa_core.engines.base import EngineReply
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.window import MainWindow, image_non_background_ratio
 from newpaper.create import create_project

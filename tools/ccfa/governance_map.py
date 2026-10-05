@@ -7,7 +7,6 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
 
 from ccfa.cli import Problem, emit, tool_error
 from ccfa.ledger import is_nonempty_str, load_ledger, missing_fields, problem

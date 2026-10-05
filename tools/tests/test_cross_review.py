@@ -1346,7 +1346,6 @@ class TestMainAndHelp(CrossReviewTests):
             self.assertIn("--codex-config", stdout.getvalue())
 
     def test_main_run_pass_zero_blocking_one_and_oserror_two(self):
-        pass_runner = self._runner(payload=self._payload("pass"))
         with mock.patch("ccfa.cross_review.run_review", side_effect=lambda *a, **k: {"verdict": "pass"}):
             with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
                 self.assertEqual(

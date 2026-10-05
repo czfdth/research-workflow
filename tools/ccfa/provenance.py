@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os  # Kept for the existing ccfa.provenance.os.replace patch seam.
 import sys
 from datetime import datetime, timezone
 from pathlib import Path

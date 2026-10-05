@@ -160,7 +160,7 @@ class TestAddEntry(BaseCase):
         ]
         stdout = StringIO()
         with mock.patch(
-            "ccfa.provenance.os.replace",
+            "ccfa.cli.os.replace",
             side_effect=PermissionError("permission denied"),
         ):
             with redirect_stdout(stdout), redirect_stderr(StringIO()):
