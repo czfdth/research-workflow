@@ -734,3 +734,17 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_github_workflows`
 
+## WC-20261005T202534Z-67bb3895f9 - Fix the three machine-dependent tools-test failures that kept CI red
+
+- timestamp: `2026-10-05T20:25:34Z`
+- status: `complete`
+- author: `codex`
+- reason: The GitHub Windows runner failed tools-impact on every recent push. experiment_optimizer compared a spec path spelling (8.3 short name RUNNER~1) against a resolved paper_root and raised ValueError on a file inside the paper; two external-adapter tests asserted installed against whatever skills the developer machine had, so they failed on a clean runner. Confirmed against real Actions logs for runs 37360029400 and 37361015600, which failed identically before this branch existed.
+- files:
+  - `tools/ccfa/experiment_optimizer.py`
+  - `tools/tests/test_experiment_optimizer.py`
+  - `tools/tests/test_external_adapters.py`
+- tests:
+  - `tools.tests.test_experiment_optimizer`
+  - `tools.tests.test_external_adapters`
+

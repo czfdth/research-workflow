@@ -1,4 +1,6 @@
+import ctypes
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -95,6 +97,53 @@ class ExperimentOptimizerTests(unittest.TestCase):
             ),
             "version: 1\nclaims:\n  - id: C1\n    statement: Demo claim\n",
         )
+
+    def _execute_with(self, spec_path):
+        def runner(argv, _cwd):
+            metrics_path = Path(argv[argv.index("--metrics") + 1])
+            lr = float(argv[argv.index("--lr") + 1])
+            metrics_path.write_text(
+                json.dumps({"metrics": {"accuracy": 0.5 + lr}}),
+                encoding="utf-8",
+            )
+            return 0, ""
+
+        return run_optimization(
+            self.paper,
+            spec_path=spec_path,
+            execute=True,
+            runner=runner,
+        )
+
+    def _short_path(self, path: Path):
+        """Return the Windows 8.3 form of *path*, or None when unavailable."""
+        if os.name != "nt":
+            return None
+        buffer = ctypes.create_unicode_buffer(512)
+        length = ctypes.windll.kernel32.GetShortPathNameW(
+            str(path),
+            buffer,
+            512,
+        )
+        if not length:
+            return None
+        short = Path(buffer.value)
+        return short if str(short) != str(path) else None
+
+    def test_spec_reached_through_a_windows_short_path_is_still_inside(self):
+        # The CI runner failed exactly here: paper_root resolved to the long
+        # name while the spec kept the 8.3 short name (RUNNER~1), so
+        # spec_file.relative_to(paper_root) raised on a file that is inside the
+        # paper. Resolving the spec before the comparison is the fix.
+        short_root = self._short_path(self.paper)
+        if short_root is None:
+            self.skipTest("8.3 短路径在此文件系统不可用")
+
+        result = self._execute_with(
+            short_root / "data" / "experiment-optimization.yaml"
+        )
+
+        self.assertEqual(result["status"], "executed")
 
     def test_check_rejects_a_command_without_metrics_path(self):
         payload = yaml.safe_load(self.spec.read_text(encoding="utf-8"))
