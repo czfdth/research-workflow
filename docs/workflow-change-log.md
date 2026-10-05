@@ -235,3 +235,25 @@ rewrite historical entries.
 - tests:
   - `git diff --check`
 
+## WC-20261005T170326Z-ae6a6b566f - Add a verifiable .skillpack format (sha256 manifest, deterministic zip, optional AES-256-GCM) after reviewing Modex-MH-Agent's encrypted skill pack.
+
+- timestamp: `2026-10-05T17:03:26Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求参考他的加密技能包。实测其 283 个 .enc 用 AES-256-GCM + zlib 字典伪装、密钥服务端下发并绑定机器指纹：能挡住读提示词，但目录名/模板/脚本名全明文，骨架照样可见，且离线不可用、换硬件即失效、收到包的一方无法校验。抄可校验那一半，丢掉伪装与绑定。
+- files:
+  - `README.md`
+  - `docs/reference-modex-mh-agent-2026-10-06.md`
+  - `docs/skillpack-format.md`
+  - `scripts/skillpack.ps1`
+  - `tools/ccfa/skillpack.py`
+  - `tools/requirements.txt`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_skillpack.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_skillpack (12 tests, including the encrypted round-trip)`
+- notes: 实测打包 ccf-common（16 文件）并在明文与加密两种模式下 verify 通过；加密包无口令返回 skillpack-locked。
+

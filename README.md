@@ -71,6 +71,7 @@ git -C $paper status --short
 | `tools/ccfa/citation_calibration.py` | 从 gold set 与预测计算 citation support 的 FNR/FPR 并按阈值 fail closed | `scripts/citation-calibration.ps1` |
 | `tools/ccfa/venue_fixtures.py` | 校验并 seed NeurIPS/ARR 官方方法学 checklist fixture 到 `venue-checklist.yaml` | `scripts/venue-fixtures.ps1` |
 | `tools/ccfa/repro_package.py` | 打包复现材料并在干净环境验证重跑 | `scripts/repro-package.ps1` |
+| `tools/ccfa/skillpack.py` | 把技能目录打成可校验的 `.skillpack`（逐文件 sha256、确定性打包、可选 AES-256-GCM），`verify` 能发现篡改与夹带成员 | `scripts/skillpack.ps1` |
 | `tools/ccfa/friction_log.py` | 记录工具缺陷与指令缺口，支持跨论文聚合 | `scripts/friction-log.ps1` |
 | `tools/ccfa/research_version.py` | 用 git tag 建立自动编号快照并输出任意两版 diff | `scripts/research-version.ps1` |
 | `tools/ccfa/library.py` | 索引和检索共享文献库（metadata + 笔记，不含 PDF 全文）；`index --embed` 用本地 bge-m3 建向量，`search --mode` 支持 keyword / semantic / hybrid 三种模式，hybrid 按倒数排名融合 | `scripts/library.ps1` |
