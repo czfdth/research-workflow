@@ -2,6 +2,8 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -17,6 +19,7 @@ from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.settings_dialog import SettingsDialog
 from ccfa_gui import theme
+from ccfa_gui.main import main as gui_main
 from ccfa_gui.window import MainWindow, image_non_background_ratio
 
 from . import write_project
@@ -268,6 +271,22 @@ class GuiSmokeTests(unittest.TestCase):
             window.close()
             window.deleteLater()
             APP.processEvents()
+
+    def test_self_check_reports_the_workflow_it_found(self):
+        stream = StringIO()
+
+        with redirect_stdout(stream):
+            code = gui_main(["--self-check", "--repo-root", str(self.root)])
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["repo_root"], str(self.root))
+        self.assertTrue(payload["probe_ok"])
+        self.assertTrue(payload["workflow_root"])
+        self.assertTrue(payload["workflow_python"])
+        self.assertTrue(
+            (Path(payload["workflow_root"]) / "tools" / "ccfa").is_dir()
+        )
 
     def test_chat_column_slides_when_animations_are_enabled(self):
         window = MainWindow(

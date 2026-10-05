@@ -796,3 +796,18 @@ rewrite historical entries.
   - `tools.tests.test_scripts in the main checkout (136 tests)`
 - notes: 实测发现嵌入版 CPython 不含 venv，repro_package 顶层 import 会让 readiness 崩；已改为惰性 import，并在打包脚本里逐模块 import 自检。
 
+## WC-20261005T184206Z-db62f9953f - Add ccfa-workbench.exe --self-check so an installed copy can be smoke-tested without launching the GUI.
+
+- timestamp: `2026-10-05T18:42:06Z`
+- status: `complete`
+- author: `codex`
+- reason: 安装包没法用脚本验证：GUI 一跑就占用界面，看不出冻结后的 app 到底有没有发现自带的工作流运行时。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/main.py`
+  - `app/tests/test_gui_smoke.py`
+- tests:
+  - `app unittest discover (227 tests)`
+  - `ruff check app`
+- notes: self-check 复用窗口同一条发现路径并调用工作流的 probe；输出 JSON 含 probe_ok/probe_detail。
+

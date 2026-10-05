@@ -57,6 +57,16 @@ scripts/build-workbench.ps1
 安装是按用户进行的（不需要管理员），默认装到
 `%LOCALAPPDATA%\Programs\ccfa-workbench`，卸载时保留 `%APPDATA%` 下的设置。
 
+装完可以不做任何人工操作先跑一次自检（不启动界面）：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\ccfa-workbench\ccfa-workbench.exe" --self-check
+# {"probe_ok": true, "workflow_root": "...", "workflow_python": "...", ...}
+```
+
+`probe_ok=false` 时 `probe_detail` 会说明是找不到工作流目录、没有解释器，
+还是工作流目录里缺 `tools/ccfa`。
+
 **安装版怎么找到工作流**：冻结包里没有 `ccfa`，所以启动时按下面的顺序找
 "包含 `tools/ccfa` 的目录"，第一个命中就用：
 
