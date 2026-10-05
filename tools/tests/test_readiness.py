@@ -470,6 +470,24 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(human["checkpoints"][0]["id"], "cross-review")
         self.assertIn("跨族", human["checkpoints"][0]["question"])
 
+    def test_claim_candidates_have_a_promotion_checkpoint(self):
+        (self.paper_root / "data").mkdir(exist_ok=True)
+        (self.paper_root / "data" / "claim-candidates.yaml").write_text(
+            "version: 1\n"
+            "claims:\n"
+            "  - id: CC-1\n"
+            "    statement: Candidate claim\n"
+            "    status: proposed\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="minimal")
+
+        self.assertEqual(report["human_review"]["status"], "pending-human-review")
+        checkpoint = report["human_review"]["checkpoints"][0]
+        self.assertEqual(checkpoint["id"], "claim-candidates")
+        self.assertEqual(checkpoint["ledger"], "data/claim-candidates.yaml")
+
     def test_high_assurance_defaults_to_submission_assurance(self):
         self._touch_ledgers(["novelty"])
         self._write_state("workflow:\n  profile: high-assurance\n")

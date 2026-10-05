@@ -139,6 +139,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_repro_container",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/claim_extract.py": (
+        "tools.tests.test_claim_extract",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

@@ -64,6 +64,7 @@ CCFA_WRAPPERS = {
     "research_state": "research-state.ps1",
     "ara_compile": "ara-compile.ps1",
     "ara_extract": "ara-extract.ps1",
+    "claim_extract": "claim-extract.ps1",
     "reference_audit": "reference-audit.ps1",
     "repro_container": "repro-container.ps1",
     "worktree_audit": "worktree-audit.ps1",

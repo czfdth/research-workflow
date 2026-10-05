@@ -138,6 +138,22 @@ scripts/research-ledgers.ps1 --paper-root $paper
 `artifact-provenance.yaml` 可选 `depends_on` 边：`advisory` 表示静态推断，
 `verified` 必须指向真实存在的证据文件；悬空引用和依赖环都会 fail closed。
 
+从 PDF 或仓库文本生成候选 claim：
+
+```powershell
+scripts/claim-extract.ps1 extract --paper-root $paper `
+    --source submission/final.pdf `
+    --source manuscript/sections `
+    --model qwen3:30b `
+    --out data/claim-candidates.yaml
+scripts/claim-extract.ps1 check --paper-root $paper `
+    --candidates data/claim-candidates.yaml
+```
+
+候选 claim 必须带 source hash、页码/行号、verbatim quote 和 `status=proposed`。
+`check` 会拒绝 source drift 和 quote 已不存在；工具不会自动写入
+`data/claim-registry.yaml`，promotion 仍由人完成。
+
 ## 5. 阶段操作表
 
 ### `idea`：定义问题

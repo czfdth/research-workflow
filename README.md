@@ -101,6 +101,7 @@ git -C $paper status --short
 | `tools/ccfa/ara_compile.py` | 从 claim、exploration、figure、run 台账编译 ARA 五层 draft，并如实报告未满足的 Seal Level 1 项 | `scripts/ara-compile.ps1` |
 | `tools/ccfa/research_ledgers.py` | 校验 claim registry、assumptions/limitations、venue checklist、artifact provenance（含 advisory/verified 依赖边与环检测）、探索图、成本账本与风险登记册 | `scripts/research-ledgers.ps1` |
 | `tools/ccfa/ara_extract.py` | 从本地 tex/bib/figure/run/claim/exploration 材料确定性抽取 ARA semantic input，并报告未解析字段 | `scripts/ara-extract.ps1` |
+| `tools/ccfa/claim_extract.py` | 从 PDF 与仓库文本抽取带 source hash、页码/行号与 verbatim quote 的 candidate claims；支持 Ollama 语义抽取和离线启发式抽取，只写 `claim-candidates.yaml`，不自动修改 claim registry | `scripts/claim-extract.ps1` |
 | `tools/ccfa/reference_audit.py` | 对照 `docs/reference-registry.yaml` 检查已做源码审计的参照仓库是否出现新 commit | `scripts/reference-audit.ps1` |
 | `tools/ccfa/worktree_audit.py` | 对照 change log 审计工作树漂移，列出已覆盖与未覆盖的工作流文件 | `scripts/worktree-audit.ps1` |
 | `tools/ccfa/experiment_loop.py` | 校验 pilot 筛选与内层/外层实验循环，绑定真实 claim 与 run id；`run-next` 可在预算内执行 pilot 并同时写 run-log 与 compute ledger | `scripts/experiment-loop.ps1` |
