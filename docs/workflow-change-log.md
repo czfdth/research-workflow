@@ -479,3 +479,24 @@ rewrite historical entries.
   - `docs consistency (tools.tests.test_docs_consistency)`
 - notes: Figma 文件 XpIadzobOUEEPimh31y0TC，导入后 get_screenshot 复核过。
 
+## WC-20261005T174350Z-d5442bc931 - Add system-following dark mode and a width-based chat column collapse to the workbench.
+
+- timestamp: `2026-10-05T17:43:50Z`
+- status: `complete`
+- author: `codex`
+- reason: 深色模式与窄窗口折叠是 UI 设计清单里剩下的两项：界面只有浅色一套，窗口变窄时对话栏死占 420px，把项目详情挤没。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/appearance.py`
+  - `app/ccfa_gui/icon_paths.py`
+  - `app/ccfa_gui/icons.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_theme.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `app unittest discover (218 tests)`
+  - `ruff check app`
+- notes: 深色截图确认色板生效；900px 截图确认对话栏收起；三栏显式最小宽度是折叠能生效的前提。
+

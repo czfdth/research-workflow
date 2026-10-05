@@ -39,9 +39,13 @@ from ccfa_core.settings import default_settings_path, load_settings
 
 from .chat_panel import ChatPanel
 from .settings_dialog import SettingsDialog
-from . import icons, theme
+from . import appearance, icons, theme
 
 _SHARED_LIBRARY_DIR = Path(__file__).resolve().parents[2] / "library"
+
+# Below this width the conversation column is worth more as horizontal room for
+# the project detail pane; the toolbar toggle brings it back on demand.
+CHAT_COLLAPSE_WIDTH = 1000
 
 # Absolute path tokens inside a workflow error message ("C:\...\ccfa.yaml").
 _PATH_TOKEN = re.compile(r"[A-Za-z]:[\\/][^\s]*|file://[^\s]*")
@@ -123,7 +127,10 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         self.setWindowTitle("论文工作台")
-        self.setStyleSheet(theme.stylesheet())
+        self._mode = appearance.current_mode()
+        self._palette = theme.palette(self._mode)
+        self._chat_override: bool | None = None
+        self._was_wide = True
         central = QWidget(self)
         self.setCentralWidget(central)
         outer = QVBoxLayout(central)
@@ -152,6 +159,59 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.workflow_label)
         self.statusBar().addPermanentWidget(self.status_separator)
         self.statusBar().addPermanentWidget(self.credential_label)
+        self._apply_theme()
+        appearance.watch(self._on_system_scheme_changed)
+
+    def _apply_theme(self) -> None:
+        """Paint the window with the current mode and recolour its icons."""
+
+        self._palette = theme.palette(self._mode)
+        self.setStyleSheet(theme.stylesheet(self._mode))
+        self._apply_icons()
+        self._apply_responsive_layout()
+
+    def _apply_icons(self) -> None:
+        ink = self._palette["ink"]
+        muted = self._palette["muted"]
+        self.app_mark.setPixmap(icons.app_mark(22, colour=self._palette["accent"]))
+        self.refresh_button.setIcon(icons.icon("refresh", colour=ink))
+        self.settings_button.setIcon(icons.icon("settings", colour=ink))
+        self.chat_toggle.setIcon(icons.icon("chat", colour=ink))
+        self.open_dir_button.setIcon(icons.icon("folder", colour=muted))
+        self.validate_button.setIcon(icons.icon("validate", colour="#ffffff"))
+        self.milestones_button.setIcon(icons.icon("milestones", colour=ink))
+        self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=ink))
+        self.chat_panel.send_button.setIcon(icons.icon("send", colour=ink))
+        self.placeholder_icon.setPixmap(
+            icons.pixmap("inbox", colour=self._palette["placeholder_icon"], size=44)
+        )
+
+    def _on_system_scheme_changed(self) -> None:
+        mode = appearance.current_mode()
+        if mode != self._mode:
+            self._mode = mode
+            self._apply_theme()
+
+    def _on_chat_toggled(self, checked: bool) -> None:
+        self._chat_override = bool(checked)
+        self.chat_card.setVisible(bool(checked))
+
+    def _apply_responsive_layout(self) -> None:
+        wide = self.width() >= CHAT_COLLAPSE_WIDTH
+        if wide != self._was_wide:
+            # Crossing the breakpoint clears a manual choice, so the automatic
+            # rule wins again next time the window changes size class.
+            self._chat_override = None
+            self._was_wide = wide
+        visible = wide if self._chat_override is None else self._chat_override
+        self.chat_card.setVisible(visible)
+        self.chat_toggle.blockSignals(True)
+        self.chat_toggle.setChecked(visible)
+        self.chat_toggle.blockSignals(False)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
 
     def _build_toolbar(self) -> QWidget:
         bar = QFrame(self)
@@ -183,6 +243,15 @@ class MainWindow(QMainWindow):
         self.settings_button.setToolTip("provider、密钥与工作流目录")
         self.settings_button.clicked.connect(self.open_settings)
         row.addWidget(self.settings_button)
+
+        self.chat_toggle = QPushButton()
+        self.chat_toggle.setObjectName("chat_toggle")
+        self.chat_toggle.setCheckable(True)
+        self.chat_toggle.setChecked(True)
+        self.chat_toggle.setToolTip("显示或隐藏对话栏（窄窗口会自动收起）")
+        self.chat_toggle.setFixedWidth(36)
+        self.chat_toggle.clicked.connect(self._on_chat_toggled)
+        row.addWidget(self.chat_toggle)
 
         row.addStretch(1)
         self.summary_label = QLabel("")
@@ -351,11 +420,16 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
+        # Explicit minimums on all three panes keep the window able to shrink to
+        # the breakpoint above; without this the detail pane's natural minimum
+        # keeps the window wider than the collapse threshold.
+        panel.setMinimumWidth(320)
         return panel
 
     def _build_conversation(self) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("card")
+        self.chat_card = panel
         column = QVBoxLayout(panel)
         column.setContentsMargins(10, 10, 10, 10)
         column.setSpacing(6)
@@ -396,21 +470,21 @@ class MainWindow(QMainWindow):
                     if text not in {"OK", "无问题"}:
                         actionable += 1
                     item.setForeground(
-                        QBrush(QColor(theme.severity_color(text)))
+                        QBrush(QColor(theme.severity_color(text, self._mode)))
                     )
                 self.results_table.setItem(row, column, item)
         if not rows:
             self.results_summary.setText("尚未运行检查")
-            self.results_summary.setStyleSheet(f"color: {theme.MUTED};")
+            self.results_summary.setStyleSheet(f"color: {self._palette['muted']};")
             return
         if actionable:
             self.results_summary.setText(
                 f"{len(rows)} 条结果 · {actionable} 条需处理"
             )
-            colour = theme.PROBLEM
+            colour = self._palette["problem"]
         else:
             self.results_summary.setText(f"{len(rows)} 条结果 · 全部通过")
-            colour = theme.OK
+            colour = self._palette["ok"]
         self.results_summary.setStyleSheet(f"color: {colour};")
 
     def _set_badge(self, label: QLabel, text: str, *, state: str | None = None) -> None:
@@ -442,7 +516,7 @@ class MainWindow(QMainWindow):
         """Empty state for the detail pane: icon, one line, then the hint."""
 
         self.placeholder_icon.setPixmap(
-            icons.pixmap(icon_name, colour="#c9c9d1", size=44)
+            icons.pixmap(icon_name, colour=self._palette["placeholder_icon"], size=44)
         )
         self.placeholder_title.setText(title)
         self.placeholder_hint.setText(hint)
@@ -652,7 +726,7 @@ class MainWindow(QMainWindow):
                 self._add_checkpoint_card(item)
             self.detail_stack.setCurrentIndex(1)
             self.results_summary.setText(f"{len(checkpoints)} 项待人工")
-            self.results_summary.setStyleSheet(f"color: {theme.PROBLEM};")
+            self.results_summary.setStyleSheet(f"color: {self._palette['problem']};")
         else:
             self._set_results(
                 [("readiness", "OK", "当前没有待人工复核项")]
@@ -754,16 +828,16 @@ class MainWindow(QMainWindow):
             self.credential_label.setToolTip(
                 "系统密钥环不可访问，API key 无法保存或读取"
             )
-            self.credential_label.setStyleSheet(f"color: {theme.PROBLEM};")
+            self.credential_label.setStyleSheet(f"color: {self._palette['problem']};")
         else:
             self.credential_label.setText("● 凭据可用")
             self.credential_label.setToolTip("系统密钥环可读写")
-            self.credential_label.setStyleSheet(f"color: {theme.OK};")
+            self.credential_label.setStyleSheet(f"color: {self._palette['ok']};")
         try:
             settings = load_settings(self._settings_path)
         except ValueError:
             self.workflow_label.setText("工作流：配置无效")
-            self.workflow_label.setStyleSheet(f"color: {theme.PROBLEM};")
+            self.workflow_label.setStyleSheet(f"color: {self._palette['problem']};")
             return
         root = settings.workflow_root
         if root:

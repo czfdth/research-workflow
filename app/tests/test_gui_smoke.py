@@ -15,6 +15,7 @@ from ccfa_core.checks import CheckResult
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.settings_dialog import SettingsDialog
+from ccfa_gui import theme
 from ccfa_gui.window import MainWindow, image_non_background_ratio
 
 from . import write_project
@@ -233,6 +234,37 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertIn("new-paper.ps1", window.placeholder_hint.text())
         self.assertFalse(window.placeholder_icon.pixmap().isNull())
         window.close()
+
+    def test_chat_column_collapses_in_a_narrow_window(self):
+        self.window.resize(1300, 800)
+        APP.processEvents()
+        self.assertTrue(self.window.chat_card.isVisible())
+
+        self.window.resize(900, 700)
+        APP.processEvents()
+        self.assertFalse(self.window.chat_card.isVisible())
+        self.assertFalse(self.window.chat_toggle.isChecked())
+
+        self.window.chat_toggle.click()
+        APP.processEvents()
+        self.assertTrue(self.window.chat_card.isVisible())
+
+        self.window.resize(1300, 800)
+        APP.processEvents()
+        self.assertTrue(self.window.chat_card.isVisible())
+        self.assertTrue(self.window.chat_toggle.isChecked())
+
+    def test_dark_mode_paints_the_window_with_the_dark_palette(self):
+        with mock.patch.dict(os.environ, {"CCFA_THEME": "dark"}):
+            window = self._window()
+        try:
+            self.assertEqual(window._mode, "dark")
+            self.assertIn(theme.DARK["canvas"], window.styleSheet())
+            self.assertIn(theme.DARK["panel"], window.styleSheet())
+        finally:
+            window.close()
+            window.deleteLater()
+            APP.processEvents()
 
     def test_run_validate_on_bad_project_shows_error_row(self):
         self._select("bad")

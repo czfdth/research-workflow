@@ -82,6 +82,11 @@ cd app
 也供 `docs/design/generate_mockups.py` 生成设计稿），工具栏最左侧是产品标记；
 没有项目可显示时中栏是空白状态（图标 + 一行提示），不是一张空表。
 
+配色跟随系统深浅色（`ccfa_gui/appearance.py` 读 `QStyleHints.colorScheme`，
+`CCFA_THEME=light|dark` 可强制覆盖），两套色板在 `theme.py` 的 `LIGHT`/`DARK`，
+键名一致并有测试钉住。窗口窄于 1000px 时右栏对话自动收起，工具栏的对话按钮
+可以手动叫回来。
+
 | 按钮 | 调用的工作流命令 | 结果 |
 | --- | --- | --- |
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |
