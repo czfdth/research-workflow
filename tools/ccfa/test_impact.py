@@ -154,6 +154,16 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/long_task.py": (
+        "tools.tests.test_long_task",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
+    "tools/ccfa/skill_registry.py": (
+        "tools.tests.test_skill_registry",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

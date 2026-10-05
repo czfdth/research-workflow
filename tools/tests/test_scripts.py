@@ -54,6 +54,8 @@ CCFA_WRAPPERS = {
     "change_log": "change-log.ps1",
     "experiment_loop": "experiment-loop.ps1",
     "experiment_optimizer": "experiment-optimize.ps1",
+    "long_task": "long-task.ps1",
+    "skill_registry": "skill-registry.ps1",
     "post_submission": "post-submission.ps1",
     "rigor": "rigor-rubric.ps1",
     "proof_orchestrator": "proof-orchestrator.ps1",

@@ -60,6 +60,8 @@ CLI_WRAPPERS = {
     "change_log": "scripts/change-log.ps1",
     "experiment_loop": "scripts/experiment-loop.ps1",
     "experiment_optimizer": "scripts/experiment-optimize.ps1",
+    "long_task": "scripts/long-task.ps1",
+    "skill_registry": "scripts/skill-registry.ps1",
     "post_submission": "scripts/post-submission.ps1",
     "rigor": "scripts/rigor-rubric.ps1",
     "proof_orchestrator": "scripts/proof-orchestrator.ps1",

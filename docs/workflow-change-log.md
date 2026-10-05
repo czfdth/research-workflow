@@ -545,3 +545,40 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T181536Z-0606c5a773 - Add cross-session task replay and independently installable skills
+
+- timestamp: `2026-10-05T18:15:36Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the remaining orchestration and packaging gaps: long tasks now replay a hash-chained event log from disk, and core capabilities are split into dependency-resolved skill packages that can be verified and installed independently.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/long-task.ps1`
+  - `scripts/skill-registry.ps1`
+  - `skills/ccfa-autoresearch/SKILL.md`
+  - `skills/ccfa-autoresearch/skill.yaml`
+  - `skills/ccfa-claims/SKILL.md`
+  - `skills/ccfa-claims/skill.yaml`
+  - `skills/ccfa-core/SKILL.md`
+  - `skills/ccfa-core/skill.yaml`
+  - `skills/ccfa-evidence/SKILL.md`
+  - `skills/ccfa-evidence/skill.yaml`
+  - `skills/ccfa-experiments/SKILL.md`
+  - `skills/ccfa-experiments/skill.yaml`
+  - `skills/registry.yaml`
+  - `tools/ccfa/long_task.py`
+  - `tools/ccfa/skill_registry.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_long_task.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_skill_registry.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_long_task`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+

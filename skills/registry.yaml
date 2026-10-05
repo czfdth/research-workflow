@@ -1,0 +1,27 @@
+version: 1
+skills:
+  - id: ccfa-core
+    version: 0.1.0
+    path: skills/ccfa-core
+    description: Evidence-first workflow prerequisites and repository contract.
+    dependencies: []
+  - id: ccfa-claims
+    version: 0.1.0
+    path: skills/ccfa-claims
+    description: PDF and repository candidate-claim extraction.
+    dependencies: [ccfa-core]
+  - id: ccfa-experiments
+    version: 0.1.0
+    path: skills/ccfa-experiments
+    description: Budgeted experiment execution and parameter optimization.
+    dependencies: [ccfa-core]
+  - id: ccfa-autoresearch
+    version: 0.1.0
+    path: skills/ccfa-autoresearch
+    description: Candidate research plans and sandboxed code mutations.
+    dependencies: [ccfa-core, ccfa-experiments]
+  - id: ccfa-evidence
+    version: 0.1.0
+    path: skills/ccfa-evidence
+    description: Readiness, cross-review, citation and governance gates.
+    dependencies: [ccfa-core]

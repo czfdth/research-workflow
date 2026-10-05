@@ -132,6 +132,7 @@ jobs:
             tools/ccfa/experiment_optimizer.py `
             tools/ccfa/formal_check.py `
             tools/ccfa/governance_map.py `
+            tools/ccfa/long_task.py `
             tools/ccfa/meta_optimize.py `
             tools/ccfa/post_submission.py `
             tools/ccfa/proof_orchestrator.py `
@@ -149,6 +150,7 @@ jobs:
             tools/ccfa/passport_ledger.py `
             tools/ccfa/run_ledger.py `
             tools/ccfa/session_replay.py `
+            tools/ccfa/skill_registry.py `
             tools/ccfa/talk_pipeline.py `
             tools/ccfa/test_impact.py `
             tools/ccfa/venue_fixtures.py `
