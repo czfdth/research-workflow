@@ -6,6 +6,9 @@ from here so the documentation cannot drift from the state machine.
 
 from __future__ import annotations
 
+import argparse
+import json
+import sys
 from typing import NamedTuple
 
 
@@ -121,3 +124,55 @@ def gate_for(mode: str, stage: str) -> Gate:
 
 def all_gates(mode: str) -> list[tuple[str, Gate]]:
     return [(stage, gate_for(mode, stage)) for stage in stages_for(mode)]
+
+
+def _gate_payload(gate: Gate) -> dict:
+    return {"id": gate.id, "criterion": gate.criterion}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Print the stage/gate table as JSON.
+
+    This exists so external consumers (the desktop workbench) can read the
+    state machine without importing ``ccfa`` into their own process. The table
+    stays owned here; nothing downstream reimplements it.
+    """
+    parser = argparse.ArgumentParser(
+        description="输出 stage/gate 表（JSON 到 stdout）"
+    )
+    parser.add_argument(
+        "--mode",
+        required=True,
+        choices=("conference", "journal"),
+        help="论文模式",
+    )
+    parser.add_argument(
+        "--stage",
+        help="只输出该 stage 的 gate",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        stages = stages_for(args.mode)
+        gates = {stage: _gate_payload(gate_for(args.mode, stage)) for stage in stages}
+    except ValueError as exc:
+        print(f"工具错误: {exc}", file=sys.stderr)
+        return 2
+
+    if args.stage is not None:
+        if args.stage not in gates:
+            print(f"工具错误: 未知 stage: {args.stage!r}", file=sys.stderr)
+            return 2
+        payload = {
+            "mode": args.mode,
+            "stage": args.stage,
+            "gate": gates[args.stage],
+        }
+    else:
+        payload = {"mode": args.mode, "stages": stages, "gates": gates}
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

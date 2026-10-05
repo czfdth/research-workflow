@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ccfa.cli import save_text_atomically
+from ccfa_core.atomic import save_text_atomically
 
 SCHEMA_VERSION = 1
 PROVIDER_FIELDS = ("name", "base_url", "model", "key_name", "timeout_s")

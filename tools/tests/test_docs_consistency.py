@@ -71,6 +71,9 @@ CLI_WRAPPERS = {
     "dashboard": "scripts/dashboard.ps1",
     "formal_check": "scripts/formal-check.ps1",
     "verifiers": "scripts/verifiers.ps1",
+    "stages": "scripts/stages.ps1",
+    "archive_client": "scripts/archive.ps1",
+    "compute": "scripts/compute.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

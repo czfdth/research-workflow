@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 from ccfa_core.projects import find_projects
 from ccfa_gui.settings_dialog import SettingsDialog
 from ccfa_gui.window import MainWindow, image_non_background_ratio
-from newpaper.create import create_project
+from . import create_project
 
 APP = QApplication.instance() or QApplication([])
 FAKE_KEY = "sk-e2e-FAKE-KEY-1234567890"

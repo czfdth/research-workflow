@@ -65,6 +65,9 @@ CCFA_WRAPPERS = {
     "dashboard": "dashboard.ps1",
     "formal_check": "formal-check.ps1",
     "verifiers": "verifiers.ps1",
+    "stages": "stages.ps1",
+    "archive_client": "archive.ps1",
+    "compute": "compute.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

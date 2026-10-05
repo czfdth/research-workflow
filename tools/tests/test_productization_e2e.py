@@ -152,7 +152,7 @@ class ProductizationEndToEnd(unittest.TestCase):
             ["validate.py", str(root / "ccfa.yaml")],
         )
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(stdout, "")
+        self.assertEqual(json.loads(stdout)["problem_count"], 0)
 
         code, stdout, stderr = self._rollback(root)
         self.assertEqual(code, 0, stderr)
@@ -244,7 +244,7 @@ class ProductizationEndToEnd(unittest.TestCase):
         )
 
         self.assertEqual(code, 0, stderr)
-        self.assertEqual(stdout, "")
+        self.assertEqual(json.loads(stdout)["problem_count"], 0)
 
     def test_rollback_records_void_artifacts(self):
         root = self._derive()
@@ -367,7 +367,9 @@ class ProductizationEndToEnd(unittest.TestCase):
         )
 
         self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
+        report = json.loads(stdout)
+        self.assertEqual(report["problem_count"], 1)
+        self.assertEqual(report["problems"][0]["code"], "schema-invalid")
         self.assertIn("state-history-direction", stderr)
 
 

@@ -199,9 +199,7 @@ class ExperimentLoopTests(unittest.TestCase):
     def test_next_actions_reports_pending_work(self):
         payload = self._valid_loop()
         payload["ideas"][0]["status"] = "pilot-planned"
-        payload["inner_loop"][0].update(
-            {"result": "pending", "decision": "pending"}
-        )
+        payload["inner_loop"][0].update({"result": "pending", "decision": "pending"})
         payload["outer_loop"][0].update({"decision": "pending"})
         self._write_loop(payload)
 
@@ -210,6 +208,28 @@ class ExperimentLoopTests(unittest.TestCase):
         self.assertEqual(result["pilot"][0]["id"], "I1")
         self.assertEqual(result["inner"][0]["id"], "L1")
         self.assertEqual(result["outer"][0]["id"], "O1")
+
+    def test_next_actions_hands_the_pilot_budget_to_the_executor(self):
+        payload = self._valid_loop()
+        payload["ideas"][0]["status"] = "pilot-planned"
+        payload["ideas"][0]["pilot_budget_minutes"] = 45
+        payload["ideas"][0]["pilot_gpus"] = 1
+        self._write_loop(payload)
+
+        command = next_actions(self.paper)["pilot"][0]["suggested_command"]
+
+        self.assertIn("compute.ps1 run", command)
+        self.assertIn("--minutes 45", command)
+        self.assertIn("--gpus 1", command)
+
+    def test_running_pilot_has_no_suggested_command(self):
+        payload = self._valid_loop()
+        payload["ideas"][0]["status"] = "pilot-running"
+        self._write_loop(payload)
+
+        entry = next_actions(self.paper)["pilot"][0]
+
+        self.assertIsNone(entry["suggested_command"])
 
     def test_next_actions_rejects_an_invalid_ledger(self):
         payload = self._valid_loop()

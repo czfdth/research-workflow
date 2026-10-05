@@ -1,18 +1,94 @@
-"""Discover and load paper projects under papers/*/ccfa.yaml."""
+"""Discover and load paper projects under papers/*/ccfa.yaml.
+
+The workbench never imports ``ccfa``: the stage table comes from the workflow's
+own ``ccfa.stages`` CLI, so the state machine stays owned by the workflow.
+"""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from ccfa.milestones import parse_deadline
-from ccfa.stages import stages_for
+from ccfa_core.workflow import WorkflowClient, WorkflowError
+
+
+# Mirrors ``ccfa.milestones.parse_deadline``: an optional YYYY-MM-DD string.
+# The format is a data contract, so a local check avoids a subprocess per
+# project without reimplementing workflow semantics.
+_DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+_STAGE_CACHE: dict[str, tuple[str, ...]] = {}
+_GATE_CACHE: dict[tuple[str, str], dict] = {}
 
 
 class ProjectError(ValueError):
     """Raised when a project state file is missing or invalid."""
+
+
+def parse_deadline(value: object) -> date | None:
+    """Parse an optional YYYY-MM-DD deadline."""
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"deadline 必须是 YYYY-MM-DD 日期字符串: {value!r}")
+    text = value.strip()
+    if not text:
+        return None
+    if _DATE_PATTERN.fullmatch(text) is None:
+        raise ValueError(f"deadline 非法: {value!r}，应为 YYYY-MM-DD")
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"deadline 不是合法日期: {value!r}") from exc
+
+
+def stages_for(mode: str, *, client: WorkflowClient | None = None) -> tuple[str, ...]:
+    """Return the workflow's stage list for *mode*, cached per mode."""
+
+    cached = _STAGE_CACHE.get(mode)
+    if cached is not None:
+        return cached
+    try:
+        payload = (client or WorkflowClient()).json("stages", ("--mode", mode))
+    except WorkflowError as exc:
+        raise ValueError(f"无法从工作流读取 stage 表: {exc}") from exc
+    stages = payload.get("stages")
+    if not isinstance(stages, list) or not all(
+        isinstance(item, str) for item in stages
+    ):
+        raise ValueError(f"工作流返回的 stage 表非法: {mode!r}")
+    _STAGE_CACHE[mode] = tuple(stages)
+    return _STAGE_CACHE[mode]
+
+
+def gate_for(
+    mode: str,
+    stage: str,
+    *,
+    client: WorkflowClient | None = None,
+) -> dict:
+    """Return ``{"id", "criterion"}`` for one stage, cached per stage."""
+
+    key = (mode, stage)
+    cached = _GATE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        payload = (client or WorkflowClient()).json(
+            "stages",
+            ("--mode", mode, "--stage", stage),
+        )
+    except WorkflowError as exc:
+        raise ValueError(f"无法从工作流读取 gate: {exc}") from exc
+    gate = payload.get("gate")
+    if not isinstance(gate, dict) or not isinstance(gate.get("id"), str):
+        raise ValueError(f"工作流返回的 gate 非法: {mode!r}/{stage!r}")
+    _GATE_CACHE[key] = gate
+    return gate
 
 
 @dataclass(frozen=True)

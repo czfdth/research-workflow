@@ -14,14 +14,13 @@ import copy
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
 
-from ccfa import library, memory, milestones, state, trace_claims
-from ccfa.cli import save_text_atomically
-
+from ccfa_core.atomic import save_text_atomically
 from ccfa_core.http_tools import HttpToolRegistry
+from ccfa_core.workflow import WorkflowClient
 
 READ = "read"
 WRITE = "write"
@@ -39,6 +38,12 @@ class ToolContext:
 
     project_root: Path
     library_dir: Path | None = None
+    workflow: WorkflowClient | None = None
+
+    def client(self) -> WorkflowClient:
+        """Return the workflow client, creating the default one on demand."""
+
+        return self.workflow or WorkflowClient()
 
 
 class Tool(NamedTuple):
@@ -74,18 +79,20 @@ def _resolve_within(root: Path, raw: Any) -> Path:
 
 
 def _tool_milestones_stage(context: ToolContext, args: dict) -> dict:
-    return milestones.stage_report(context.project_root)
+    return context.client().json(
+        "milestones",
+        ("stage", "--paper-root", str(context.project_root)),
+    )
 
 
 def _tool_milestones_due(context: ToolContext, args: dict) -> dict:
     raw_today = args.get("today")
-    if raw_today is None:
-        today = date.today()
-    else:
-        today = milestones.parse_deadline(raw_today)
-        if today is None:
+    command = ["due", "--paper-root", str(context.project_root)]
+    if raw_today is not None:
+        if not isinstance(raw_today, str) or not raw_today.strip():
             raise ValueError("today 不能为空字符串")
-    return milestones.due_report(context.project_root, today)
+        command += ["--today", raw_today.strip()]
+    return context.client().json("milestones", tuple(command))
 
 
 def _tool_library_search(context: ToolContext, args: dict) -> dict:
@@ -97,84 +104,121 @@ def _tool_library_search(context: ToolContext, args: dict) -> dict:
         raise ValueError(
             f"找不到文献库索引 {index_path}：请先运行 library index"
         )
-    return library.search_index(
-        Path(library_dir),
-        args["query"],
-        limit=args.get("limit", 20),
+    return context.client().json(
+        "library",
+        (
+            "--dir",
+            str(library_dir),
+            "search",
+            args["query"],
+            "--limit",
+            str(args.get("limit", 20)),
+        ),
     )
 
 
 def _tool_memory_search(context: ToolContext, args: dict) -> dict:
-    return memory.search_memory(context.project_root, args["query"])
+    return context.client().json(
+        "memory",
+        ("--paper-root", str(context.project_root), "search", args["query"]),
+    )
 
 
 def _tool_memory_list(context: ToolContext, args: dict) -> dict:
-    return memory.list_memory(
-        context.project_root,
-        kind=args.get("kind", "all"),
-        status=args.get("status"),
-    )
+    command = ["--paper-root", str(context.project_root), "list"]
+    kind = args.get("kind")
+    if kind:
+        command += ["--kind", kind]
+    status = args.get("status")
+    if status:
+        command += ["--status", status]
+    return context.client().json("memory", tuple(command))
 
 
 def _tool_memory_add_idea(context: ToolContext, args: dict) -> dict:
-    return memory.add_idea(
-        context.project_root,
-        idea=args["idea"],
-        date=args["date"],
-        status=args.get("status", "active"),
-        notes=args.get("notes"),
-    )
+    command = [
+        "--paper-root",
+        str(context.project_root),
+        "add-idea",
+        "--idea",
+        args["idea"],
+        "--date",
+        args["date"],
+    ]
+    status = args.get("status")
+    if status:
+        command += ["--status", status]
+    notes = args.get("notes")
+    if notes:
+        command += ["--notes", notes]
+    return context.client().json("memory", tuple(command))
 
 
 def _tool_memory_add_dead_end(context: ToolContext, args: dict) -> dict:
-    return memory.add_dead_end(
-        context.project_root,
-        idea=args["idea"],
-        date=args["date"],
-        reason=args["reason"],
-        evidence=args["evidence"],
-        reopen_if=args["reopen_if"],
+    return context.client().json(
+        "memory",
+        (
+            "--paper-root",
+            str(context.project_root),
+            "add-dead-end",
+            "--idea",
+            args["idea"],
+            "--date",
+            args["date"],
+            "--reason",
+            args["reason"],
+            "--evidence",
+            args["evidence"],
+            "--reopen-if",
+            args["reopen_if"],
+        ),
     )
 
 
 def _tool_state_set_stage(context: ToolContext, args: dict) -> dict:
     # The GUI confirmation already happened; ``confirm`` stays mandatory in
     # the underlying implementation, which is the ``--confirm`` semantics.
-    return state.set_stage(
-        context.project_root,
-        to=args["to"],
-        reason=args["reason"],
-        confirm=True,
+    return context.client().json(
+        "state",
+        (
+            "--paper-root",
+            str(context.project_root),
+            "set-stage",
+            args["to"],
+            "--reason",
+            args["reason"],
+            "--confirm",
+        ),
     )
 
 
 def _tool_state_rollback(context: ToolContext, args: dict) -> dict:
-    return state.rollback(
-        context.project_root,
-        to=args["to"],
-        reason=args["reason"],
-        confirm=True,
-        void_artifacts=args.get("void_artifacts"),
-    )
+    command = [
+        "--paper-root",
+        str(context.project_root),
+        "rollback",
+        args["to"],
+        "--reason",
+        args["reason"],
+        "--confirm",
+    ]
+    for path in args.get("void_artifacts") or ():
+        command += ["--void-artifacts", str(path)]
+    return context.client().json("state", tuple(command))
 
 
 def _tool_trace_claims_check(context: ToolContext, args: dict) -> dict:
-    docs = [
-        _resolve_within(context.project_root, raw) for raw in args["docs"]
-    ]
-    base_dir = None
+    command: list[str] = []
+    for raw in args["docs"]:
+        command += ["--doc", str(_resolve_within(context.project_root, raw))]
     if args.get("base_dir") is not None:
-        base_dir = _resolve_within(context.project_root, args["base_dir"])
-    problems, advisories = trace_claims.check(
-        docs,
-        base_dir=base_dir,
-        untagged=args.get("untagged", True),
-    )
-    return {
-        "problems": [dict(problem._asdict()) for problem in problems],
-        "advisories": [dict(item._asdict()) for item in advisories],
-        "problem_count": len(problems),
-    }
+        command += [
+            "--base-dir",
+            str(_resolve_within(context.project_root, args["base_dir"])),
+        ]
+    if args.get("untagged", True):
+        command.append("--untagged")
+    return context.client().json("trace_claims", tuple(command))
 
 
 TOOL_DEFINITIONS: tuple[Tool, ...] = (

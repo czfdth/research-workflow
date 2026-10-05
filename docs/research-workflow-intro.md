@@ -192,6 +192,11 @@ Julia。其中 Agda、Why3、Sage 走 WSL（`apt` / conda-forge），检测器�
 后台聊天、取消操作和白名单工具调用。写操作必须经确认，工具审计只记录参数摘要与结果，
 不会记录 API key 或完整敏感参数。
 
+工作台是工作流的**消费者**，不 import 任何 `ccfa.*` 模块：所有确定性操作都通过
+`python -m ccfa.<tool>` 子进程进行，只依赖 JSON stdout / stderr 摘要 / 退出码 0-1-2
+这个契约。因此两边可以独立升级，删掉 `app/` 也不影响任何 gate 与证据。工作流位置默认
+取仓库根，可用 `CCFA_WORKFLOW_ROOT` 覆盖。
+
 声明式 HTTP 工具注册表核心已经实现：可用 YAML 定义 GET/POST API，将凭据以
 `secret:<key_name>` 方式从系统 keyring 解析，并复用同一套参数校验、风险分级、写确认和
 摘要审计。注册表默认拒绝明文凭据、不安全 HTTP、未声明占位符和超限响应。

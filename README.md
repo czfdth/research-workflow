@@ -89,7 +89,8 @@ git -C $paper status --short
 | `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
-| `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
+| `tools/ccfa/stages.py` | stage/gate 状态机的唯一来源；CLI 把整表以 JSON 输出，供工作台等外部消费者读取而不必 import `ccfa` | `scripts/stages.ps1` |
+| `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv/交付格式/排版/数据版本/算力），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
@@ -110,6 +111,8 @@ git -C $paper status --short
 | `tools/ccfa/session_replay.py` | 串联 passport、run ledger、artifact store 与 review state，生成只读 session replay HTML | `scripts/session-replay.ps1` |
 | `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges；支持 BibTeX sync、catalog/gap map 重建、搜索和 query pack | `scripts/research-wiki.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
+| `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
+| `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程 Slurm/PBS 后端，在墙钟预算内执行 pilot 并记录 `wall_seconds`/`gpu_minutes` | `scripts/compute.ps1` |
 
 ## 阶段到命令速查
 
@@ -204,6 +207,11 @@ cd <仓库根>
 
 一个本地 PySide6 桌面壳：查看 `papers/*` 项目的阶段门、运行确定性检查，并配置 OpenAI 兼容 API；核心 `app/ccfa_core/` 零 Qt，GUI 在 `app/ccfa_gui/`。
 
+工作台是工作流的**消费者**：`app/` 下不 import 任何 `ccfa.*` 模块，只通过
+`python -m ccfa.<tool>` 子进程调用，依赖 JSON stdout / stderr 摘要 / 退出码 0-1-2 这个契约。
+因此两边可独立升级，且删掉 `app/` 不影响任何 gate 与证据。工作流位置默认取仓库根，
+可用 `CCFA_WORKFLOW_ROOT` 覆盖。
+
 首次准备（在仓库根执行；`app/.venv` 已被 gitignore，不随克隆提供）：
 
 ```powershell
@@ -216,7 +224,6 @@ py -3.12 -m venv app/.venv
 
 ```powershell
 cd app
-$env:PYTHONPATH = (Resolve-Path ../tools).Path
 & .venv/Scripts/python.exe -m ccfa_gui.main
 ```
 
@@ -298,6 +305,18 @@ $env:PYTHONPATH = (Resolve-Path tools).Path
 & tools/.venv/Scripts/python.exe -m unittest discover -s tools/tests -t tools -v
 ```
 
+交付格式、排版、数据版本与 notebook 依赖不是 Python 包，用便携版安装器一次补齐（下载走可达镜像，解包到 `%LOCALAPPDATA%\codex-tools`，不改系统目录）：
+
+```powershell
+cd <仓库根>
+scripts/install-toolchain.ps1
+scripts/doctor.ps1 --strict
+scripts/compute.ps1 probe
+scripts/archive.ps1 probe
+```
+
+给 `scripts/doctor.ps1` 加 `--strict` 会把缺失的可选依赖也判为 problem，是"一次装齐"的验收口径；`compute.ps1 probe` 报告本机与远程算力，`archive.ps1 probe` 报告 Zenodo/OSF/ORCID 的传输可达性。
+
 ## 跑测试
 
 日常不要手写测试模块清单。先看影响计划，再运行最小测试集：
@@ -319,6 +338,8 @@ scripts/test-impact.ps1 run --suite tools --full
 
 ## 已知环境约束
 
-- 编译不使用 `latexmk`（本机缺 Perl，实测报 `could not find the script engine 'perl'`）。编译驱动按 `pdflatex`、`bibtex`、`pdflatex`、`pdflatex` 显式执行。
+- `perl` 与 `latexmk` 本机已可用（Strawberry Perl + MiKTeX）。`latex_check` 仍按 `pdflatex`、`bibtex`、`pdflatex`、`pdflatex` 显式执行，以避免 MiKTeX 自动装包在 CI 中挂起；这不是缺 Perl 导致的限制。
 - 中文文稿用 `xelatex` 加 `ctex`，已实测通过。
 - 文献库索引用于中文时必须使用 FTS5 `trigram` 分词器；`unicode61` 对中文完全无效。
+- 本机网络分层：`github.com` 与 `api.github.com` 可达，但 GitHub release 资产 CDN 被限速到约 0.03 MB/s，需经 `gh-proxy.com`（约 0.2 MB/s）；`pypi.org` TLS 握手超时，需用 `pypi.tuna.tsinghua.edu.cn`；`zenodo.org` 被本地 DNS 解析到 `0.0.0.0`，`archive_client.py` 用 DNS-over-HTTPS 绕过。
+- 便携版工具链（qpdf/typst/quarto/micromamba/LibreOffice/mutool）用 `scripts/install-toolchain.ps1` 安装，不写系统目录、不需要管理员；清单见 `tools/install/fetch_toolchain.py`。本机安装在 `F:\codex-tools`（C 盘曾只剩 0.7 GB），根目录由 `CODEX_TOOLS_DIR` 与 `%LOCALAPPDATA%\codex-tools-location` 指针双重记录，`tools/ccfa/toolchain.py` 负责解析。

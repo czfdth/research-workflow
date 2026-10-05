@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -118,6 +119,23 @@ def main(argv: list[str]) -> int:
         print(f"工具错误: {exc}", file=sys.stderr)
         return 2
 
+    # Machine-readable stdout; the human summary stays on stderr, as every
+    # other tool in this repo promises.
+    report = {
+        "path": str(path),
+        "problems": [
+            {
+                "code": "schema-invalid",
+                "path": str(path),
+                "line": None,
+                "message": message,
+            }
+            for message in problems
+        ],
+        "advisories": [],
+        "problem_count": len(problems),
+    }
+    print(json.dumps(report, ensure_ascii=False))
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)

@@ -15,15 +15,18 @@ import yaml
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from ccfa import library as library_module
-from ccfa import memory as memory_module
 from ccfa_core.engines.base import ChatMessage, EngineError
 from ccfa_core.engines.openai_compat import OpenAICompatibleEngine
 from ccfa_core.tools_bridge import TOOL_DEFINITIONS, ToolBridge, openai_tools
+from ccfa_core.workflow import WorkflowClient
 from ccfa_gui.chat_panel import ChatPanel
-from newpaper.create import create_project
+from . import create_project, write_project
 
-from . import write_project
+
+def workflow_json(module: str, args) -> dict:
+    """Fixtures drive the workflow through its CLI, never through imports."""
+
+    return WorkflowClient().json(module, args)
 
 APP = QApplication.instance() or QApplication([])
 FAKE_KEY = "sk-bridge-FAKE-KEY-1122334455"
@@ -169,7 +172,7 @@ class ToolBridgeTests(unittest.TestCase):
         shared = self.root / "shared-library"
         shared.mkdir()
         (shared / "refs.bib").write_text(SAMPLE_BIB, encoding="utf-8")
-        library_module.build_index(shared)
+        workflow_json("library", ("--dir", str(shared), "index"))
         self.assertFalse((self.project_root / "library").exists())
         bridge = ToolBridge(self.project_root, library_dir=shared)
 
@@ -209,7 +212,7 @@ class ToolBridgeTests(unittest.TestCase):
         shared = self.root / "repo-library"
         shared.mkdir()
         (shared / "refs.bib").write_text(SAMPLE_BIB, encoding="utf-8")
-        library_module.build_index(shared)
+        workflow_json("library", ("--dir", str(shared), "index"))
         self.assertFalse((project_dir / "library").exists())
         bridge = ToolBridge(project_dir, library_dir=shared)
 
@@ -219,11 +222,19 @@ class ToolBridgeTests(unittest.TestCase):
         self.assertEqual(result["result"]["results"][0]["key"], "sample")
 
     def test_memory_search_happy_path(self):
-        memory_module.add_idea(
-            self.project_root,
-            idea="use trigram fallback",
-            date="2026-10-04",
-            notes="two character queries",
+        workflow_json(
+            "memory",
+            (
+                "--paper-root",
+                str(self.project_root),
+                "add-idea",
+                "--idea",
+                "use trigram fallback",
+                "--date",
+                "2026-10-04",
+                "--notes",
+                "two character queries",
+            ),
         )
 
         result = self.bridge.execute("memory_search", {"query": "trigram"})
@@ -232,18 +243,35 @@ class ToolBridgeTests(unittest.TestCase):
         self.assertEqual(result["result"]["ideas"][0]["id"], "I1")
 
     def test_memory_list_happy_path(self):
-        memory_module.add_idea(
-            self.project_root,
-            idea="plain idea",
-            date="2026-10-04",
+        workflow_json(
+            "memory",
+            (
+                "--paper-root",
+                str(self.project_root),
+                "add-idea",
+                "--idea",
+                "plain idea",
+                "--date",
+                "2026-10-04",
+            ),
         )
-        memory_module.add_dead_end(
-            self.project_root,
-            idea="failed idea",
-            date="2026-10-04",
-            reason="it failed",
-            evidence="log 1",
-            reopen_if="new data arrives",
+        workflow_json(
+            "memory",
+            (
+                "--paper-root",
+                str(self.project_root),
+                "add-dead-end",
+                "--idea",
+                "failed idea",
+                "--date",
+                "2026-10-04",
+                "--reason",
+                "it failed",
+                "--evidence",
+                "log 1",
+                "--reopen-if",
+                "new data arrives",
+            ),
         )
 
         result = self.bridge.execute("memory_list", {"kind": "dead-ends"})

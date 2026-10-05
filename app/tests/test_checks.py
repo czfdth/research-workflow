@@ -129,11 +129,10 @@ class CheckTests(unittest.TestCase):
             """
         )
         app_dir = Path(__file__).resolve().parents[1]
-        repo_root = Path(__file__).resolve().parents[2]
         env = dict(os.environ)
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(app_dir), str(repo_root / "tools")]
-        )
+        # Only the app on the path: importing the core must never require the
+        # workflow package, which is the whole point of the CLI boundary.
+        env["PYTHONPATH"] = str(app_dir)
 
         completed = subprocess.run(
             [sys.executable, "-c", script],

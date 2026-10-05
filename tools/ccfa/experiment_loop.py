@@ -100,9 +100,7 @@ def _claim_ids(paper_root: Path) -> set[str]:
     if not isinstance(claims, list):
         return set()
     return {
-        item["id"]
-        for item in claims
-        if isinstance(item, dict) and is_nonempty_str(item.get("id"))
+        item["id"] for item in claims if isinstance(item, dict) and is_nonempty_str(item.get("id"))
     }
 
 
@@ -175,18 +173,37 @@ def _validate_ideas(
             continue
         idea_id = idea.get("id")
         if not is_nonempty_str(idea_id):
-            problems.append(problem("experiment-loop-invalid", path, None, f"ideas[{index}].id 必须是非空字符串"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid", path, None, f"ideas[{index}].id 必须是非空字符串"
+                )
+            )
             continue
         if idea_id in seen:
-            problems.append(problem("experiment-loop-duplicate", path, None, f"重复 idea id: {idea_id}"))
+            problems.append(
+                problem("experiment-loop-duplicate", path, None, f"重复 idea id: {idea_id}")
+            )
         seen.add(idea_id)
         if not is_nonempty_str(idea.get("statement")):
-            problems.append(problem("experiment-loop-invalid", path, None, f"{idea_id}: statement 必须是非空字符串"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid", path, None, f"{idea_id}: statement 必须是非空字符串"
+                )
+            )
         elif _placeholder(idea.get("statement")):
-            problems.append(problem("experiment-loop-placeholder", path, None, f"{idea_id}: statement 仍是 placeholder"))
+            problems.append(
+                problem(
+                    "experiment-loop-placeholder",
+                    path,
+                    None,
+                    f"{idea_id}: statement 仍是 placeholder",
+                )
+            )
         status = idea.get("status")
         if status not in IDEA_STATUSES:
-            problems.append(problem("experiment-loop-invalid", path, None, f"{idea_id}: status 非法"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"{idea_id}: status 非法")
+            )
             continue
         if status in {"pilot-planned", "pilot-running", "promoted", "rejected", "parked"}:
             missing_pilot = missing_fields(idea, PILOT_FIELDS)
@@ -200,20 +217,35 @@ def _validate_ideas(
                     )
                 )
             budget = idea.get("pilot_budget_minutes")
-            if (
-                isinstance(budget, bool)
-                or not isinstance(budget, (int, float))
-                or budget <= 0
-            ):
+            if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
                 problems.append(
-                    problem("experiment-loop-invalid", path, None, f"{idea_id}: pilot_budget_minutes 必须是正数")
+                    problem(
+                        "experiment-loop-invalid",
+                        path,
+                        None,
+                        f"{idea_id}: pilot_budget_minutes 必须是正数",
+                    )
                 )
             for field in ("pilot_metric", "kill_criterion"):
                 value = idea.get(field)
                 if not is_nonempty_str(value):
-                    problems.append(problem("experiment-loop-invalid", path, None, f"{idea_id}: {field} 必须是非空字符串"))
+                    problems.append(
+                        problem(
+                            "experiment-loop-invalid",
+                            path,
+                            None,
+                            f"{idea_id}: {field} 必须是非空字符串",
+                        )
+                    )
                 elif _placeholder(value):
-                    problems.append(problem("experiment-loop-placeholder", path, None, f"{idea_id}: {field} 仍是 placeholder"))
+                    problems.append(
+                        problem(
+                            "experiment-loop-placeholder",
+                            path,
+                            None,
+                            f"{idea_id}: {field} 仍是 placeholder",
+                        )
+                    )
             problems.extend(
                 _check_ids(
                     idea.get("run_ids"),
@@ -235,9 +267,23 @@ def _validate_ideas(
                     )
                 )
             if not is_nonempty_str(idea.get("decision_rationale")):
-                problems.append(problem("experiment-loop-invalid", path, None, f"{idea_id}: 终态 idea 需要 decision_rationale"))
+                problems.append(
+                    problem(
+                        "experiment-loop-invalid",
+                        path,
+                        None,
+                        f"{idea_id}: 终态 idea 需要 decision_rationale",
+                    )
+                )
             elif _placeholder(idea.get("decision_rationale")):
-                problems.append(problem("experiment-loop-placeholder", path, None, f"{idea_id}: decision_rationale 仍是 placeholder"))
+                problems.append(
+                    problem(
+                        "experiment-loop-placeholder",
+                        path,
+                        None,
+                        f"{idea_id}: decision_rationale 仍是 placeholder",
+                    )
+                )
     return problems
 
 
@@ -255,41 +301,105 @@ def _validate_inner(
     seen: set[str] = set()
     for index, item in enumerate(entries):
         if not isinstance(item, dict):
-            problems.append(problem("experiment-loop-invalid", path, None, f"inner_loop[{index}] 必须是映射"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"inner_loop[{index}] 必须是映射")
+            )
             continue
         missing = missing_fields(item, INNER_FIELDS)
         if missing:
-            problems.append(problem("experiment-loop-invalid", path, None, f"inner_loop[{index}] 缺少字段: {', '.join(missing)}"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"inner_loop[{index}] 缺少字段: {', '.join(missing)}",
+                )
+            )
             continue
         item_id = item.get("id")
         if not is_nonempty_str(item_id):
-            problems.append(problem("experiment-loop-invalid", path, None, f"inner_loop[{index}].id 必须是非空字符串"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"inner_loop[{index}].id 必须是非空字符串",
+                )
+            )
             continue
         if item_id in seen:
-            problems.append(problem("experiment-loop-duplicate", path, None, f"重复 inner_loop id: {item_id}"))
+            problems.append(
+                problem("experiment-loop-duplicate", path, None, f"重复 inner_loop id: {item_id}")
+            )
         seen.add(item_id)
         for field in ("change", "hypothesis", "metric", "next_action"):
             value = item.get(field)
             if not is_nonempty_str(value):
-                problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: {field} 必须是非空字符串"))
+                problems.append(
+                    problem(
+                        "experiment-loop-invalid",
+                        path,
+                        None,
+                        f"{item_id}: {field} 必须是非空字符串",
+                    )
+                )
             elif _placeholder(value):
-                problems.append(problem("experiment-loop-placeholder", path, None, f"{item_id}: {field} 仍是 placeholder"))
+                problems.append(
+                    problem(
+                        "experiment-loop-placeholder",
+                        path,
+                        None,
+                        f"{item_id}: {field} 仍是 placeholder",
+                    )
+                )
         claim_id = item.get("claim_id")
         if claim_id not in claim_ids:
-            problems.append(problem("experiment-loop-unknown-claim", path, None, f"{item_id}: claim_id {claim_id!r} 不存在"))
+            problems.append(
+                problem(
+                    "experiment-loop-unknown-claim",
+                    path,
+                    None,
+                    f"{item_id}: claim_id {claim_id!r} 不存在",
+                )
+            )
         run_id = item.get("run_id")
         if run_id not in run_ids:
-            problems.append(problem("experiment-loop-unknown-run", path, None, f"{item_id}: run_id {run_id!r} 不存在"))
+            problems.append(
+                problem(
+                    "experiment-loop-unknown-run",
+                    path,
+                    None,
+                    f"{item_id}: run_id {run_id!r} 不存在",
+                )
+            )
         result = item.get("result")
         decision = item.get("decision")
         if result not in INNER_RESULTS:
-            problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: result 非法"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"{item_id}: result 非法")
+            )
         if decision not in INNER_DECISIONS:
-            problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: decision 非法"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"{item_id}: decision 非法")
+            )
         if result == "pending" and decision != "pending":
-            problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: result=pending 时 decision 必须是 pending"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"{item_id}: result=pending 时 decision 必须是 pending",
+                )
+            )
         if result != "pending" and decision == "pending":
-            problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: 已有 result 时必须记录 decision"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"{item_id}: 已有 result 时必须记录 decision",
+                )
+            )
     return problems
 
 
@@ -307,18 +417,36 @@ def _validate_outer(
     seen: set[str] = set()
     for index, item in enumerate(entries):
         if not isinstance(item, dict):
-            problems.append(problem("experiment-loop-invalid", path, None, f"outer_loop[{index}] 必须是映射"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"outer_loop[{index}] 必须是映射")
+            )
             continue
         missing = missing_fields(item, OUTER_FIELDS)
         if missing:
-            problems.append(problem("experiment-loop-invalid", path, None, f"outer_loop[{index}] 缺少字段: {', '.join(missing)}"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"outer_loop[{index}] 缺少字段: {', '.join(missing)}",
+                )
+            )
             continue
         item_id = item.get("id")
         if not is_nonempty_str(item_id):
-            problems.append(problem("experiment-loop-invalid", path, None, f"outer_loop[{index}].id 必须是非空字符串"))
+            problems.append(
+                problem(
+                    "experiment-loop-invalid",
+                    path,
+                    None,
+                    f"outer_loop[{index}].id 必须是非空字符串",
+                )
+            )
             continue
         if item_id in seen:
-            problems.append(problem("experiment-loop-duplicate", path, None, f"重复 outer_loop id: {item_id}"))
+            problems.append(
+                problem("experiment-loop-duplicate", path, None, f"重复 outer_loop id: {item_id}")
+            )
         seen.add(item_id)
         problems.extend(
             _check_ids(
@@ -340,27 +468,47 @@ def _validate_outer(
         )
         decision = item.get("decision")
         if decision not in OUTER_DECISIONS:
-            problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: decision 非法"))
+            problems.append(
+                problem("experiment-loop-invalid", path, None, f"{item_id}: decision 非法")
+            )
         for field in ("rationale", "next_action"):
             value = item.get(field)
             if not is_nonempty_str(value):
-                problems.append(problem("experiment-loop-invalid", path, None, f"{item_id}: {field} 必须是非空字符串"))
+                problems.append(
+                    problem(
+                        "experiment-loop-invalid",
+                        path,
+                        None,
+                        f"{item_id}: {field} 必须是非空字符串",
+                    )
+                )
             elif _placeholder(value):
-                problems.append(problem("experiment-loop-placeholder", path, None, f"{item_id}: {field} 仍是 placeholder"))
+                problems.append(
+                    problem(
+                        "experiment-loop-placeholder",
+                        path,
+                        None,
+                        f"{item_id}: {field} 仍是 placeholder",
+                    )
+                )
     return problems
 
 
 def _load_payload(paper_root: Path) -> tuple[dict | None, list[Problem], list[Problem]]:
     path = paper_root / EXPERIMENT_LOOP
     if not path.is_file():
-        return None, [], [
-            problem(
-                "experiment-loop-not-configured",
-                path,
-                None,
-                "尚未配置 experiment-loop 台账",
-            )
-        ]
+        return (
+            None,
+            [],
+            [
+                problem(
+                    "experiment-loop-not-configured",
+                    path,
+                    None,
+                    "尚未配置 experiment-loop 台账",
+                )
+            ],
+        )
     payload, problems = load_ledger(
         path,
         code="experiment-loop-invalid",
@@ -432,6 +580,27 @@ def check(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
     return problems, advisories
 
 
+def _budgeted_command(idea: dict) -> str | None:
+    """Return the executor invocation that enforces a pilot's declared budget.
+
+    The ledger already declares ``pilot_budget_minutes``. Without a command that
+    references it the budget is documentation rather than a constraint;
+    ``compute.py`` is the executor that enforces the wall clock and records
+    ``gpu_minutes`` into the compute ledger.
+    """
+    budget = idea.get("pilot_budget_minutes")
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
+        return None
+    gpus = idea.get("pilot_gpus")
+    gpu_flag = ""
+    if isinstance(gpus, int) and not isinstance(gpus, bool) and gpus > 0:
+        gpu_flag = f" --gpus {gpus}"
+    return (
+        "scripts/compute.ps1 run --paper-root <paper-root> "
+        f"--minutes {budget:g}{gpu_flag} -- <命令>"
+    )
+
+
 def next_actions(paper_root: Path) -> dict:
     """Return deterministic next actions for active pilots and loops."""
     paper_root = Path(paper_root).resolve()
@@ -442,9 +611,7 @@ def next_actions(paper_root: Path) -> dict:
     checked, _checked_advisories = check(paper_root)
     if checked:
         first = checked[0]
-        raise ValueError(
-            f"experiment-loop 台账存在问题: {first.code}: {first.message}"
-        )
+        raise ValueError(f"experiment-loop 台账存在问题: {first.code}: {first.message}")
     if payload.get("not_applicable") is True:
         return {
             "pilot": [],
@@ -462,6 +629,7 @@ def next_actions(paper_root: Path) -> dict:
                 {
                     "id": idea.get("id"),
                     "action": "运行 pilot；完成后记录 run_ids 与 decision",
+                    "suggested_command": _budgeted_command(idea),
                 }
             )
         elif idea.get("status") == "pilot-running":
@@ -469,6 +637,7 @@ def next_actions(paper_root: Path) -> dict:
                 {
                     "id": idea.get("id"),
                     "action": "记录 pilot 结果、run_ids 与 promote/reject/park 决策",
+                    "suggested_command": None,
                 }
             )
 
@@ -499,9 +668,7 @@ def next_actions(paper_root: Path) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="校验 pilot 筛选与内层/外层实验循环台账"
-    )
+    parser = argparse.ArgumentParser(description="校验 pilot 筛选与内层/外层实验循环台账")
     parser.add_argument(
         "action",
         choices=("check", "next"),

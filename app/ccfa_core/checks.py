@@ -1,4 +1,8 @@
-"""Run the existing deterministic checks; no tool logic is duplicated."""
+"""Run the workflow's deterministic checks through its CLI.
+
+No tool logic is duplicated here: each check shells out to the workflow's own
+console entry point and reads the JSON report it already promises.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from ccfa.milestones import due_report
-from ccfa.validate import validate_yaml
+from ccfa_core.workflow import WorkflowClient, WorkflowError
 
 
 class CheckError(RuntimeError):
@@ -32,23 +35,45 @@ def _project_dir(project) -> Path:
     return Path(directory)
 
 
-def run_validate(project) -> CheckResult:
-    """Run ccfa.validate.validate_yaml against the project state."""
+def _run(client: WorkflowClient, module: str, args: tuple, label: str) -> dict:
+    try:
+        return client.json(module, args)
+    except WorkflowError as exc:
+        raise CheckError(f"{label} 失败：{exc}") from exc
+
+
+def run_validate(project, *, client: WorkflowClient | None = None) -> CheckResult:
+    """Run the workflow's ``ccfa.validate`` against the project state."""
     project_dir = _project_dir(project)
     yaml_path = project_dir / "ccfa.yaml"
-    try:
-        problems = validate_yaml(yaml_path)
-    except (OSError, ValueError) as exc:
-        raise CheckError(f"validate 失败 ({yaml_path}): {exc}") from exc
+    if not yaml_path.is_file():
+        raise CheckError(f"validate 失败：找不到 {yaml_path}")
+    report = _run(
+        client or WorkflowClient(),
+        "validate",
+        (str(yaml_path),),
+        "validate",
+    )
+    problems = tuple(
+        str(item.get("message", ""))
+        for item in report.get("problems", [])
+        if isinstance(item, dict)
+    )
     return CheckResult(
         name="validate",
         ok=not problems,
-        problems=tuple(problems),
+        problems=problems,
+        report=report,
     )
 
 
-def run_milestones_due(project, today=None) -> CheckResult:
-    """Run ccfa.milestones.due_report and keep its structured report."""
+def run_milestones_due(
+    project,
+    today=None,
+    *,
+    client: WorkflowClient | None = None,
+) -> CheckResult:
+    """Run the workflow's ``ccfa.milestones due`` and keep its report."""
     project_dir = _project_dir(project)
     if today is None:
         today = date.today()
@@ -59,12 +84,18 @@ def run_milestones_due(project, today=None) -> CheckResult:
             raise CheckError(f"today 非法: {today!r}: {exc}") from exc
     if not isinstance(today, date):
         raise CheckError("today 必须是 datetime.date 或 ISO 日期字符串")
-    try:
-        report = due_report(project_dir, today)
-    except (OSError, ValueError) as exc:
-        raise CheckError(
-            f"milestones due 失败 ({project_dir}): {exc}"
-        ) from exc
+    report = _run(
+        client or WorkflowClient(),
+        "milestones",
+        (
+            "due",
+            "--paper-root",
+            str(project_dir),
+            "--today",
+            today.isoformat(),
+        ),
+        "milestones due",
+    )
     problems = tuple(report.get("problems", []))
     return CheckResult(
         name="milestones-due",

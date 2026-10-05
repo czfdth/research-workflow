@@ -3,6 +3,25 @@
 `ccfa_core` 是零 Qt 依赖的核心层：项目发现、设置、密钥与检查编排。
 GUI 在 `app/ccfa_gui/`。
 
+## 与工作流的关系
+
+工作台是工作流的**消费者**，不是它的一部分：**`app/` 下的代码不 import 任何
+`ccfa.*` 模块**。所有确定性操作都通过子进程调用工作流自己的
+`python -m ccfa.<tool>` 入口，只依赖它已经承诺的契约——JSON 到 stdout、人读摘要到
+stderr、退出码 0（干净）/ 1（发现问题）/ 2（工具错误）。
+
+因此两边可以独立改动：工作流改函数签名不会打断工作台，只有改 CLI 契约才会。反过来
+工作流也不依赖 app，删掉整个 `app/` 不会影响任何 gate 或证据。
+
+工作流位置按以下顺序解析：
+
+1. 调用方显式传入的 `root`；
+2. 环境变量 `CCFA_WORKFLOW_ROOT`；
+3. 本文件所在仓库根（两边同仓库时的默认值）。
+
+解释器优先用工作流自己的 `tools/.venv`；不存在时回退到当前解释器并把 `PYTHONPATH`
+指向工作流的 `tools/`。也可用 `CCFA_WORKFLOW_PYTHON` 指定解释器。
+
 ## 环境
 
 需要 Python 3.12（本仓库用 3.12.14 实测）。在仓库根执行：
@@ -15,14 +34,13 @@ py -3.12 -m venv app/.venv
 若本机没有 `py`，改用你机器上的 Python 3.12 解释器完整路径，例如：
 `<你机器上的 Python 3.12> -m venv app/.venv`。
 
-`app/.venv` 已被 gitignore。`ccfa_core` 直接 import 现有 `ccfa.*` 工具模块，
-因此测试时需要 `PYTHONPATH=tools`；app venv 中的 PyYAML 供这些模块使用。
+`app/.venv` 已被 gitignore。工作台自己不 import `ccfa`，所以**不需要**
+`PYTHONPATH=tools`；它只在调用工作流时给子进程设置该变量。
 
 ## 跑测试
 
 ```powershell
 cd <仓库根>
-$env:PYTHONPATH = (Resolve-Path tools).Path
 & app/.venv/Scripts/python.exe -m unittest discover -s app/tests -t app
 ```
 
@@ -30,13 +48,13 @@ $env:PYTHONPATH = (Resolve-Path tools).Path
 
 ```powershell
 cd app
-$env:PYTHONPATH = (Resolve-Path ../tools).Path
 & .venv/Scripts/python.exe -m ccfa_gui.main
 ```
 
 ## 红线
 
 - `ccfa_core` 不 import PySide6（E58）。
+- `ccfa_core` / `ccfa_gui` / `app/tests` 不 import `ccfa.*`：只能走 CLI 子进程。
 - `settings.json` 只写 `key_name` 引用，不写 key 明文；密钥只进
   `KeyringSecretStore`（E57）。
 - keyring 不可用时抛 `SecretStoreUnavailable`，不降级明文。

@@ -16,7 +16,6 @@ preflight. This tool never installs anything and never writes files.
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 import json
@@ -28,11 +27,13 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from ccfa.cli import Problem, emit
+from ccfa.toolchain import which as toolchain_which
 from ccfa.verifiers import (
     FORMAL_ENGINES,
     TIER_CORE,
     Engine,
     EngineStatus,
+    default_wsl_probe,
     probe_engine,
 )
 
@@ -96,6 +97,45 @@ DEPENDENCIES: tuple[Dependency, ...] = (
         daemon_args=("info", "--format", "{{.ServerVersion}}"),
     ),
     Dependency("nvidia-smi", ("nvidia-smi",), False, "queue 的 GPU 秒预算"),
+    Dependency(
+        "ghostscript",
+        ("gswin64c", "gs"),
+        False,
+        "PDF/EPS 压缩与转换（投稿系统常见要求）",
+    ),
+    Dependency("qpdf", ("qpdf",), False, "PDF 结构检查、修复与线性化"),
+    Dependency("mutool", ("mutool",), False, "PDF 解析、转换与渲染"),
+    Dependency(
+        "soffice",
+        ("soffice",),
+        False,
+        "DOCX/PPTX/XLSX 文档格式转换",
+    ),
+    Dependency(
+        "typst",
+        ("typst",),
+        False,
+        "Typst 排版运行时（typst-paper skill 依赖）",
+    ),
+    Dependency("quarto", ("quarto",), False, "Quarto 可复现报告"),
+    Dependency(
+        "dvc",
+        ("dvc",),
+        False,
+        "数据集版本控制（大数据集超出 git-lfs 时）",
+    ),
+    Dependency(
+        "conda",
+        ("micromamba", "conda", "mamba"),
+        False,
+        "conda 兼容的研究环境管理",
+    ),
+    Dependency(
+        "jupyter",
+        ("jupyter",),
+        False,
+        "notebook 交互式实验",
+    ),
 )
 
 VENVS: tuple[Venv, ...] = (
@@ -150,7 +190,9 @@ def discover_services(config_path: Path) -> tuple[Service, ...]:
 
 
 def _default_which(name: str) -> str | None:
-    return shutil.which(name)
+    # PATH first, then the portable toolchain shim directory, so a preflight
+    # started before a PATH edit still sees what is installed.
+    return toolchain_which(name)
 
 
 def _default_path_exists(path: Path) -> bool:
@@ -389,7 +431,9 @@ def check_environment(
             False,
         )
 
-    engines_probe = engine_probe or probe_engine
+    engines_probe = engine_probe or (
+        lambda engine: probe_engine(engine, wsl_probe=default_wsl_probe)
+    )
     for engine in formal_engines:
         try:
             status = engines_probe(engine)
