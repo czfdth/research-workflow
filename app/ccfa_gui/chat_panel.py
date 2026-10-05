@@ -7,12 +7,20 @@ stop notifications come back to the GUI thread through Qt signals.
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 from pathlib import Path
 
 from PySide6.QtCore import QThread, QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QKeySequence,
+    QShortcut,
+    QTextCursor,
+    QTextOption,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -24,6 +32,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -43,6 +53,14 @@ ENGINE_OPENAI = "openai"
 ENGINE_CODEX = "codex"
 
 WRITE_CONFIRM_TIMEOUT_S = 300.0
+
+# QTextDocument styling for bubble bodies: code fences must look like code.
+# Only mode-independent properties belong here, because the document stylesheet
+# cannot resolve the workbench palette.
+MARKDOWN_STYLE = (
+    "code, pre { font-family: 'JetBrains Mono', Consolas, 'Cascadia Mono', "
+    "monospace; }"
+)
 
 ROLE_PREFIXES = {
     "user": "你",
@@ -619,9 +637,36 @@ class ChatPanel(QWidget):
         head.addStretch(1)
         column.addLayout(head)
 
-        body = QLabel(body_text)
+        # A read-only text view renders the Markdown subset we care about
+        # (lists, code fences, emphasis, links) with a document stylesheet, so
+        # code is actually monospaced. The list item keeps the raw text.
+        body = QTextBrowser()
         body.setObjectName("chatBody")
-        body.setWordWrap(True)
+        body.setFrameShape(QFrame.Shape.NoFrame)
+        body.setOpenExternalLinks(False)
+        body.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        body.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        body.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        body.document().setDocumentMargin(0)
+        body.document().setDefaultStyleSheet(MARKDOWN_STYLE)
+        wrap = QTextOption()
+        wrap.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        body.document().setDefaultTextOption(wrap)
+        body.setMarkdown(body_text)
+        # Markdown code fences arrive as non-breakable lines, which would be
+        # clipped inside a 400px bubble; let them wrap like the prose.
+        cursor = QTextCursor(body.document())
+        block = body.document().begin()
+        while block.isValid():
+            block_format = block.blockFormat()
+            if block_format.nonBreakableLines():
+                block_format.setNonBreakableLines(False)
+                cursor.setPosition(block.position())
+                cursor.setBlockFormat(block_format)
+            block = block.next()
         body.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -637,7 +682,16 @@ class ChatPanel(QWidget):
             widget = self.message_list.itemWidget(item)
             if widget is None:
                 continue
-            widget.setMaximumWidth(available)
+            # A fixed width makes the body's viewport width deterministic, so
+            # the document is laid out to exactly the space it gets drawn in.
+            widget.setFixedWidth(available)
+            body = widget.findChild(QTextBrowser, "chatBody")
+            if body is not None:
+                viewport = max(120, body.viewport().width())
+                body.document().setTextWidth(viewport)
+                body.setFixedHeight(
+                    math.ceil(body.document().size().height()) + 2
+                )
             widget.adjustSize()
             item.setSizeHint(widget.sizeHint())
 

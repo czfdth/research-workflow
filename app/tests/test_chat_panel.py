@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QTextBrowser
 
 from ccfa_core.engines.base import EngineError, EngineReply
 from ccfa_core.secrets import SecretStoreUnavailable
@@ -255,13 +255,35 @@ class ChatPanelTests(unittest.TestCase):
 
         self.assertEqual(labels.get("chatRole"), "write_file")
         self.assertEqual(labels.get("chatChip"), "write")
-        self.assertEqual(labels.get("chatBody"), "denied")
+        body = widget.findChild(QTextBrowser, "chatBody")
+        self.assertEqual(body.toPlainText().strip(), "denied")
         chip = next(
             child
             for child in widget.findChildren(QLabel)
             if child.objectName() == "chatChip"
         )
         self.assertEqual(chip.property("state"), "problem")
+
+    def test_markdown_bodies_are_parsed_not_shown_raw(self):
+        panel = self._panel()
+
+        panel._append_message(
+            "assistant",
+            "结论：\n\n- 支持：污染可检索\n- 不支持：端到端\n\n"
+            "```python\nassert claim.evidence == \"end-to-end\"\n```",
+        )
+        APP.processEvents()
+
+        widget = panel.message_list.itemWidget(panel.message_list.item(0))
+        body = widget.findChild(QTextBrowser, "chatBody")
+        plain = body.toPlainText()
+
+        self.assertNotIn("```", plain)
+        self.assertNotIn("- 支持", plain)
+        self.assertIn("支持：污染可检索", plain)
+        self.assertIn("assert claim.evidence", plain)
+        # The list and the code block are separate blocks, not one line.
+        self.assertGreater(body.document().blockCount(), 3)
 
     def _send(self, panel, text):
         panel.input_edit.setPlainText(text)

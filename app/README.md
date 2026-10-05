@@ -92,6 +92,9 @@ cd app
 名字 / risk chip / outcome 三段，chip 颜色跟 outcome 走。列表项仍保留纯文本
 （`item.text()` 不变），所以既有脚本消费者不受影响。
 
+气泡正文按 **Markdown** 渲染（`QTextBrowser.setMarkdown`）：列表、强调、
+链接、代码围栏都生效，代码块用等宽字体，且代码行会换行而不是被裁掉。
+
 | 按钮 | 调用的工作流命令 | 结果 |
 | --- | --- | --- |
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |

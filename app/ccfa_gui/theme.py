@@ -244,7 +244,11 @@ def stylesheet(mode: object = DEFAULT_MODE) -> str:
     QFrame#chatBubble[role="user"] QLabel#chatRole {{ color: {p['accent']}; }}
     QFrame#chatBubble[role="error"] QLabel#chatRole {{ color: {p['problem']}; }}
     QFrame#chatBubble[role="stopped"] QLabel#chatRole {{ color: {p['advisory']}; }}
-    QLabel#chatBody {{ color: {p['ink']}; }}
+    QLabel#chatBody, QTextBrowser#chatBody {{
+        color: {p['ink']};
+        background: transparent;
+        border: none;
+    }}
     QLabel#chatChip {{
         background: {p['panel']};
         border: 1px solid {p['line']};

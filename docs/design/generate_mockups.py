@@ -342,7 +342,8 @@ def chat_panel(svg: Svg, configured: bool, messages: list[tuple[str, str]] | Non
     if messages:
         bubble_y = box_y + 10
         for role, body in messages:
-            bubble_h = 58 if len(body) <= 34 else 76
+            lines = body.split("\n")
+            bubble_h = 40 + 18 * len(lines)
             parts.append(
                 svg.rect(
                     x + 22,
@@ -364,23 +365,17 @@ def chat_panel(svg: Svg, configured: bool, messages: list[tuple[str, str]] | Non
                     weight=600,
                 )
             )
-            parts.append(
-                svg.text(
-                    x + 34,
-                    bubble_y + 42,
-                    clip(body, 34),
-                    size=12,
-                    fill=INK,
-                )
-            )
-            if len(body) > 34:
+            for index, line in enumerate(lines):
+                # A leading ">" marks a code line: monospace, like the app.
+                code = line.startswith(">")
                 parts.append(
                     svg.text(
                         x + 34,
-                        bubble_y + 62,
-                        clip(body[34:], 34),
+                        bubble_y + 38 + index * 18,
+                        clip(line.lstrip(">"), 40 if code else 34),
                         size=12,
                         fill=INK,
+                        family=MONO if code else SANS,
                     )
                 )
             bubble_y += bubble_h + 8
@@ -741,7 +736,13 @@ def screen_chat_bubbles() -> str:
         configured=True,
         messages=[
             ("user", "RAG 攻击面那节的引用是不是撑不住？"),
-            ("assistant", "4.2 节的 [12] 只证明了检索污染可行，没有支撑端到端攻击成功。"),
+            (
+                "assistant",
+                "4.2 节的 [12] 只证明了检索污染可行：\n"
+                "• 支持：污染语料能被检索到\n"
+                "• 不支持：端到端攻击成功\n"
+                ">assert claim.evidence == \"end-to-end\"",
+            ),
             ("tool", "ok"),
             ("tool-denied", "denied"),
             ("error", "引擎超时：provider 60s 内没有返回"),

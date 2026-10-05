@@ -595,3 +595,23 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T175903Z-6e9b621bb2 - Render chat bubble bodies as Markdown (lists, code fences in monospace, wrapping code lines).
+
+- timestamp: `2026-10-05T17:59:03Z`
+- status: `complete`
+- author: `codex`
+- reason: 气泡正文之前是纯文本，模型回复里的列表和代码块都成了带标记的散文；代码行还会被 420px 的栏宽裁掉。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/chat_panel.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/tests/test_chat_panel.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/06-chat-bubbles.svg`
+  - `docs/design/exports/dark/06-chat-bubbles.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `app unittest discover (221 tests)`
+  - `ruff check app`
+- notes: 气泡改用 QTextBrowser.setMarkdown；代码围栏默认不折行，已逐块关掉 nonBreakableLines，并按文档实际高度反算气泡高度。
+

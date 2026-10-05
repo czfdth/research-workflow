@@ -56,20 +56,22 @@
     <rect x="864" y="128" width="396" height="420" rx="6" fill="#1e1e24" stroke="#2e2e37" stroke-width="1"/>
     <rect x="874" y="138" width="376" height="58" rx="6" fill="#2b2b45" stroke="#2e2e37" stroke-width="1"/>
     <text x="886" y="160" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#7c7aff" text-anchor="start">你</text>
-    <text x="886" y="180" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">RAG 攻击面那节的引用是不是撑不住？</text>
-    <rect x="874" y="204" width="376" height="76" rx="6" fill="#1e1e24" stroke="#2e2e37" stroke-width="1"/>
+    <text x="886" y="176" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">RAG 攻击面那节的引用是不是撑不住？</text>
+    <rect x="874" y="204" width="376" height="112" rx="6" fill="#1e1e24" stroke="#2e2e37" stroke-width="1"/>
     <text x="886" y="226" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#a1a1aa" text-anchor="start">助手</text>
-    <text x="886" y="246" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">4.2 节的 [12] 只证明了检索污染可行，没有支撑端到端攻击成…</text>
-    <text x="886" y="266" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">。</text>
-    <rect x="874" y="288" width="376" height="58" rx="6" fill="#26262e" stroke="#2e2e37" stroke-width="1"/>
-    <text x="886" y="310" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#3ddc97" text-anchor="start">read_file  [read]</text>
-    <text x="886" y="330" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">ok</text>
-    <rect x="874" y="354" width="376" height="58" rx="6" fill="#26262e" stroke="#2e2e37" stroke-width="1"/>
-    <text x="886" y="376" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72" text-anchor="start">write_file  [write]</text>
-    <text x="886" y="396" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">denied</text>
-    <rect x="874" y="420" width="376" height="58" rx="6" fill="#3a1f1f" stroke="#6b2b2b" stroke-width="1"/>
-    <text x="886" y="442" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72" text-anchor="start">错误</text>
-    <text x="886" y="462" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">引擎超时：provider 60s 内没有返回</text>
+    <text x="886" y="242" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">4.2 节的 [12] 只证明了检索污染可行：</text>
+    <text x="886" y="260" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">• 支持：污染语料能被检索到</text>
+    <text x="886" y="278" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">• 不支持：端到端攻击成功</text>
+    <text x="886" y="296" font-family="'JetBrains Mono', Consolas, 'Cascadia Mono', monospace" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">assert claim.evidence == "end-to-end"</text>
+    <rect x="874" y="324" width="376" height="58" rx="6" fill="#26262e" stroke="#2e2e37" stroke-width="1"/>
+    <text x="886" y="346" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#3ddc97" text-anchor="start">read_file  [read]</text>
+    <text x="886" y="362" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">ok</text>
+    <rect x="874" y="390" width="376" height="58" rx="6" fill="#26262e" stroke="#2e2e37" stroke-width="1"/>
+    <text x="886" y="412" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72" text-anchor="start">write_file  [write]</text>
+    <text x="886" y="428" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">denied</text>
+    <rect x="874" y="456" width="376" height="58" rx="6" fill="#3a1f1f" stroke="#6b2b2b" stroke-width="1"/>
+    <text x="886" y="478" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="11" font-weight="600" fill="#ff7b72" text-anchor="start">错误</text>
+    <text x="886" y="494" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#f2f2f5" text-anchor="start">引擎超时：provider 60s 内没有返回</text>
     <text x="864" y="572" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#a1a1aa" text-anchor="start">已连接 deepseek-v4-flash</text>
     <rect x="864" y="582" width="396" height="96" rx="6" fill="#1e1e24" stroke="#3a3a45" stroke-width="1"/>
     <text x="876" y="606" font-family="'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif" font-size="12" font-weight="400" fill="#a1a1aa" text-anchor="start">输入消息，Ctrl+Enter 发送</text>
