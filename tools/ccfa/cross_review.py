@@ -382,6 +382,27 @@ def _validate_payload(payload: object) -> dict | None:
     }
 
 
+def _parse_payload(raw: str) -> object | None:
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    fenced = re.findall(
+        r"```(?:json)?\s*(.*?)\s*```",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if len(fenced) != 1:
+        return None
+    try:
+        return json.loads(fenced[0])
+    except json.JSONDecodeError:
+        return None
+
+
 def _record_paths(out_dir: Path) -> tuple[Path, Path, Path, Path]:
     return (
         out_dir / "cross-review.json",
@@ -595,10 +616,7 @@ def run_review(
             encoding="utf-8",
             errors="replace",
         )
-    try:
-        payload = json.loads(raw_last_message) if raw_last_message else None
-    except json.JSONDecodeError:
-        payload = None
+    payload = _parse_payload(raw_last_message)
     normalized = _validate_payload(payload)
     if normalized is None:
         malformed = {

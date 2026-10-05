@@ -162,6 +162,34 @@ class TestPromptAndArgv(CrossReviewTests):
 
 
 class TestRunReview(CrossReviewTests):
+    def test_json_payload_in_markdown_fence_is_parsed(self):
+        runner = self._runner(
+            raw=(
+                "```json\n"
+                + json.dumps(self._payload("pass"), ensure_ascii=False)
+                + "\n```"
+            )
+        )
+
+        result = self._run(runner, model="gpt-5.6")
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["verdict"], "pass")
+        self.assertEqual(result["model_verdict"], "pass")
+
+    def test_multiple_markdown_fences_are_rejected(self):
+        fenced = (
+            "```json\n"
+            + json.dumps(self._payload("pass"), ensure_ascii=False)
+            + "\n```\n```\n{}\n```"
+        )
+        runner = self._runner(raw=fenced)
+
+        result = self._run(runner, model="gpt-5.6")
+
+        self.assertEqual(result["status"], "malformed")
+        self.assertEqual(result["verdict"], "malformed")
+
     def test_relative_paper_root_uses_absolute_codex_paths(self):
         runner = self._runner(payload=self._payload())
         original_cwd = Path.cwd()
