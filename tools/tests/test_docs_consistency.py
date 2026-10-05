@@ -86,6 +86,7 @@ CLI_WRAPPERS = {
     "archive_client": "scripts/archive.ps1",
     "compute": "scripts/compute.ps1",
     "skillpack": "scripts/skillpack.ps1",
+    "e2e_check": "scripts/e2e-check.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

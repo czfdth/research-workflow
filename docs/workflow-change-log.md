@@ -1186,3 +1186,21 @@ rewrite historical entries.
   - `ccfa_gui.main --self-check (probe_ok=true, exit 0)`
 - notes: Paper repo untouched: every report was written to %TEMP%, and the snapshot records that. 20 gates: 18 pass; argument-audit fails with 8 proof-review-not-verified + 6 citation-support-missing + 1 figure-support-missing, cross-review fails with review-blocking.
 
+## WC-20261005T215008Z-7760a8b83d - Add ccfa.e2e_check / scripts/e2e-check.ps1: one command that composes the full gate set and the platform preflight into a single Markdown snapshot.
+
+- timestamp: `2026-10-05T21:50:08Z`
+- status: `complete`
+- author: `codex`
+- reason: The state of a paper was spread over five commands and five outputs, so seeing that every remaining blocker is human rather than mechanical required running readiness, doctor, self-check, collaboration and milestones by hand and reading all of them.
+- files:
+  - `README.md`
+  - `scripts/e2e-check.ps1`
+  - `tools/ccfa/e2e_check.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `ccfa.e2e_check on the flagship paper: ready=false, 2 blocking, 20 gates (18 pass), 6 human checkpoints, 0 environment problems / 1 advisory`
+  - `ruff check tools scripts`
+  - `tools.tests.test_scripts inventory/contract + test_docs_consistency (19 tests)`
+- notes: Read-only: without --out it prints and writes nothing, and it never touches the paper tracked files. Output leads with an auto-generated headline (ready/blocking/gate pass count) then the gate table with de-duplicated problem codes, the human checkpoint table with its destination ledger, the doctor problems/advisories plus the installed/reachable inventory, git/CI and the countdown. discover_paper refuses to guess when papers/ holds more than one project. Exit code reports whether the snapshot was produced, not whether the paper is ready.
+

@@ -80,6 +80,7 @@ CCFA_WRAPPERS = {
     "archive_client": "archive.ps1",
     "compute": "compute.ps1",
     "skillpack": "skillpack.ps1",
+    "e2e_check": "e2e-check.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

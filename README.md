@@ -109,6 +109,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/stages.py` | stage/gate 状态机的唯一来源；CLI 把整表以 JSON 输出，供工作台等外部消费者读取而不必 import `ccfa` | `scripts/stages.ps1` |
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv/交付格式/排版/数据版本/算力），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
+| `tools/ccfa/e2e_check.py` | 一条命令给出单篇论文的现状快照：完整 gate 表、阻塞、人工待办、环境健康、git/CI 与投稿倒计时；只读，缺省只打印不写文件 | `scripts/e2e-check.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
 | `tools/ccfa/verifiers.py` | 清点本机可用的形式化验证器（z3/cvc5/lean/coq/isabelle/agda/why3/sage/julia），对照 `data/formal-checks.yaml` 说明缺哪个、禁用了哪个能力、如何安装 | `scripts/verifiers.ps1` |
@@ -148,6 +149,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | 任意阶段的状态校验 | `scripts/validate.ps1` | 校验状态文件结构与 stage/gate 合法性 |
 | 任意阶段（开始前） | `scripts/doctor.ps1` | 预检平台依赖；默认只把必需的 `git` 缺失判为 problem，`--strict` 把可选缺失也判为 problem；只有 Docker 会真正执行探测，daemon 不可达报 `doctor-daemon-down` |
 | 任意阶段（开始前） | `scripts/readiness.ps1` | 生成一页式 readiness report；支持 `--profile minimal|standard|high-assurance`，输出结构、证据存在、`gate-verified`、人工复核、科学接受与协作就绪六个维度；任一下游 gate 失败都会使 `ready=false` |
+| 任意阶段（总检） | `scripts/e2e-check.ps1` | 单篇论文的一页式现状快照：跑完整 gate 套件 + `doctor` 预检，汇总阻塞、人工待办、环境健康、git/CI 与投稿倒计时；`--out` 才写文件，缺省只打印 |
 | 任意阶段（claim 中心台账） | `scripts/research-ledgers.ps1` | 校验 claim→proof/experiment/figure/citation/assumption/limitation 的交叉引用，以及 venue checklist、artifact provenance、探索图、成本与风险台账 |
 | 读取当前阶段 | `scripts/milestones.ps1` | 调用 `stage` 子命令输出 `current`、`gate`、`updated_at` |
 | 投稿日期倒排 | `scripts/milestones.ps1` | 调用 `due` 子命令检查 T-90、T-60、T-30、T-21、T-14、T-7、T-3、T-1 与 gate 缺口；T-30 之后出现新实验运行会报 `t30-new-experiment`，只声明 `build` 但没写 `purpose_reason` 会报 `t30-unjustified-build-run` |
