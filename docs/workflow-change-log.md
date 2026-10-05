@@ -582,3 +582,21 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T184756Z-5e249ff15e - Register external P0 skills and support multiple source roots
+
+- timestamp: `2026-10-05T18:47:56Z`
+- status: `complete`
+- author: `codex`
+- reason: Promote already-referenced global CCF skills into the workflow registry without copying their source, and derive content-hash versions for unversioned external skills while keeping missing external sources non-fatal unless strict validation is requested.
+- files:
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+  - `tools/ccfa/skill_registry.py`
+  - `tools/tests/test_skill_registry.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+
