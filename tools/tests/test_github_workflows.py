@@ -43,6 +43,23 @@ def _workflow_run_commands(path):
     return commands
 
 
+def _job_run_text(payload, job_name):
+    job = payload["jobs"][job_name]
+    return "\n".join(
+        step.get("run", "")
+        for step in job.get("steps", [])
+        if isinstance(step.get("run"), str)
+    )
+
+
+def _informational_gate_steps(payload, job_name):
+    return [
+        step
+        for step in payload["jobs"][job_name].get("steps", [])
+        if step.get("continue-on-error") is True
+    ]
+
+
 def _run_workflow_command(command, *, cwd):
     command = command.replace(
         "${{ inputs.profile || 'standard' }}",
@@ -177,6 +194,48 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertNotIn("actions/checkout@v4", workflow_text)
         self.assertNotIn("actions/setup-python@v5", workflow_text)
         self.assertNotIn("actions/upload-artifact@v4", workflow_text)
+
+    def test_paper_workflows_separate_engineering_and_human_gates(self):
+        workflows = [ROOT / ".github" / "workflows" / "paper-check.yml"]
+        if PAPER_ROOT.is_dir():
+            workflows.append(
+                PAPER_ROOT / ".github" / "workflows" / "paper-check.yml"
+            )
+
+        for path in workflows:
+            with self.subTest(path=path):
+                payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+                deterministic = _job_run_text(
+                    payload,
+                    "deterministic-paper-checks",
+                )
+                human = _job_run_text(
+                    payload,
+                    "readiness-and-human-review",
+                )
+
+                self.assertIn("ccfa.citation_guard", deterministic)
+                self.assertIn("ccfa.trace_claims", deterministic)
+                self.assertIn("ccfa.final_check", deterministic)
+                self.assertIn("ccfa.run_log", deterministic)
+                self.assertNotIn("ccfa.readiness", deterministic)
+                self.assertNotIn("ccfa.governance", deterministic)
+                self.assertNotIn("ccfa.argument_audit", deterministic)
+                self.assertNotIn("ccfa.cross_review", deterministic)
+
+                self.assertIn("ccfa.readiness", human)
+                self.assertIn("ccfa.governance", human)
+                self.assertIn("ccfa.argument_audit", human)
+                self.assertIn("ccfa.cross_review", human)
+                self.assertGreaterEqual(
+                    len(
+                        _informational_gate_steps(
+                            payload,
+                            "readiness-and-human-review",
+                        )
+                    ),
+                    4,
+                )
 
     def test_main_paper_commands_are_parseable(self):
         workflow = ROOT / ".github" / "workflows" / "paper-check.yml"

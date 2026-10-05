@@ -18,11 +18,17 @@
 | Workflow | 触发 | 作用 |
 | --- | --- | --- |
 | `tests.yml` | push、pull_request、手动 | 跑工具与工作台的定向测试，不默认全量扫库 |
-| `paper-check.yml` | 手动 | 检出指定私有论文仓库，跑 readiness、人工论证台账与确定性检查 |
+| `paper-check.yml` | 手动 | 工程确定性检查必须通过；readiness 与人工 gate 单独作为 informational job 运行并上传报告 |
 | `repro-smoke.yml` | 手动 | 从干净的私有论文 checkout 验证已有 repro bundle |
 | `release.yml` | tag 或手动 | 打包源码、生成 SHA-256 manifest；tag 触发时发布 GitHub release |
 
 `paper-check.yml` 和 `repro-smoke.yml` 默认检出 `czfdth/rag-attack-defense`。由于论文是独立私有仓库，需在工具仓库配置只读 `PAPER_REPOSITORY_TOKEN`；论文仓库反向检出工具时则使用只读 `RESEARCH_WORKFLOW_TOKEN`。
+
+`paper-check.yml` 不把人工科研 blocker 冒充成工程失败，也不把它们隐藏为
+通过：`deterministic-paper-checks` 只运行可机械判定的检查，必须为绿；
+`readiness-and-human-review` 使用 `continue-on-error` 运行 readiness、
+governance、argument-audit 和 cross-review，并始终上传对应 JSON/Markdown。
+因此工程 CI 可以保持绿色，同时 `ready=false` 与人工待办仍然可见。
 
 ## 已接入的远端
 
