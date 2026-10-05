@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit
 
 from ccfa_core.checks import CheckResult
@@ -68,6 +69,7 @@ class GuiSmokeTests(unittest.TestCase):
             repo_root=self.root,
             secret_store=secret_store or self.secrets,
             settings_path=self.settings_path,
+            animations=False,
         )
         window.resize(1000, 700)
         window.show()
@@ -223,6 +225,7 @@ class GuiSmokeTests(unittest.TestCase):
             repo_root=empty_root,
             secret_store=self.secrets,
             settings_path=empty_root / "settings.json",
+            animations=False,
         )
         window.show()
         APP.processEvents()
@@ -265,6 +268,29 @@ class GuiSmokeTests(unittest.TestCase):
             window.close()
             window.deleteLater()
             APP.processEvents()
+
+    def test_chat_column_slides_when_animations_are_enabled(self):
+        window = MainWindow(
+            repo_root=self.root,
+            secret_store=self.secrets,
+            settings_path=self.settings_path,
+            animations=True,
+        )
+        self.addCleanup(window.deleteLater)
+        window.resize(1300, 800)
+        window.show()
+        APP.processEvents()
+        self.assertTrue(window.chat_card.isVisible())
+
+        window.resize(900, 700)
+        APP.processEvents()
+
+        # Not an instant hide: the pane is mid-slide.
+        self.assertTrue(window.chat_card.isVisible())
+        self.assertIsNotNone(window._chat_animation)
+        QTest.qWait(320)
+        self.assertFalse(window.chat_card.isVisible())
+        window.close()
 
     def test_run_validate_on_bad_project_shows_error_row(self):
         self._select("bad")

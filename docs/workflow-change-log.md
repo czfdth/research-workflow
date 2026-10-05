@@ -615,3 +615,19 @@ rewrite historical entries.
   - `ruff check app`
 - notes: 气泡改用 QTextBrowser.setMarkdown；代码围栏默认不折行，已逐块关掉 nonBreakableLines，并按文档实际高度反算气泡高度。
 
+## WC-20261005T180305Z-1535278c9d - Add motion to the workbench: 180ms conversation-column slide and 140ms detail-page fade, with an off switch.
+
+- timestamp: `2026-10-05T18:03:05Z`
+- status: `complete`
+- author: `codex`
+- reason: 设计清单里的最后一项：折叠是瞬间跳变，切页也是硬切，空间关系读不出来；同时需要有 reduced-motion 的关闭路径。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `app unittest discover (222 tests)`
+  - `ruff check app`
+- notes: 动画只动最大宽度与不透明度，结束回调恢复常态；animations=False / CCFA_NO_ANIM=1 / 窗口未显示时全部即时生效。
+

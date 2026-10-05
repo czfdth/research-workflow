@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QUrl
 from PySide6.QtGui import QBrush, QColor, QDesktopServices, QFont, QImage
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -46,6 +48,13 @@ _SHARED_LIBRARY_DIR = Path(__file__).resolve().parents[2] / "library"
 # Below this width the conversation column is worth more as horizontal room for
 # the project detail pane; the toolbar toggle brings it back on demand.
 CHAT_COLLAPSE_WIDTH = 1000
+
+# Motion is short and only ever used to explain a layout change: 180ms for the
+# conversation column, 140ms for swapping the detail page. Disable with
+# animations=False (tests) or CCFA_NO_ANIM=1 (reduced-motion preference).
+CHAT_ANIMATION_MS = 180
+PAGE_ANIMATION_MS = 140
+CHAT_PANE_MIN_WIDTH = 300
 
 # Absolute path tokens inside a workflow error message ("C:\...\ccfa.yaml").
 _PATH_TOKEN = re.compile(r"[A-Za-z]:[\\/][^\s]*|file://[^\s]*")
@@ -112,8 +121,14 @@ class MainWindow(QMainWindow):
         secret_store=None,
         settings_path: Path | None = None,
         parent=None,
+        animations: bool | None = None,
     ):
         super().__init__(parent)
+        if animations is None:
+            animations = os.environ.get("CCFA_NO_ANIM") != "1"
+        self._animations = bool(animations)
+        self._chat_animation: QPropertyAnimation | None = None
+        self._page_animation: QPropertyAnimation | None = None
         self._repo_root = Path(repo_root)
         self._secret_store = secret_store or KeyringSecretStore()
         self._settings_path = (
@@ -168,7 +183,7 @@ class MainWindow(QMainWindow):
         self._palette = theme.palette(self._mode)
         self.setStyleSheet(theme.stylesheet(self._mode))
         self._apply_icons()
-        self._apply_responsive_layout()
+        self._apply_responsive_layout(animate=False)
 
     def _apply_icons(self) -> None:
         ink = self._palette["ink"]
@@ -194,9 +209,63 @@ class MainWindow(QMainWindow):
 
     def _on_chat_toggled(self, checked: bool) -> None:
         self._chat_override = bool(checked)
-        self.chat_card.setVisible(bool(checked))
+        self._set_chat_visible(bool(checked))
 
-    def _apply_responsive_layout(self) -> None:
+    def _set_chat_visible(self, visible: bool, *, animate: bool = True) -> None:
+        """Show/hide the conversation column, sliding it when motion is on."""
+
+        card = self.chat_card
+        if self._chat_animation is not None:
+            self._chat_animation.stop()
+            self._chat_animation = None
+        if not (animate and self._animations) or not self.isVisible():
+            card.setMinimumWidth(CHAT_PANE_MIN_WIDTH if visible else 0)
+            card.setMaximumWidth(16777215)
+            card.setVisible(visible)
+            return
+        target = max(CHAT_PANE_MIN_WIDTH, card.width() or CHAT_PANE_MIN_WIDTH)
+        if visible:
+            card.setMinimumWidth(0)
+            card.setMaximumWidth(0)
+            card.setVisible(True)
+        start, end = (0, target) if visible else (card.width(), 0)
+        animation = QPropertyAnimation(card, b"maximumWidth", self)
+        animation.setDuration(CHAT_ANIMATION_MS)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        animation.setStartValue(start)
+        animation.setEndValue(end)
+        animation.finished.connect(lambda: self._finish_chat_motion(visible))
+        self._chat_animation = animation
+        animation.start()
+
+    def _finish_chat_motion(self, visible: bool) -> None:
+        self.chat_card.setMinimumWidth(
+            CHAT_PANE_MIN_WIDTH if visible else 0
+        )
+        self.chat_card.setMaximumWidth(16777215)
+        self.chat_card.setVisible(visible)
+        self._chat_animation = None
+
+    def _show_stack_page(self, index: int) -> None:
+        """Switch the detail pane, fading the incoming page when motion is on."""
+
+        if self.detail_stack.currentIndex() == index:
+            return
+        self.detail_stack.setCurrentIndex(index)
+        if not self._animations or not self.isVisible():
+            return
+        page = self.detail_stack.currentWidget()
+        effect = QGraphicsOpacityEffect(page)
+        page.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(PAGE_ANIMATION_MS)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.finished.connect(lambda: page.setGraphicsEffect(None))
+        self._page_animation = animation
+        animation.start()
+
+    def _apply_responsive_layout(self, *, animate: bool = True) -> None:
         wide = self.width() >= CHAT_COLLAPSE_WIDTH
         if wide != self._was_wide:
             # Crossing the breakpoint clears a manual choice, so the automatic
@@ -204,7 +273,8 @@ class MainWindow(QMainWindow):
             self._chat_override = None
             self._was_wide = wide
         visible = wide if self._chat_override is None else self._chat_override
-        self.chat_card.setVisible(visible)
+        if self.chat_card.isVisible() != visible:
+            self._set_chat_visible(visible, animate=animate)
         self.chat_toggle.blockSignals(True)
         self.chat_toggle.setChecked(visible)
         self.chat_toggle.blockSignals(False)
@@ -450,7 +520,7 @@ class MainWindow(QMainWindow):
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _set_results(self, rows) -> None:
-        self.detail_stack.setCurrentIndex(0)
+        self._show_stack_page(0)
         self.results_table.setRowCount(0)
         actionable = 0
         for source, code, message in rows:
@@ -520,7 +590,7 @@ class MainWindow(QMainWindow):
         )
         self.placeholder_title.setText(title)
         self.placeholder_hint.setText(hint)
-        self.detail_stack.setCurrentIndex(2)
+        self._show_stack_page(2)
 
     def _show_project_error(self, slug: str, error: str) -> None:
         """Show a broken project without spilling a traceback across the header."""
@@ -724,7 +794,7 @@ class MainWindow(QMainWindow):
         if checkpoints:
             for item in checkpoints:
                 self._add_checkpoint_card(item)
-            self.detail_stack.setCurrentIndex(1)
+            self._show_stack_page(1)
             self.results_summary.setText(f"{len(checkpoints)} 项待人工")
             self.results_summary.setStyleSheet(f"color: {self._palette['problem']};")
         else:

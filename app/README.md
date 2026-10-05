@@ -95,6 +95,10 @@ cd app
 气泡正文按 **Markdown** 渲染（`QTextBrowser.setMarkdown`）：列表、强调、
 链接、代码围栏都生效，代码块用等宽字体，且代码行会换行而不是被裁掉。
 
+动效只解释布局变化：对话栏收起/展开是 180ms 的宽度动画，详情页切换是 140ms 淡入。
+`MainWindow(..., animations=False)` 或 `CCFA_NO_ANIM=1` 可全部关掉（测试与
+减少动效偏好都用这条路径）。
+
 | 按钮 | 调用的工作流命令 | 结果 |
 | --- | --- | --- |
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |
