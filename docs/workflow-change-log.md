@@ -1,0 +1,31 @@
+# Workflow Change Log
+
+Generated from `docs/workflow-change-log.jsonl`. Append-only; do not
+rewrite historical entries.
+
+## WC-20261006T000000Z-mandatory-log - Add an append-only, fail-closed workflow change log contract.
+
+- timestamp: `2026-10-06T00:00:00Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求规定每次工作流修改都必须记录日志，不能用聊天记录代替可审计变更日志。
+- files:
+  - `.github/pull_request_template.md`
+  - `.github/workflows/tests.yml`
+  - `AGENTS.md`
+  - `README.md`
+  - `docs/workflow-change-log.jsonl`
+  - `docs/workflow-change-log.md`
+  - `docs/workflow-guide.md`
+  - `scripts/change-log.ps1`
+  - `tools/ccfa/change_log.py`
+  - `tools/tests/test_change_log.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_github_workflows.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_change_log`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+- notes: The log itself and its generated Markdown are excluded from coverage checks, but listed here for traceability.
