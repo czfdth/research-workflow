@@ -659,18 +659,39 @@ def _gate_drill_advisories(
     ]
 
 
-def _human_review_status(paper_root: Path, profile: str) -> dict:
-    if profile != "high-assurance":
-        return {"status": "not-required", "pending": [], "checkpoints": []}
+def _human_review_status(
+    paper_root: Path,
+    profile: str,
+    gate_results: list[dict] | None = None,
+) -> dict:
     pending = []
-    for key in ("proof", "citation-support", "figure-support", "human-coding"):
-        path = paper_root / EVIDENCE_LEDGER_PATHS[key]
-        payload = _load_structured(path) if path.is_file() else None
-        status = payload.get("status") if payload else None
-        if not isinstance(status, str) or status.strip().casefold() in PENDING_REVIEW_STATUSES:
-            pending.append(key)
+    if profile == "high-assurance":
+        for key in ("proof", "citation-support", "figure-support", "human-coding"):
+            path = paper_root / EVIDENCE_LEDGER_PATHS[key]
+            payload = _load_structured(path) if path.is_file() else None
+            status = payload.get("status") if payload else None
+            if not isinstance(status, str) or status.strip().casefold() in PENDING_REVIEW_STATUSES:
+                pending.append(key)
+    else:
+        codes = {
+            str(problem.get("code", ""))
+            for result in (gate_results or [])
+            for problem in result.get("problems", [])
+            if isinstance(problem, dict)
+        }
+        if any("proof-review-not-verified" in code for code in codes):
+            pending.append("proof")
+        if any("citation-support" in code for code in codes):
+            pending.append("citation-support")
+        if any("figure-support" in code for code in codes):
+            pending.append("figure-support")
+        if any("human-coding" in code for code in codes):
+            pending.append("human-coding")
+    if not pending:
+        status = "human-attested" if profile == "high-assurance" else "not-required"
+        return {"status": status, "pending": [], "checkpoints": []}
     return {
-        "status": "pending-human-review" if pending else "human-attested",
+        "status": "pending-human-review",
         "pending": pending,
         "checkpoints": _human_checkpoints(pending),
     }
@@ -752,10 +773,10 @@ def build_report(
     gate = gate_for(mode, stage["current"])
     due = due_report(paper_root, today or date.today())
     ledgers = _ledger_status(paper_root, audit_profile)
-    human_review = _human_review_status(paper_root, audit_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
     gate_results = _run_gates(paper_root, audit_profile)
+    human_review = _human_review_status(paper_root, audit_profile, gate_results)
     executed_gates = [result["name"] for result in gate_results]
     drills, drill_problems = _load_gate_drills(paper_root)
     unproven_advisories = _gate_drill_advisories(drills, executed_gates)
@@ -788,7 +809,10 @@ def build_report(
             blocking.append("paper git remote is missing")
         if not git.workflows_present:
             blocking.append("GitHub Actions workflows are missing")
-    if human_review["status"] == "pending-human-review":
+    if (
+        audit_profile == "high-assurance"
+        and human_review["status"] == "pending-human-review"
+    ):
         blocking.append("required human review is incomplete")
 
     review_status = "independent-evidence-present"

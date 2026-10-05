@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
+from ccfa import readiness
 from ccfa.cli import Problem
 from ccfa.readiness import build_report, main, render_markdown
 
@@ -429,6 +430,25 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(report["assurance"], "draft")
         self.assertEqual(report["audit_profile"], "standard")
         self.assertEqual(report["human_review"]["status"], "not-required")
+
+    def test_standard_gate_failures_still_expose_human_checkpoints(self):
+        human = readiness._human_review_status(
+            self.paper_root,
+            "standard",
+            [
+                {
+                    "problems": [
+                        {
+                            "code": "review-contradiction: proof-review-not-verified",
+                        }
+                    ]
+                }
+            ],
+        )
+
+        self.assertEqual(human["status"], "pending-human-review")
+        self.assertEqual(human["pending"], ["proof"])
+        self.assertEqual(human["checkpoints"][0]["id"], "proof")
 
     def test_high_assurance_defaults_to_submission_assurance(self):
         self._touch_ledgers(["novelty"])

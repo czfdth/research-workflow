@@ -296,3 +296,15 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261005T170947Z-5be2220993 - Expose gate-driven human checkpoints in standard readiness
+
+- timestamp: `2026-10-05T17:09:47Z`
+- status: `complete`
+- author: `codex`
+- reason: Standard-profile readiness reported human review as not-required even while proof/citation/figure gates were blocking; it now derives answerable human checkpoints from the actual gate failures without converting them to pass.
+- files:
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_readiness`
+
