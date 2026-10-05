@@ -65,6 +65,7 @@ CCFA_WRAPPERS = {
     "ara_compile": "ara-compile.ps1",
     "ara_extract": "ara-extract.ps1",
     "reference_audit": "reference-audit.ps1",
+    "repro_container": "repro-container.ps1",
     "worktree_audit": "worktree-audit.ps1",
     "dashboard": "dashboard.ps1",
     "formal_check": "formal-check.ps1",

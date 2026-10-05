@@ -71,6 +71,7 @@ CLI_WRAPPERS = {
     "ara_compile": "scripts/ara-compile.ps1",
     "ara_extract": "scripts/ara-extract.ps1",
     "reference_audit": "scripts/reference-audit.ps1",
+    "repro_container": "scripts/repro-container.ps1",
     "worktree_audit": "scripts/worktree-audit.ps1",
     "dashboard": "scripts/dashboard.ps1",
     "formal_check": "scripts/formal-check.ps1",

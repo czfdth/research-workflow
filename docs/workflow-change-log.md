@@ -268,3 +268,31 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_github_workflows`
 
+## WC-20261005T170719Z-db032c0d3b - Add pinned container reproduction receipts
+
+- timestamp: `2026-10-05T17:07:19Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the second-environment reproduction gap with a deterministic, network-disabled Docker runner and make repro-env validate the receipt instead of accepting prose.
+- files:
+  - `.github/workflows/repro-smoke.yml`
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/repro-container.ps1`
+  - `tools/ccfa/repro_container.py`
+  - `tools/ccfa/repro_env.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_repro_container.py`
+  - `tools/tests/test_repro_env.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_repro_container`
+  - `tools.tests.test_repro_env`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+
