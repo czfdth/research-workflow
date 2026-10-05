@@ -678,3 +678,21 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_talk_pipeline`
 
+## WC-20261005T200139Z-c6134746ad - Add post-submission init and make a tail stage require its own section
+
+- timestamp: `2026-10-05T20:01:39Z`
+- status: `complete`
+- author: `codex`
+- reason: The tail still passed while empty: a skeleton file satisfied the missing-file check and every section stayed not-started. init now derives a schema-correct ledger from the paper's real run/claim/figure ids without overwriting, and readiness requires the section a stage is named after to be complete.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/post_submission.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_post_submission.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_post_submission`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+
