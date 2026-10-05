@@ -320,3 +320,21 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_readiness`
 
+## WC-20261005T171238Z-c91e5f2823 - Design the workbench app: five Figma-importable SVG screens generated from the shipped theme tokens, plus a UI spec.
+
+- timestamp: `2026-10-05T17:12:38Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求用 Figma 设计 app。本机 Figma 插件已启用但没有配置 Figma MCP server，无法直接读写 Figma 文件；改为产出可导入 Figma 的 SVG 屏幕与设计说明，并把生成器接在同一份 theme.py 令牌上，保证设计稿不会与实现漂移。
+- files:
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/01-workbench-empty.svg`
+  - `docs/design/exports/02-workbench-project.svg`
+  - `docs/design/exports/03-workbench-blocked.svg`
+  - `docs/design/exports/04-human-checkpoints.svg`
+  - `docs/design/exports/05-settings-dialog.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+- notes: 04-human-checkpoints 是新提的界面：数据来自 readiness.human_review.checkpoints，尚未在 Qt 里实现。
+
