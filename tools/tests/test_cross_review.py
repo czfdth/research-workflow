@@ -78,10 +78,19 @@ class CrossReviewTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def _payload(self, verdict="pass", blocking=None, summary="summary"):
+    def _payload(self, verdict="pass", blocking=None, summary="summary", checks=None):
+        if checks is None:
+            checks = [
+                {
+                    "gate": "citation",
+                    "path": "manuscript/main.tex",
+                    "evidence": "\\documentclass{article}",
+                }
+            ]
         return {
             "verdict": verdict,
             "blocking": blocking or [],
+            "checks": checks,
             "summary": summary,
         }
 
@@ -686,6 +695,86 @@ class TestDeterministicContradictionGuard(CrossReviewTests):
         self.assertFalse(record["deterministic_contradiction"])
         self.assertEqual(record["blocking"], [])
 
+    def test_review_tier_flags_small_and_local_models(self):
+        cases = {
+            ("qwen3:30b", "local-qwen"): "advisory-only",
+            ("qwen-local", "local-qwen"): "advisory-only",
+            ("llama3.1:8b", "local-ollama"): "advisory-only",
+            ("qwen3:72b", "local-qwen"): "gate-capable",
+            ("gpt-5.6", None): "gate-capable",
+            ("deepseek-v4-flash", "custom"): "gate-capable",
+        }
+        for (model, provider), expected in cases.items():
+            with self.subTest(model=model, provider=provider):
+                self.assertEqual(
+                    cross_review_module._review_tier(model, provider),
+                    expected,
+                )
+
+    def test_advisory_only_model_cannot_acquit(self):
+        runner = self._runner(payload=self._payload())
+
+        # The size heuristic alone marks this local model advisory-only.
+        record = self._run(runner, model="qwen3:30b")
+
+        self.assertEqual(record["model_verdict"], "pass")
+        self.assertEqual(record["review_tier"], "advisory-only")
+        self.assertEqual(record["verdict"], "blocking")
+        self.assertTrue(
+            any(
+                item["title"].startswith("review-advisory-only:")
+                for item in record["blocking"]
+            )
+        )
+
+    def test_pass_without_checks_is_unevidenced(self):
+        runner = self._runner(payload=self._payload(checks=[]))
+
+        record = self._run(runner)
+
+        self.assertEqual(record["verdict"], "blocking")
+        self.assertTrue(
+            any(
+                item["title"].startswith("review-unevidenced-pass:")
+                for item in record["blocking"]
+            )
+        )
+
+    def test_pass_citing_a_file_outside_the_inputs_is_unevidenced(self):
+        runner = self._runner(
+            payload=self._payload(
+                checks=[
+                    {
+                        "gate": "citation",
+                        "path": "manuscript/not-an-input.tex",
+                        "evidence": "\\documentclass{article}",
+                    }
+                ]
+            )
+        )
+
+        record = self._run(runner)
+
+        self.assertEqual(record["verdict"], "blocking")
+
+    def test_pass_citing_the_file_hash_is_accepted(self):
+        digest = cross_review_module._sha256(self.input_path)
+        runner = self._runner(
+            payload=self._payload(
+                checks=[
+                    {
+                        "gate": "citation",
+                        "path": "manuscript/main.tex",
+                        "evidence": digest,
+                    }
+                ]
+            )
+        )
+
+        record = self._run(runner)
+
+        self.assertEqual(record["verdict"], "pass")
+
 
 class TestCheckReview(CrossReviewTests):
     def setUp(self):
@@ -712,6 +801,18 @@ class TestCheckReview(CrossReviewTests):
             problems = check_review(self.paper_root)
 
         self.assertIn("review-contradiction", [p.code for p in problems])
+
+    def test_advisory_only_pass_is_flagged(self):
+        runner = self._runner(payload=self._payload())
+        self._run(runner)
+        record_path = self._record_path()
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        record["review_tier"] = "advisory-only"
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        self.assertIn("review-advisory-only", codes)
 
     def test_contradiction_downgrade_is_accepted_by_the_auditor(self):
         runner = self._runner(payload=self._payload())

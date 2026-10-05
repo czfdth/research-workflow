@@ -36,6 +36,23 @@ REVIEW_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "checks": {
+            "type": "array",
+            "description": (
+                "verdict=pass 时必需：每条论断给出 gate、path 与可核验证据"
+                "（被引用文件里的原文片段，或该文件的 sha256）。"
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "gate": {"type": "string"},
+                    "path": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["gate", "path", "evidence"],
+                "additionalProperties": False,
+            },
+        },
         "summary": {"type": "string"},
     },
     "required": ["verdict", "blocking", "summary"],
@@ -129,6 +146,39 @@ def _family_judgement(
     if review_family == execution_family:
         return "same-family"
     return "cross-family"
+
+
+# A reviewer below this parameter count, or one with no size information served
+# from a local endpoint, may drive work but cannot on its own clear a gate.
+# The rule exists because a local 30B model declared the human review ledgers
+# complete while argument_audit reported 15 problems.
+_ADVISORY_ONLY_PARAMETER_LIMIT = 32
+_PARAMETER_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b(?![a-z0-9])", re.IGNORECASE)
+_LOCAL_PROVIDER_MARKERS = ("local", "ollama", "vllm", "lmstudio", "llama.cpp")
+# Blocking items that come from the deterministic gates rather than from the
+# model; they are exempt from the "evidence must be a verbatim quote" rule.
+_DETERMINISTIC_ITEM_PREFIXES = (
+    "review-contradiction:",
+    "review-advisory-only:",
+    "review-unevidenced-pass:",
+)
+
+
+def _review_tier(model: str, provider: str | None) -> str:
+    """Classify a review model as ``advisory-only`` or ``gate-capable``."""
+    text = str(model).strip().casefold()
+    sizes = [float(match.group(1)) for match in _PARAMETER_RE.finditer(text)]
+    if sizes:
+        largest = max(sizes)
+        return (
+            "advisory-only"
+            if largest <= _ADVISORY_ONLY_PARAMETER_LIMIT
+            else "gate-capable"
+        )
+    provider_text = (provider or "").strip().casefold()
+    if any(marker in provider_text for marker in _LOCAL_PROVIDER_MARKERS):
+        return "advisory-only"
+    return "gate-capable"
 
 
 def _bounded_text(value: object, limit: int) -> str:
@@ -333,8 +383,11 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
         [
             "",
             "输出契约: 只返回 JSON 对象，字段为 verdict(pass|blocking)、"
-            "blocking[{title,evidence}]、summary。",
+            "blocking[{title,evidence}]、checks[{gate,path,evidence}]、summary。",
             "blocking 中每条必须给可核对的 evidence，不得凭印象断言。",
+            "verdict=pass 时必须用 checks 给出正面证据：path 必须是本次待评审"
+            "文件之一，evidence 必须是该文件里的原文片段或该文件的 sha256；"
+            "没有可核验证据的 pass 一律按未验证处理。",
             "禁止修改任何文件；你只有只读权限，不得创建、删除或写入文件。",
         ]
     )
@@ -386,9 +439,32 @@ def _validate_payload(payload: object) -> dict | None:
         if not isinstance(title, str) or not isinstance(evidence, str):
             return None
         normalized.append({"title": title, "evidence": evidence})
+    raw_checks = payload.get("checks", [])
+    if not isinstance(raw_checks, list):
+        return None
+    normalized_checks: list[dict] = []
+    for item in raw_checks:
+        if not isinstance(item, dict):
+            continue
+        gate = item.get("gate")
+        path = item.get("path")
+        evidence = item.get("evidence")
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (gate, path, evidence)
+        ):
+            continue
+        normalized_checks.append(
+            {
+                "gate": gate.strip(),
+                "path": path.strip(),
+                "evidence": evidence.strip(),
+            }
+        )
     return {
         "verdict": verdict,
         "blocking": normalized,
+        "checks": normalized_checks,
         "summary": summary,
     }
 
@@ -497,6 +573,66 @@ def _default_runner(argv, cwd, timeout, prompt):
     except OSError as exc:
         raise ValueError(f"无法运行 codex exec: {exc}") from exc
     return int(completed.returncode), completed.stderr or ""
+
+
+def _unevidenced_pass_items(
+    paper_root: Path,
+    checks: list[dict],
+    hashes: dict[str, str],
+) -> list[dict]:
+    """Blocking items for ``pass`` claims that carry no verifiable evidence.
+
+    A ``pass`` is only accepted when every claim names one of the review inputs
+    and quotes that file (or gives its sha256). An unevidenced pass is treated
+    as unverified rather than trusted.
+    """
+    if not checks:
+        return [
+            {
+                "title": "review-unevidenced-pass: no checks",
+                "evidence": (
+                    "verdict=pass 但没有提供任何 checks[gate,path,evidence]；"
+                    "无证据的 pass 按未验证处理"
+                ),
+            }
+        ]
+    items: list[dict] = []
+    for index, check in enumerate(checks):
+        relative = str(check.get("path", "")).strip().replace("\\", "/")
+        if relative not in hashes:
+            items.append(
+                {
+                    "title": f"review-unevidenced-pass: checks[{index}]",
+                    "evidence": f"path={relative!r} 不是本次评审的输入文件",
+                }
+            )
+            continue
+        try:
+            resolved, _relative = _relative_input(paper_root, Path(relative))
+            text = resolved.read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError) as exc:
+            items.append(
+                {
+                    "title": f"review-unevidenced-pass: checks[{index}]",
+                    "evidence": f"{relative}: 无法读取该文件: {exc}",
+                }
+            )
+            continue
+        evidence = _normalize_whitespace(str(check.get("evidence", "")))
+        corpus = _normalize_whitespace(text)
+        if _quote_is_cited(evidence, corpus) or evidence in hashes[relative]:
+            continue
+        items.append(
+            {
+                "title": f"review-unevidenced-pass: checks[{index}]",
+                "evidence": (
+                    f"{relative}: evidence 既不是该文件中 ≥"
+                    f"{_BLOCKING_QUOTE_MIN_LENGTH} 字符的原文，"
+                    "也不是该文件哈希"
+                ),
+            }
+        )
+    return items
 
 
 def _deterministic_contradictions(paper_root: Path) -> list[dict]:
@@ -726,15 +862,34 @@ def run_review(
                 + normalized["summary"]
             )
 
+    review_tier = _review_tier(model, provider)
     contradictions: list[dict] = []
     if effective_verdict == "pass":
+        if review_tier == "advisory-only":
+            contradictions.append(
+                {
+                    "title": f"review-advisory-only: {model}",
+                    "evidence": (
+                        f"review_tier=advisory-only, provider={provider!r}: "
+                        "本地/小模型评审不得单独开释 review_cleared"
+                    ),
+                }
+            )
         probe = contradiction_probe or _deterministic_contradictions
-        contradictions = probe(paper_root)
+        contradictions.extend(probe(paper_root))
+        contradictions.extend(
+            _unevidenced_pass_items(
+                paper_root,
+                normalized["checks"],
+                input_hashes,
+            )
+        )
         if contradictions:
             effective_verdict = "blocking"
             effective_summary = (
-                f"模型返回 pass，但确定性 gate 仍报告 {len(contradictions)} "
-                "项问题，判定为 review-contradiction：模型不得开释确定性 gate。 "
+                f"模型返回 pass，但被 {len(contradictions)} 项确定性证据否决"
+                "（review-contradiction / review-advisory-only）："
+                "模型不得开释确定性 gate。 "
                 + effective_summary
             )
 
@@ -749,6 +904,7 @@ def run_review(
         "family_judgement": family,
         "family_override": allow_same_family,
         "family_override_reason": override_reason,
+        "review_tier": review_tier,
         "verdict": effective_verdict,
         "blocking": [*normalized["blocking"], *contradictions],
         "deterministic_contradiction": bool(contradictions),
@@ -1117,7 +1273,7 @@ def check_review(
         )
         corpus = _input_corpus(paper_root, hashes)
         for index, item in enumerate(payload["blocking"]):
-            if item["title"].startswith("review-contradiction:"):
+            if item["title"].startswith(_DETERMINISTIC_ITEM_PREFIXES):
                 # These items are copied from the deterministic gates, not
                 # produced by the model, so the "evidence must be a verbatim
                 # quote from the review inputs" rule does not apply.
@@ -1134,6 +1290,19 @@ def check_review(
                         "逐字出现在评审输入文件中",
                     )
                 )
+    if (
+        record.get("review_tier") == "advisory-only"
+        and payload["verdict"] == "pass"
+    ):
+        problems.append(
+            Problem(
+                "review-advisory-only",
+                str(path),
+                None,
+                "评审模型被判定为 advisory-only，不能单独支撑 "
+                "review_cleared；需要 gate-capable 的评审模型",
+            )
+        )
     if payload["verdict"] == "pass":
         contradictions = _deterministic_contradictions(paper_root)
         if contradictions:
