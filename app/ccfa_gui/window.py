@@ -395,6 +395,12 @@ class MainWindow(QMainWindow):
             badges.addWidget(widget)
         badges.addStretch(1)
         head.addLayout(badges)
+        self.gate_criterion_label = QLabel("")
+        self.gate_criterion_label.setObjectName("gateCriterion")
+        self.gate_criterion_label.setProperty("role", "hint")
+        self.gate_criterion_label.setWordWrap(True)
+        self.gate_criterion_label.setVisible(False)
+        head.addWidget(self.gate_criterion_label)
         column.addWidget(header)
 
         actions = QHBoxLayout()
@@ -583,6 +589,8 @@ class MainWindow(QMainWindow):
         self.project_note.setText("从左侧选择一个项目")
         self.project_note.setToolTip("")
         self.open_dir_button.setEnabled(False)
+        self.gate_criterion_label.setText("")
+        self.gate_criterion_label.setVisible(False)
         self._set_badge(self.stage_label, "")
         self._set_badge(self.gate_label, "")
         self._set_badge(self.deadline_label, "")
@@ -613,6 +621,8 @@ class MainWindow(QMainWindow):
         self._set_badge(self.stage_label, f"无法读取 {slug}", state="problem")
         self._set_badge(self.gate_label, "配置无效", state="problem")
         self._set_badge(self.deadline_label, "截止 未知")
+        self.gate_criterion_label.setText("")
+        self.gate_criterion_label.setVisible(False)
 
     def _open_project_dir(self) -> None:
         ref = self._selected_ref()
@@ -701,6 +711,12 @@ class MainWindow(QMainWindow):
             self.deadline_label,
             f"截止 {state.deadline if state.deadline else '无'}",
         )
+        criterion = state.gate_criterion
+        self.gate_criterion_label.setText(
+            f"门禁判据：{criterion}" if criterion else ""
+        )
+        self.gate_criterion_label.setToolTip(criterion)
+        self.gate_criterion_label.setVisible(bool(criterion))
         self.chat_panel.set_project(ref.dir)
 
     def _selected_project_error(self):

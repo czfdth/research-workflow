@@ -98,6 +98,22 @@ class ProjectRef:
     error: str | None = None
 
 
+def _gate_criterion(mode: str, stage: str) -> str:
+    """The workflow's own criterion text for this stage's gate.
+
+    Decorative: a workflow that cannot answer must not stop the project from
+    loading, so a failure here yields an empty string (the readiness view
+    reports real connectivity problems).
+    """
+
+    try:
+        gate = gate_for(mode, stage)
+    except ValueError:
+        return ""
+    criterion = gate.get("criterion")
+    return criterion.strip() if isinstance(criterion, str) else ""
+
+
 @dataclass(frozen=True)
 class ProjectState:
     slug: str
@@ -107,6 +123,7 @@ class ProjectState:
     gate: str
     deadline: str | None
     updated_at: str
+    gate_criterion: str = ""
 
 
 def _yaml_path(path: Path) -> tuple[Path, Path]:
@@ -180,6 +197,7 @@ def load_project(path: Path) -> ProjectState:
         gate=gate,
         deadline=deadline,
         updated_at=updated_at,
+        gate_criterion=_gate_criterion(mode, current_stage),
     )
 
 

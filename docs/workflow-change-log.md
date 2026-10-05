@@ -903,3 +903,19 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T190724Z-2f02f72ec5 - Show the stage gate criterion in the workbench project panel, sourced from the workflow gate definition.
+
+- timestamp: `2026-10-05T19:07:24Z`
+- status: `complete`
+- author: `codex`
+- reason: The panel showed the gate state badge but never what the gate requires; the criterion was only reachable by running ccfa.stages in a terminal.
+- files:
+  - `app/ccfa_core/projects.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_projects.py`
+- tests:
+  - `app unittest discover (231 tests)`
+  - `ruff check app`
+- notes: Decorative lookup: an unreadable gate yields an empty hint instead of blocking the project from loading.
+

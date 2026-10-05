@@ -149,6 +149,17 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertIn("scope_defined", self.window.gate_label.text())
         self.assertIn("无", self.window.deadline_label.text())
 
+    def test_gate_criterion_is_shown_for_a_readable_project(self):
+        self._select("good")
+
+        label = self.window.gate_criterion_label
+        self.assertTrue(label.isVisible())
+        self.assertTrue(label.text().startswith("门禁判据："))
+        self.assertTrue(label.toolTip())
+
+        self._select("bad")
+        self.assertFalse(label.isVisible())
+
     def test_run_validate_populates_table(self):
         self._select("good")
 

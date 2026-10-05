@@ -8,6 +8,7 @@ from ccfa_core.projects import (
     ProjectError,
     ProjectState,
     find_projects,
+    gate_for,
     load_project,
 )
 
@@ -73,6 +74,20 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(state.gate, "revision_planned")
         self.assertEqual(state.deadline, "2027-05-01")
         self.assertEqual(state.updated_at, "2026-10-04")
+
+    def test_load_project_carries_the_gate_criterion(self):
+        project_dir = write_project(
+            self.root,
+            "demo",
+            mode="journal",
+            stage="major-revision",
+        )
+
+        state = load_project(project_dir)
+
+        expected = gate_for(state.mode, state.current_stage)["criterion"].strip()
+        self.assertTrue(expected)
+        self.assertEqual(state.gate_criterion, expected)
 
     def test_load_project_accepts_the_yaml_file_path(self):
         project_dir = write_project(self.root, "demo")
