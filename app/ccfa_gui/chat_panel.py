@@ -54,13 +54,18 @@ ENGINE_CODEX = "codex"
 
 WRITE_CONFIRM_TIMEOUT_S = 300.0
 
-# QTextDocument styling for bubble bodies: code fences must look like code.
-# Only mode-independent properties belong here, because the document stylesheet
-# cannot resolve the workbench palette.
-MARKDOWN_STYLE = (
-    "code, pre { font-family: 'JetBrains Mono', Consolas, 'Cascadia Mono', "
-    "monospace; }"
-)
+# QTextDocument cannot resolve the workbench stylesheet, so the code style is
+# built from the palette in code: monospace always, plus the mode's chip colour
+# as the code background.
+CODE_FONT = "'JetBrains Mono', Consolas, 'Cascadia Mono', monospace"
+
+
+def markdown_style(mode: object = "light") -> str:
+    background = theme.palette(mode)["code_bg"]
+    return (
+        f"code, pre {{ font-family: {CODE_FONT}; background-color: "
+        f"{background}; }}"
+    )
 
 ROLE_PREFIXES = {
     "user": "你",
@@ -152,6 +157,7 @@ class ChatPanel(QWidget):
         self._cancel_event = None
         self._running = False
         self._in_flight_text = ""
+        self._mode = theme.DEFAULT_MODE
         self._tool_bridge = None
         self._project_root = None
         self._registry_issue_codes = ()
@@ -651,27 +657,60 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Fixed,
         )
         body.document().setDocumentMargin(0)
-        body.document().setDefaultStyleSheet(MARKDOWN_STYLE)
         wrap = QTextOption()
         wrap.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         body.document().setDefaultTextOption(wrap)
-        body.setMarkdown(body_text)
-        # Markdown code fences arrive as non-breakable lines, which would be
-        # clipped inside a 400px bubble; let them wrap like the prose.
-        cursor = QTextCursor(body.document())
-        block = body.document().begin()
-        while block.isValid():
-            block_format = block.blockFormat()
-            if block_format.nonBreakableLines():
-                block_format.setNonBreakableLines(False)
-                cursor.setPosition(block.position())
-                cursor.setBlockFormat(block_format)
-            block = block.next()
+        self._render_body(body, body_text)
         body.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         column.addWidget(body)
         return bubble
+
+    def _render_body(self, body: QTextBrowser, text: str) -> None:
+        """Render Markdown into *body* using the current mode's code style."""
+
+        body.setProperty("rawText", text)
+        body.document().setDefaultStyleSheet(markdown_style(self._mode))
+        body.setMarkdown(text)
+        # Markdown code fences arrive as non-breakable lines, which would be
+        # clipped inside a 400px bubble; let them wrap like the prose.
+        cursor = QTextCursor(body.document())
+        code_background = QBrush(QColor(theme.palette(self._mode)["code_bg"]))
+        block = body.document().begin()
+        while block.isValid():
+            block_format = block.blockFormat()
+            if block_format.nonBreakableLines():
+                block_format.setNonBreakableLines(False)
+                # Qt's markdown importer marks code fences as non-breakable
+                # blocks; that flag is the reliable "this is code" marker, so
+                # the background goes on here rather than through the
+                # stylesheet (which the importer ignores for block backgrounds).
+                block_format.setBackground(code_background)
+                cursor.setPosition(block.position())
+                cursor.setBlockFormat(block_format)
+            block = block.next()
+
+    def set_theme_mode(self, mode: object) -> None:
+        """Re-render every bubble when the palette (and so code style) changes."""
+
+        wanted = theme.normalise_mode(mode)
+        if wanted == self._mode:
+            return
+        self._mode = wanted
+        for row in range(self.message_list.count()):
+            widget = self.message_list.itemWidget(self.message_list.item(row))
+            body = (
+                widget.findChild(QTextBrowser, "chatBody")
+                if widget is not None
+                else None
+            )
+            if body is None:
+                continue
+            raw = body.property("rawText")
+            if isinstance(raw, str):
+                self._render_body(body, raw)
+        self._relayout_bubbles()
 
     def _relayout_bubbles(self) -> None:
         """Re-wrap bubbles after the list width changes."""

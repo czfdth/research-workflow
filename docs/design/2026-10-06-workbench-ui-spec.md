@@ -28,6 +28,7 @@
 | `04-human-checkpoints.svg` | 有待人工决定 | 每条 checkpoint 一个问题 + 一个落笔位置 |
 | `05-settings-dialog.svg` | 设置 | provider 与工作流分区，保存为主按钮 |
 | `06-chat-bubbles.svg` | 对话四种角色 | 你 / 助手 / 工具 / 错误各一条，工具条带 risk chip |
+| `07-narrow-collapsed.svg` | 窄窗口（900×700） | 对话栏收起，详情栏占满；工具栏对话按钮露出关闭态 |
 
 `04` 是设计上新增的界面：数据来自 `readiness.human_review.checkpoints`
 （见 `docs/skillpack-format.md` 同一批工作）。它把"待人工"从 key 列表
@@ -157,5 +158,4 @@ Figma：`File → Import`（或直接把 `.svg` 拖进画布）。每个 `<g id=
 还没做：
 
 1. 动效（hover/切换过渡）没有定义。
-2. 代码块只有等宽字体、没有底色（文档样式表拿不到工作台色板，底色会在深色下错），
-   要做得更好需要按模式重建 document stylesheet。
+2. hover 态的过渡没做（Qt QSS 不支持 transition，只能靠事件动画，收益不大）。

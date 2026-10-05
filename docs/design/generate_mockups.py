@@ -278,13 +278,14 @@ def chip(svg: Svg, x: float, y: float, label: str, *, fill: str = CHIP,
 
 def toolbar(svg: Svg, summary: str) -> None:
     parts = [
-        svg.rect(0, 0, W, TOOLBAR_H, fill=PANEL),
-        svg.line(0, TOOLBAR_H, W, TOOLBAR_H),
+        svg.rect(0, 0, svg.width, TOOLBAR_H, fill=PANEL),
+        svg.line(0, TOOLBAR_H, svg.width, TOOLBAR_H),
         svg.mark(10, 9),
         svg.text(40, 25, "论文工作台", size=12, weight=600),
         button(svg, 122, 6, 80, "刷新", icon_name="refresh"),
         button(svg, 210, 6, 74, "设置", icon_name="settings"),
-        svg.text(W - 12, 24, summary, size=12, fill=MUTED, anchor="end"),
+        button(svg, 292, 6, 36, "", icon_name="chat"),
+        svg.text(svg.width - 12, 24, summary, size=12, fill=MUTED, anchor="end"),
     ]
     svg.layer("toolbar", *parts)
 
@@ -293,10 +294,10 @@ def status_bar(svg: Svg, workflow: str, credential: str) -> None:
     y = H - STATUS_H
     svg.layer(
         "status-bar",
-        svg.rect(0, y, W, STATUS_H, fill=PANEL),
-        svg.line(0, y, W, y),
+        svg.rect(0, y, svg.width, STATUS_H, fill=PANEL),
+        svg.line(0, y, svg.width, y),
         svg.text(12, y + 16, workflow, size=11, fill=MUTED),
-        svg.text(W - 12, y + 16, credential, size=11, fill=OK, anchor="end"),
+        svg.text(svg.width - 12, y + 16, credential, size=11, fill=OK, anchor="end"),
     )
 
 
@@ -305,7 +306,8 @@ def project_list(
     items: list[tuple[str, str | None]],
     selected: int,
 ) -> None:
-    x, y, w, h = MARGIN, BODY_Y, SIDEBAR_W, BODY_H
+    x, y, w = MARGIN, BODY_Y, SIDEBAR_W
+    h = svg.height - BODY_Y - STATUS_H - MARGIN
     parts = [
         svg.rect(x, y, w, h, fill=PANEL, stroke=LINE, r=6),
         svg.text(x + 12, y + 24, "项目", size=11, fill=MUTED, weight=600),
@@ -328,7 +330,8 @@ def project_list(
 
 
 def chat_panel(svg: Svg, configured: bool, messages: list[tuple[str, str]] | None = None) -> None:
-    x, y, w, h = CHAT_X, BODY_Y, CHAT_W, BODY_H
+    x, y, w = CHAT_X, BODY_Y, CHAT_W
+    h = svg.height - BODY_Y - STATUS_H - MARGIN
     parts = [
         svg.rect(x, y, w, h, fill=PANEL, stroke=LINE, r=6),
         svg.text(x + 12, y + 24, "对话", size=11, fill=MUTED, weight=600),
@@ -411,8 +414,10 @@ def detail_header(
     badges: list[tuple[str, bool]],
     *,
     broken: bool = False,
+    x: float = DETAIL_X,
+    w: float = DETAIL_W,
 ) -> None:
-    x, y, w, h = DETAIL_X, BODY_Y, DETAIL_W, 96
+    y, h = BODY_Y, 96
     parts = [
         svg.rect(x, y, w, h, fill=PANEL, stroke=LINE, r=6),
         svg.text(x + 14, y + 32, slug, size=17, fill=INK, weight=600),
@@ -432,12 +437,19 @@ def detail_header(
     svg.layer("detail-header", *parts)
 
 
-def action_row(svg: Svg, summary: str, summary_colour: str, *, wide: bool = False) -> None:
+def action_row(
+    svg: Svg,
+    summary: str,
+    summary_colour: str,
+    *,
+    x: float = DETAIL_X,
+    w: float = DETAIL_W,
+) -> None:
     y = BODY_Y + 104
     parts = [
         button(
             svg,
-            DETAIL_X,
+            x,
             y,
             118,
             "运行 validate",
@@ -446,14 +458,14 @@ def action_row(svg: Svg, summary: str, summary_colour: str, *, wide: bool = Fals
         ),
         button(
             svg,
-            DETAIL_X + 126,
+            x + 126,
             y,
             138,
             "运行 milestones",
             icon_name="milestones",
         ),
         svg.text(
-            DETAIL_X + (DETAIL_W if not wide else DETAIL_W) - 4,
+            x + w - 4,
             y + 19,
             summary,
             size=12,
@@ -464,10 +476,15 @@ def action_row(svg: Svg, summary: str, summary_colour: str, *, wide: bool = Fals
     svg.layer("action-row", *parts)
 
 
-def results_table(svg: Svg, rows: list[tuple[str, str, str]], *, height: int = 526) -> None:
-    x = DETAIL_X
+def results_table(
+    svg: Svg,
+    rows: list[tuple[str, str, str]],
+    *,
+    height: int = 526,
+    x: float = DETAIL_X,
+    w: float = DETAIL_W,
+) -> None:
     y = BODY_Y + 140
-    w = DETAIL_W
     parts = [
         svg.rect(x, y, w, height, fill=PANEL, stroke=LINE, r=6),
         svg.rect(x + 1, y + 1, w - 2, 28, fill=TABLE_HEADER, r=5),
@@ -494,10 +511,12 @@ def checkpoint_panel(
     items: list[tuple[str, str, str, str]],
     *,
     banner: str,
+    x: float = DETAIL_X,
+    w: float = DETAIL_W,
+    y: float = BODY_Y,
 ) -> None:
     """The proposed "待人工决定" surface, fed by readiness.human_review.checkpoints."""
 
-    x, y, w = DETAIL_X, BODY_Y, DETAIL_W
     parts = [
         svg.rect(x, y, w, 72, fill=PENDING_BG, stroke=PENDING_BORDER, r=6),
         svg.text(x + 14, y + 28, banner, size=13, fill=ADVISORY, weight=600),
@@ -752,6 +771,68 @@ def screen_chat_bubbles() -> str:
     return svg.render()
 
 
+def screen_narrow() -> str:
+    """The collapsed layout: below the breakpoint the conversation column is
+    gone and the detail pane takes over its width."""
+
+    width, height = 900, 700
+    svg = Svg(width, height)
+    toolbar(svg, "3 个项目 · 1 个无法读取")
+    project_list(
+        svg,
+        [
+            ("broken-project", "无法解析 ccfa.yaml"),
+            ("rag-attack-defense", None),
+            ("shadowmem-extension", None),
+        ],
+        1,
+    )
+    detail_x = MARGIN + SIDEBAR_W + MARGIN
+    detail_w = width - detail_x - MARGIN
+    detail_header(
+        svg,
+        "rag-attack-defense",
+        "模式 conference · 更新于 2026-10-05",
+        [
+            ("阶段 internal-review", False),
+            ("门禁 review_cleared", False),
+            ("截止 2027-02-15", False),
+        ],
+        x=detail_x,
+        w=detail_w,
+    )
+    action_row(svg, "3 项待人工", PROBLEM, x=detail_x, w=detail_w)
+    checkpoint_panel(
+        svg,
+        [
+            (
+                "approve",
+                "主证明逐行成立吗？每一步推理与所依赖的假设是否都站得住？",
+                "data/proof-audit.yaml",
+                "写 reviewer、结论与复核证据路径",
+            ),
+            (
+                "approve",
+                "关键引用是否真的支撑它所在的那句论断，而不只是存在？",
+                "data/citation-support.yaml",
+                "逐条写 supports 与判定依据",
+            ),
+            (
+                "feedback",
+                "第二位人类编码者完成盲法编码了吗？一致率达到预设门槛了吗？",
+                "data/human-coding-report.json",
+                "写 coders、agreement、kappa 与分歧裁决",
+            ),
+        ],
+        banner="待人工复核：3 项 · 对话栏已收起",
+        x=detail_x,
+        w=detail_w,
+        y=BODY_Y + 140,
+    )
+    status_bar(svg, "工作流：默认（仓库根）", "凭据可用")
+    return svg.render()
+
+
 def dialog_settings() -> str:
     w, h = 560, 533
     svg = Svg(w, h, background=CANVAS)
@@ -825,6 +906,7 @@ SCREENS = {
     "04-human-checkpoints.svg": screen_checkpoints,
     "05-settings-dialog.svg": dialog_settings,
     "06-chat-bubbles.svg": screen_chat_bubbles,
+    "07-narrow-collapsed.svg": screen_narrow,
 }
 
 

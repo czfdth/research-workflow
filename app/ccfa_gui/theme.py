@@ -53,6 +53,7 @@ LIGHT = {
     "separator": "#d0d5dd",
     "placeholder_icon": "#c9c9d1",
     "selection": "#cfe0ff",
+    "code_bg": "#eef0f3",
 }
 
 DARK = {
@@ -89,6 +90,7 @@ DARK = {
     "separator": "#3f3f4a",
     "placeholder_icon": "#55555f",
     "selection": "#3a3f6b",
+    "code_bg": "#2b2b34",
 }
 
 PALETTES = {"light": LIGHT, "dark": DARK}

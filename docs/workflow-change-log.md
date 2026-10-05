@@ -656,3 +656,24 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T180937Z-40463a8128 - Give code blocks a mode-aware background and add the narrow/collapsed design screen (07) in both themes.
+
+- timestamp: `2026-10-05T18:09:37Z`
+- status: `complete`
+- author: `codex`
+- reason: 两处尾巴：代码块只有等宽字体没有底色；设计稿没有折叠态，无法核对窄窗口那一屏。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/chat_panel.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_chat_panel.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/07-narrow-collapsed.svg`
+  - `docs/design/exports/dark/07-narrow-collapsed.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `app unittest discover (223 tests)`
+  - `ruff check app`
+- notes: Qt 的 markdown 导入器忽略样式表里的块背景，改用 nonBreakableLines 标记识别代码块并直接设置 block 背景；深浅色采样确认 #eef0f3 / #2b2b34 生效。
+

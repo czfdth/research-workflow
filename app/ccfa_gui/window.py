@@ -182,6 +182,7 @@ class MainWindow(QMainWindow):
 
         self._palette = theme.palette(self._mode)
         self.setStyleSheet(theme.stylesheet(self._mode))
+        self.chat_panel.set_theme_mode(self._mode)
         self._apply_icons()
         self._apply_responsive_layout(animate=False)
 
