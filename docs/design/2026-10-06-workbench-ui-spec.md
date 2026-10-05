@@ -26,6 +26,7 @@
 | `03-workbench-blocked.svg` | ccfa.yaml 坏了 | 红色徽章 + 单行原因，完整报错进结果表 |
 | `04-human-checkpoints.svg` | 有待人工决定 | 每条 checkpoint 一个问题 + 一个落笔位置 |
 | `05-settings-dialog.svg` | 设置 | provider 与工作流分区，保存为主按钮 |
+| `06-chat-bubbles.svg` | 对话四种角色 | 你 / 助手 / 工具 / 错误各一条，工具条带 risk chip |
 
 `04` 是设计上新增的界面：数据来自 `readiness.human_review.checkpoints`
 （见 `docs/skillpack-format.md` 同一批工作）。它把"待人工"从 key 列表
@@ -75,6 +76,12 @@ severity 上色，消息列超出截断并把全文放进 tooltip。
 **对话面板**：引擎下拉在顶部，消息区自成一框，底部输入区 + 发送。
 未配置 provider 时提示写在输入框上方，不弹窗打断。
 
+**对话气泡**：一条消息一个圆角卡片，左上角是角色名，正文可换行可选中。
+角色决定底色：`user` 主色淡底、`assistant` 普通面板、`tool` 灰底、
+`error` 红底（角色名也转红）、`stopped` 琥珀底。工具消息把
+`名字 [risk] -> outcome` 拆成三段：名字当角色名、risk 当 chip（按 outcome 上色），
+outcome 作正文。列表项本身仍保留纯文本，脚本消费者不受影响。
+
 **checkpoint 卡**：类型 chip（`approve` 灰 / `feedback` 琥珀）、右侧一个
 `打开台账` 动作、问题一行、落笔位置一行（等宽 + 次要色）。
 卡片只回答"要判断什么"和"写哪"，不在这里直接编辑台账。
@@ -119,10 +126,12 @@ Figma：`File → Import`（或直接把 `.svg` 拖进画布）。每个 `<g id=
    卡片与检查结果表共用一个位置，由 stack 切换。
 2. 深浅两套色板 + 跟随系统配色（`theme.py` / `appearance.py`，`CCFA_THEME` 可覆盖）。
 3. <1000px 自动收起对话栏，工具栏按钮可手动叫回。
+4. 对话气泡：五种角色各有底色与角色名配色，工具消息拆成名字 / risk chip /
+   outcome 三段（`06-chat-bubbles.svg` 是它的设计稿）。
 
 还没做：
 
 1. **设计稿导出仍只有浅色一套**，深色版 SVG 没生成（`generate_mockups.py`
    目前用 `LIGHT`）。
-2. 对话面板的消息气泡样式（多轮、工具调用、错误态）既没出稿也没实现。
-3. 动效（hover/切换过渡）没有定义。
+2. 动效（hover/切换过渡）没有定义。
+3. 气泡内的 Markdown 渲染（代码块、列表）仍按纯文本显示。

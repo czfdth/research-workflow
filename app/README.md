@@ -87,6 +87,11 @@ cd app
 键名一致并有测试钉住。窗口窄于 1000px 时右栏对话自动收起，工具栏的对话按钮
 可以手动叫回来。
 
+对话消息按角色渲染成气泡：`user` 主色淡底、`assistant` 面板、`tool` 灰底，
+`error` 红底、`stopped` 琥珀底；工具消息的 `名字 [risk] -> outcome` 会拆成
+名字 / risk chip / outcome 三段，chip 颜色跟 outcome 走。列表项仍保留纯文本
+（`item.text()` 不变），所以既有脚本消费者不受影响。
+
 | 按钮 | 调用的工作流命令 | 结果 |
 | --- | --- | --- |
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |

@@ -500,3 +500,22 @@ rewrite historical entries.
   - `ruff check app`
 - notes: 深色截图确认色板生效；900px 截图确认对话栏收起；三栏显式最小宽度是折叠能生效的前提。
 
+## WC-20261005T174851Z-9430eff04f - Render chat messages as role bubbles (user/assistant/tool/error/stopped) and add the matching design screen.
+
+- timestamp: `2026-10-05T17:48:51Z`
+- status: `complete`
+- author: `codex`
+- reason: 对话面板之前是纯文本列表项，工具调用和错误只能靠前缀区分，也没出过设计稿。
+- files:
+  - `app/README.md`
+  - `app/ccfa_gui/chat_panel.py`
+  - `app/ccfa_gui/theme.py`
+  - `app/tests/test_chat_panel.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `docs/design/exports/06-chat-bubbles.svg`
+  - `docs/design/generate_mockups.py`
+- tests:
+  - `app unittest discover (220 tests)`
+  - `ruff check app`
+- notes: 列表项仍保留纯文本，item.text() 消费方不受影响；第一次 sizeHint 在样式生效前算出会截断一行气泡，已改为 adjustSize + 事件循环后再量一次。
+

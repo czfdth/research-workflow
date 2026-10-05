@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QThread, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from ccfa_core.engines.base import EngineError, EngineReply
 from ccfa_core.secrets import SecretStoreUnavailable
@@ -217,6 +217,51 @@ class ChatPanelTests(unittest.TestCase):
             )
             for row in range(panel.message_list.count())
         ]
+
+    def test_messages_render_as_role_bubbles(self):
+        panel = self._panel()
+
+        panel._append_message("user", "看一下主证明")
+        panel._append_message("assistant", "第 3 步的假设没有被用到")
+        panel._append_message("tool", "read_file [read] -> ok")
+        panel._append_message("error", "引擎超时")
+        APP.processEvents()
+
+        roles = []
+        for row in range(panel.message_list.count()):
+            item = panel.message_list.item(row)
+            widget = panel.message_list.itemWidget(item)
+            with self.subTest(row=row):
+                self.assertIsNotNone(widget, "每条消息都应有气泡部件")
+                roles.append(widget.property("role"))
+                # The plain text stays on the item for existing consumers.
+                self.assertTrue(item.text())
+                self.assertGreater(item.sizeHint().height(), 0)
+
+        self.assertEqual(roles, ["user", "assistant", "tool", "error"])
+
+    def test_tool_bubble_splits_name_risk_and_outcome(self):
+        panel = self._panel()
+
+        panel._append_message("tool", "write_file [write] -> denied")
+        APP.processEvents()
+
+        item = panel.message_list.item(0)
+        widget = panel.message_list.itemWidget(item)
+        labels = {
+            child.objectName(): child.text()
+            for child in widget.findChildren(QLabel)
+        }
+
+        self.assertEqual(labels.get("chatRole"), "write_file")
+        self.assertEqual(labels.get("chatChip"), "write")
+        self.assertEqual(labels.get("chatBody"), "denied")
+        chip = next(
+            child
+            for child in widget.findChildren(QLabel)
+            if child.objectName() == "chatChip"
+        )
+        self.assertEqual(chip.property("state"), "problem")
 
     def _send(self, panel, text):
         panel.input_edit.setPlainText(text)

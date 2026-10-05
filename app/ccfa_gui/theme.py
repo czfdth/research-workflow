@@ -212,6 +212,61 @@ def stylesheet(mode: object = DEFAULT_MODE) -> str:
         border-color: {p['badge_advisory_border']};
         color: {p['advisory']};
     }}
+    QLabel[role="badge"][state="ok"] {{
+        background: {p['banner_ok_bg']};
+        border-color: {p['banner_ok_border']};
+        color: {p['ok']};
+    }}
+
+    QFrame#chatBubble {{
+        background: {p['panel']};
+        border: 1px solid {p['line']};
+        border-radius: 6px;
+    }}
+    QFrame#chatBubble[role="user"] {{
+        background: {p['row_selected']};
+    }}
+    QFrame#chatBubble[role="tool"] {{
+        background: {p['chip']};
+    }}
+    QFrame#chatBubble[role="error"] {{
+        background: {p['badge_problem_bg']};
+        border-color: {p['badge_problem_border']};
+    }}
+    QFrame#chatBubble[role="stopped"] {{
+        background: {p['banner_pending_bg']};
+        border-color: {p['banner_pending_border']};
+    }}
+    QLabel#chatRole {{
+        color: {p['muted']};
+        font-weight: 600;
+    }}
+    QFrame#chatBubble[role="user"] QLabel#chatRole {{ color: {p['accent']}; }}
+    QFrame#chatBubble[role="error"] QLabel#chatRole {{ color: {p['problem']}; }}
+    QFrame#chatBubble[role="stopped"] QLabel#chatRole {{ color: {p['advisory']}; }}
+    QLabel#chatBody {{ color: {p['ink']}; }}
+    QLabel#chatChip {{
+        background: {p['panel']};
+        border: 1px solid {p['line']};
+        border-radius: 4px;
+        padding: 1px 6px;
+        color: {p['muted']};
+    }}
+    QLabel#chatChip[state="ok"] {{
+        background: {p['banner_ok_bg']};
+        border-color: {p['banner_ok_border']};
+        color: {p['ok']};
+    }}
+    QLabel#chatChip[state="problem"] {{
+        background: {p['badge_problem_bg']};
+        border-color: {p['badge_problem_border']};
+        color: {p['problem']};
+    }}
+    QLabel#chatChip[state="advisory"] {{
+        background: {p['badge_advisory_bg']};
+        border-color: {p['badge_advisory_border']};
+        color: {p['advisory']};
+    }}
 
     QPushButton {{
         background: {p['panel']};

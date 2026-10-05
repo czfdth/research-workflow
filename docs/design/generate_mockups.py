@@ -54,6 +54,26 @@ FIELD_BORDER = "#d0d5dd"
 MONO = "'JetBrains Mono', Consolas, 'Cascadia Mono', monospace"
 SANS = "'Inter', 'Segoe UI', 'Microsoft YaHei UI', sans-serif"
 
+# Chat bubble roles: role label, fill, border, label colour.
+BUBBLES = {
+    "user": {"label": "你", "fill": SELECTED, "border": LINE, "text": ACCENT},
+    "assistant": {"label": "助手", "fill": PANEL, "border": LINE, "text": MUTED},
+    "tool": {"label": "read_file  [read]", "fill": CHIP, "border": LINE, "text": OK},
+    "tool-denied": {
+        "label": "write_file  [write]",
+        "fill": CHIP,
+        "border": LINE,
+        "text": PROBLEM,
+    },
+    "error": {"label": "错误", "fill": "#fef3f2", "border": "#fecdca", "text": PROBLEM},
+    "stopped": {
+        "label": "已停止",
+        "fill": "#fffaeb",
+        "border": "#fedf89",
+        "text": ADVISORY,
+    },
+}
+
 W, H = 1280, 800
 TOOLBAR_H = 40
 STATUS_H = 24
@@ -300,13 +320,50 @@ def chat_panel(svg: Svg, configured: bool, messages: list[tuple[str, str]] | Non
     box_h = h - 300
     parts.append(svg.rect(x + 12, box_y, w - 24, box_h, fill=PANEL, stroke=LINE, r=6))
     if messages:
-        text_y = box_y + 26
-        for author, body in messages:
+        bubble_y = box_y + 10
+        for role, body in messages:
+            bubble_h = 58 if len(body) <= 34 else 76
             parts.append(
-                svg.text(x + 26, text_y, author, size=11, fill=MUTED, weight=600)
+                svg.rect(
+                    x + 22,
+                    bubble_y,
+                    w - 44,
+                    bubble_h,
+                    fill=BUBBLES[role]["fill"],
+                    stroke=BUBBLES[role]["border"],
+                    r=6,
+                )
             )
-            parts.append(svg.text(x + 26, text_y + 20, body, size=12))
-            text_y += 56
+            parts.append(
+                svg.text(
+                    x + 34,
+                    bubble_y + 22,
+                    BUBBLES[role]["label"],
+                    size=11,
+                    fill=BUBBLES[role]["text"],
+                    weight=600,
+                )
+            )
+            parts.append(
+                svg.text(
+                    x + 34,
+                    bubble_y + 42,
+                    clip(body, 34),
+                    size=12,
+                    fill=INK,
+                )
+            )
+            if len(body) > 34:
+                parts.append(
+                    svg.text(
+                        x + 34,
+                        bubble_y + 62,
+                        clip(body[34:], 34),
+                        size=12,
+                        fill=INK,
+                    )
+                )
+            bubble_y += bubble_h + 8
     parts.extend(
         [
             svg.text(
@@ -633,6 +690,47 @@ def screen_checkpoints() -> str:
     return svg.render()
 
 
+def screen_chat_bubbles() -> str:
+    """The conversation column with every message role on screen at once."""
+
+    svg = Svg(W, H)
+    toolbar(svg, "3 个项目 · 1 个无法读取")
+    project_list(
+        svg,
+        [
+            ("broken-project", "无法解析 ccfa.yaml"),
+            ("rag-attack-defense", None),
+            ("shadowmem-extension", None),
+        ],
+        1,
+    )
+    detail_header(
+        svg,
+        "rag-attack-defense",
+        "模式 conference · 更新于 2026-10-05",
+        [
+            ("阶段 internal-review", False),
+            ("门禁 review_cleared", False),
+            ("截止 2027-02-15", False),
+        ],
+    )
+    action_row(svg, "1 条结果 · 全部通过", OK)
+    results_table(svg, [("validate", "OK", "无问题")])
+    chat_panel(
+        svg,
+        configured=True,
+        messages=[
+            ("user", "RAG 攻击面那节的引用是不是撑不住？"),
+            ("assistant", "4.2 节的 [12] 只证明了检索污染可行，没有支撑端到端攻击成功。"),
+            ("tool", "ok"),
+            ("tool-denied", "denied"),
+            ("error", "引擎超时：provider 60s 内没有返回"),
+        ],
+    )
+    status_bar(svg, "工作流：默认（仓库根）", "凭据可用")
+    return svg.render()
+
+
 def dialog_settings() -> str:
     w, h = 560, 533
     svg = Svg(w, h, background=CANVAS)
@@ -705,6 +803,7 @@ SCREENS = {
     "03-workbench-blocked.svg": screen_blocked,
     "04-human-checkpoints.svg": screen_checkpoints,
     "05-settings-dialog.svg": dialog_settings,
+    "06-chat-bubbles.svg": screen_chat_bubbles,
 }
 
 
