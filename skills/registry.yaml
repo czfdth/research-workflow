@@ -165,6 +165,10 @@ skills:
     source: {root: codex, path: cell-cns-figure}
     description: Create, polish and review Cell/Nature/Science-style quantitative figures.
     dependencies: [ccf-common]
+  - id: drawio-skill
+    source: {root: codex, path: drawio-skill}
+    description: Create and edit editable draw.io architecture, UML, BPMN, network and swimlane diagrams, and sync, query, review and export existing ones.
+    dependencies: [ccf-common]
   - id: pyzotero
     source: {root: agents, path: pyzotero}
     description: Programmatic Zotero library management through Web API or local API.
