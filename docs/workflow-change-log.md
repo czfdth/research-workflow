@@ -1144,3 +1144,14 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261005T201620Z-a6490aa603 - Keep the paper CI deterministic gates identical on Windows and Linux
+
+- timestamp: `2026-10-05T20:16:20Z`
+- status: `complete`
+- author: `codex`
+- reason: The paper repository now runs the deterministic gates on ubuntu-latest through .github/scripts/deterministic-gates.sh as well as inline with pwsh on windows-latest. A fail-closed test asserts both runners exercise exactly the same ccfa tool set, so the Linux job cannot silently become a weaker check.
+- files:
+  - `tools/tests/test_github_workflows.py`
+- tests:
+  - `tools.tests.test_github_workflows`
+
