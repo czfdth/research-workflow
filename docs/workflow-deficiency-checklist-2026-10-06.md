@@ -26,6 +26,7 @@ This checklist turns the live GitHub comparison into explicit work items.
 | P1-5 | Automatic code mutation and new research-plan generation | Sandboxed code-resolved | `autoresearch.py` generates `research-plan-candidates.yaml` and model-authored file replacements for explicitly allowed files; mutations are applied and tested in a disposable sandbox, recorded as diffs, and never modify the source repo or claim registry |
 | P1-6 | Cross-session long-task continuation | Code-resolved | `long_task.py` stores a task spec and hash-chained append-only events under `ccfa-workfiles/tasks/`; `resume` replays state from disk and `run-next` executes the next command with run-log evidence |
 | P1-7 | Skill composability and independent installation | Code-resolved; P0 external skills registered | `skills/registry.yaml` resolves `repo`/`codex`/`agents` source roots, rejects cycles, derives content-hash versions for unversioned external skills, builds verifiable `.skillpack` archives, and installs selected skills with dependencies. The 15 P0 CCF skills are now registered without copying their source |
+| P1-8 | Nature/Cell P1 methodology skills are outside the registry | Registered | The 18 `nature-*` skills plus `cell-cns-figure` are registered via the `codex` source root, dependency-checked, and pack/install verified without copying their source trees |
 
 ## P2
 

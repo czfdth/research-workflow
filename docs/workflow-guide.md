@@ -288,6 +288,9 @@ registry 会解析并安装依赖，拒绝依赖环；每个 skill 使用可校�
 和 `agents` 三类 source root，因此全局技能可以只登记、不复制原文；外部源缺失时
 普通 check 记为不可用，`--strict-external` 会把它升级为 problem。
 
+当前 registry 已登记 5 个仓库内 `ccfa-*` 技能、15 个 P0 CCF 技能，以及
+18 个 `nature-*` 加 `cell-cns-figure` 的 P1 方法学技能，共 39 个。
+
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
 ### `experiments-running`：运行并留档

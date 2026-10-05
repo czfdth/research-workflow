@@ -829,3 +829,18 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T185201Z-74478856dd - Register P1 Nature and Cell methodology skills
+
+- timestamp: `2026-10-05T18:52:01Z`
+- status: `complete`
+- author: `codex`
+- reason: Expand the external-source registry with the selected Nature/Cell skill set now that source roots, content hashes, dependency resolution, packing and installation are in place.
+- files:
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+

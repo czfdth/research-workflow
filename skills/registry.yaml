@@ -89,3 +89,79 @@ skills:
     source: {root: codex, path: ccf-visual-composer}
     description: Render CCF figures, visual tables and method diagrams.
     dependencies: [ccf-common, ccfa-core]
+  - id: nature-academic-search
+    source: {root: codex, path: nature-academic-search}
+    description: Literature search, citation management, MeSH strategy and citation-impact audit.
+    dependencies: [ccf-common]
+  - id: nature-citation
+    source: {root: codex, path: nature-citation}
+    description: Find and verify Nature/CNS-family literature supporting manuscript claims.
+    dependencies: [nature-academic-search, ccfa-evidence]
+  - id: nature-data
+    source: {root: codex, path: nature-data}
+    description: Draft or audit Data/Code Availability statements, repository plans and FAIR metadata.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: nature-downloader
+    source: {root: codex, path: nature-downloader}
+    description: Lawful OA, publisher API, CNKI institutional and supporting-information retrieval routes.
+    dependencies: [nature-academic-search]
+  - id: nature-experiment-log
+    source: {root: codex, path: nature-experiment-log}
+    description: Standardized experiment logs with YAML frontmatter and optional Feishu/Obsidian integration.
+    dependencies: [ccfa-core]
+  - id: nature-figure
+    source: {root: codex, path: nature-figure}
+    description: Create, revise, audit and export manuscript scientific figures.
+    dependencies: [ccf-common]
+  - id: nature-image2ppt
+    source: {root: codex, path: nature-image2ppt}
+    description: Reconstruct slide images, screenshots and scanned PDFs as editable PowerPoint.
+    dependencies: [ccf-common]
+  - id: nature-literature-pipeline
+    source: {root: codex, path: nature-literature-pipeline}
+    description: Automated literature discovery, scoring, fine reading, delivery and archival pipeline.
+    dependencies: [nature-academic-search, nature-paper-card]
+  - id: nature-paper-card
+    source: {root: codex, path: nature-paper-card}
+    description: Structured deep-reading Paper Card with method and evidence-chain analysis.
+    dependencies: [ccf-common]
+  - id: nature-paper-to-patent
+    source: {root: codex, path: nature-paper-to-patent}
+    description: Convert papers or inventor materials into evidence-grounded Chinese patent drafts.
+    dependencies: [ccf-common]
+  - id: nature-paper2ppt
+    source: {root: codex, path: nature-paper2ppt}
+    description: Create or improve a Chinese academic PPTX from a paper or reading notes.
+    dependencies: [nature-paper-card]
+  - id: nature-polishing
+    source: {root: codex, path: nature-polishing}
+    description: Polish, translate or tighten existing academic prose without changing evidence boundaries.
+    dependencies: [ccf-common]
+  - id: nature-reader
+    source: {root: codex, path: nature-reader}
+    description: Source-grounded Chinese-English paper readers with aligned figures, tables and equations.
+    dependencies: [ccf-common]
+  - id: nature-ref-verifier
+    source: {root: codex, path: nature-ref-verifier}
+    description: Multi-source field-by-field verification of references and DOI conflicts.
+    dependencies: [nature-academic-search, ccfa-evidence]
+  - id: nature-response
+    source: {root: codex, path: nature-response}
+    description: Draft, audit or revise peer-review responses, revision letters and LaTeX revision packages.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: nature-reviewer
+    source: {root: codex, path: nature-reviewer}
+    description: Evidence-grounded mock peer review of scientific manuscripts or excerpts.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: nature-statistics
+    source: {root: codex, path: nature-statistics}
+    description: Audit or improve manuscript statistical reporting, experimental units and uncertainty.
+    dependencies: [ccfa-evidence]
+  - id: nature-writing
+    source: {root: codex, path: nature-writing}
+    description: Draft or restructure scientific manuscript arguments, sections and initial-submission materials.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: cell-cns-figure
+    source: {root: codex, path: cell-cns-figure}
+    description: Create, polish and review Cell/Nature/Science-style quantitative figures.
+    dependencies: [ccf-common]
