@@ -83,8 +83,9 @@ class Svg:
         ]
 
     def layer(self, name: str, *parts: str) -> None:
-        body = "".join(parts)
-        self.parts.append(f'<g id="{esc(name)}">{body}</g>')
+        # One element per line keeps the generated files reviewable in git.
+        body = "\n    ".join(part for part in parts if part)
+        self.parts.append(f'<g id="{esc(name)}">\n    {body}\n  </g>')
 
     def rect(
         self,
@@ -132,8 +133,11 @@ class Svg:
         return (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{self.width}" '
             f'height="{self.height}" viewBox="0 0 {self.width} {self.height}">'
-            + "".join(self.parts)
+            + "\n  "
+            + "\n  ".join(self.parts)
+            + "\n"
             + "</svg>"
+            + "\n"
         )
 
 
@@ -621,7 +625,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, builder in SCREENS.items():
         target = OUT_DIR / name
-        target.write_text(builder(), encoding="utf-8")
+        target.write_text(builder(), encoding="utf-8", newline="\n")
         print(f"wrote {target.relative_to(REPO_ROOT).as_posix()}")
     return 0
 
