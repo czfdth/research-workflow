@@ -776,3 +776,23 @@ rewrite historical entries.
   - `ruff check app`
 - notes: 搜索顺序：显式配置/环境变量 → 安装目录 workflow\\ → LOCALAPPDATA Programs → 用户目录两个位置；开发时仓库本身仍优先。捆绑 embeddable Python 的代价写进 README。
 
+## WC-20261005T183936Z-ff72f75d7b - Ship a self-contained workflow runtime for the installer: bundle-workflow.ps1 stages an embeddable CPython + tools sources + pip --target dependencies, and build-workbench.ps1 gains -BundleWorkflow.
+
+- timestamp: `2026-10-05T18:39:36Z`
+- status: `complete`
+- author: `codex`
+- reason: 给合作者用时安装包里只有 app，装完还得自己找并配置工作流目录；venv 不能随包分发（pyvenv.cfg 指向构建机解释器），所以用 embeddable CPython。
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/workflow.py`
+  - `app/tests/test_workflow.py`
+  - `scripts/build-workbench.ps1`
+  - `scripts/bundle-workflow.ps1`
+  - `tools/ccfa/repro_package.py`
+- tests:
+  - `app unittest discover (226 tests)`
+  - `real bundle + embedded CLI run: 169.8 MB, 84 modules import, readiness/validate exit 0 from cwd=C:\`
+  - `tools.tests.test_repro_package (27 tests)`
+  - `tools.tests.test_scripts in the main checkout (136 tests)`
+- notes: 实测发现嵌入版 CPython 不含 venv，repro_package 顶层 import 会让 readiness 崩；已改为惰性 import，并在打包脚本里逐模块 import 自检。
+

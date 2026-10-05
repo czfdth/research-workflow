@@ -72,12 +72,19 @@ scripts/build-workbench.ps1
 
 **捆绑运行时的现状与代价**（给"不发仓库只发 exe"的合作者用）：
 
-- 现在只捆 app，工作流仍需一份检出 + 自己的 `tools/.venv`；
-- 真要做到开箱即用，需要把 **embeddable Python**（不是 venv，venv 里的
-  `pyvenv.cfg` 指向构建机的解释器，换机器就废）+ `tools/` 源码 +
-  `pip install --target` 出来的依赖打进安装包，体积约 250MB 起；
-- 再往上就是 TeX/Docker/GPU 这类外部依赖：Modex 那类产品是把 texlive 整体
-  捆进安装包（1GB 级），我们没有跟。
+- 默认只捆 app（工作流要自己配目录，或放在上面几个搜索位置之一）；
+- 加上 `-BundleWorkflow` 后会多打一个自包含运行时
+  （`scripts/bundle-workflow.ps1`：embeddable CPython + `tools/` 源码 +
+  `pip --target` 依赖 → `dist/ccfa-workbench/workflow/`，实测 **169.8 MB**），
+  安装版开箱即用；
+- 为什么不用 `tools/.venv`：venv 的 `pyvenv.cfg` 指向构建机的解释器，换机器直接废；
+  嵌入版的 `._pth` 把 `..\tools` 与 `..\tools\site-packages` 写进 `sys.path`，
+  且 Python 在有 `._pth` 时会忽略 `PYTHONPATH`；
+- 嵌入版 stdlib 是**裁剪过**的（没有 `venv`、`tkinter`），所以打包脚本会
+  **逐个 import 全部 `ccfa.*` 模块**做自检（当前 84 个），缺模块在构建时就失败，
+  而不是等用户点开某个功能才崩；
+- 再往上就是 TeX/Docker/GPU 这类外部依赖：Modex 那类产品把 texlive 整体捆进
+  安装包（1GB 级），我们没有跟。
 **PySide6 版本**：`requirements.txt` 故意钉在 6.9.1 而不是最新版。用 6.11.2 冻结
 出来的程序启动即报 `DLL load failed while importing QtWidgets`（用一个 10 行的
 最小应用复现过，与本项目代码无关）。升级这个 pin 之前，一定要重跑

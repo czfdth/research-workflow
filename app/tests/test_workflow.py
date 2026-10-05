@@ -44,6 +44,16 @@ class WorkflowClientTests(unittest.TestCase):
 
         self.assertEqual(discover_root([empty]), DEFAULT_ROOT)
 
+    def test_bundled_runtime_layout_wins_over_guessing_an_interpreter(self):
+        bundle = self.root / "workflow"
+        (bundle / "python").mkdir(parents=True)
+        (bundle / "python" / "python.exe").write_bytes(b"")
+        (bundle / "tools" / "ccfa").mkdir(parents=True)
+
+        client = WorkflowClient(root=bundle)
+
+        self.assertEqual(client.python, bundle / "python" / "python.exe")
+
     def test_root_can_come_from_the_environment(self):
         with mock.patch.dict(
             os.environ, {"CCFA_WORKFLOW_ROOT": str(self.root)}, clear=False

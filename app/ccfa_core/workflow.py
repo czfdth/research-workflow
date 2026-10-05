@@ -117,6 +117,11 @@ class WorkflowClient:
         candidate = self.root / "tools" / ".venv" / "Scripts" / "python.exe"
         if candidate.is_file():
             return candidate
+        # Bundled runtime layout (scripts/bundle-workflow.ps1): an embeddable
+        # CPython next to the sources, wired up through its ._pth file.
+        bundled = self.root / "python" / "python.exe"
+        if bundled.is_file():
+            return bundled
         # Inside a frozen build ``sys.executable`` is the app itself, not an
         # interpreter, so it can never run ``-m ccfa.<tool>``. Require the
         # workflow's own interpreter (or an explicit setting) instead.
