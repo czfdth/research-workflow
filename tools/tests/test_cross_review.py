@@ -20,6 +20,36 @@ from ccfa.cross_review import (
 )
 
 
+class ModelFamilyTests(unittest.TestCase):
+    def test_ollama_style_qwen_tags_are_the_qwen_family(self):
+        # Ollama tags carry the version without a dash (qwen3:30b), unlike the
+        # alias the workflow used to rely on (qwen-local).
+        for name in ("qwen3:30b", "qwen3.8:27b-q4_K_M", "qwen2.5:3b", "qwen-local"):
+            with self.subTest(model=name):
+                self.assertEqual(
+                    cross_review_module._model_family(name),
+                    "qwen",
+                )
+
+    def test_deepseek_executor_and_qwen_reviewer_are_cross_family(self):
+        self.assertEqual(
+            cross_review_module._family_judgement("qwen3:30b", "deepseek-v4-flash"),
+            "cross-family",
+        )
+
+    def test_same_family_is_detected_without_a_dash(self):
+        self.assertEqual(
+            cross_review_module._family_judgement("deepseek-v4-pro", "deepseek-v4-flash"),
+            "same-family",
+        )
+
+    def test_unknown_models_stay_unknown(self):
+        self.assertEqual(
+            cross_review_module._family_judgement("some-unknown-model", "deepseek-v4-flash"),
+            "unknown",
+        )
+
+
 class CrossReviewTests(unittest.TestCase):
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory()

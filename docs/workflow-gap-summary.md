@@ -266,3 +266,43 @@ cvc5  1.3.1  proved  prop:noncomp
 接进 `formal-checks.yaml` 和 CI（CI 还要提供对应 toolchain）。只装二进制不等于有了证明。
 当前 Proposition 4 的独立检查需求由 z3 + cvc5 满足；其余引擎就位，供后续“需要对无界结构
 归纳”的定理使用。
+
+## 十一、跨族评审模型升级（第十一轮补记）
+
+F 盘的本地模型库（`F:\models\ollama`，原生 Ollama 0.35.1）里有比 qwen2.5:3b 强得多的
+模型：
+
+```text
+qwen3:30b              18 GB  Qwen3-30B-A3B（MoE，激活 3B）
+qwen3.8:27b-q4_K_M     17 GB  含视觉投影
+bge-m3:latest         1.2 GB  embedding
+```
+
+原本 11434 端口由 Docker 容器 `ccfa-ollama`（qwen2.5:3b）占用。现已停掉该容器（保留，
+可随时切回），改由原生 Ollama 接管端口并直接使用 F 盘模型库。
+
+### 真实性能（RTX 5060 Laptop 8GB 显存，超出部分走 CPU）
+
+| 模型 | prompt 预填 | 生成 | 完整 cross-review（67 文件 / 33.8 万字符 ≈ 28k tokens） |
+| --- | --- | --- | --- |
+| qwen3:30b (MoE) | 841 tok/s | 39 tok/s | 冷启动 47s，热启动 17s |
+| qwen3.8:27b-q4_K_M | 324 tok/s | 4.7 tok/s | 明显更慢，不推荐 |
+
+结论：**qwen3:30b 可以替代 qwen2.5:3b**，速度可接受，能力明显更强。
+
+### 顺带修掉的 family 判定 bug
+
+`cross_review._MODEL_FAMILIES` 原来只匹配带横线的 `qwen-`，而 Ollama 的真实标签是
+`qwen3:30b`、`qwen3.8:27b-q4_K_M`，会被判成 `unknown`，导致「跨族」判定失效。之前
+`qwen-local` 能过，只是因为它名字里正好带了横线。现已改为按家族前缀匹配
+（qwen / deepseek / llama / mistral / gemma / glm / phi 等），并补了回归测试。
+
+### 必须保留的边界
+
+换用 30B 模型后，`cross-review` 仍然会**错误地宣称人工复核已全部完成**——它的 summary
+写着 “All human review tickets … are fully verified”，而 `data/proof-audit.yaml` 的
+条目实际仍是 pending，`ccfa-workfiles/human-review/README.md` 也明确说这些不是已完成的
+人工复核。更强的模型只是把这句话写得更像真的。
+
+这正好印证了核心边界：**模型评审可以驱动修改，但永远不能开释**。真正阻止 `ready=true`
+的仍是确定性的 `argument-audit` gate；模型说得再满，也不能让 `ready` 变绿。
