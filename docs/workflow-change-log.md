@@ -1170,3 +1170,19 @@ rewrite historical entries.
   - `tools.tests.test_experiment_optimizer`
   - `tools.tests.test_external_adapters`
 
+## WC-20261005T213608Z-637574217a - Record an end-to-end snapshot of the flagship paper: gate verdicts, the six human checkpoints, environment health and the workbench-side links actually rerun.
+
+- timestamp: `2026-10-05T21:36:08Z`
+- status: `complete`
+- author: `codex`
+- reason: The layered checks each answered one question, but nothing stated the current whole-paper state in one place, so it was impossible to see at a glance that every remaining blocker is human or external rather than mechanical.
+- files:
+  - `docs/e2e-check-2026-10-06.md`
+- tests:
+  - `app export_readiness -> 6200 bytes with ## Summary`
+  - `ccfa.doctor --repo-root repo (0 problems, 1 advisory: zotero 23119)`
+  - `ccfa.readiness --collaboration-only (collaboration_ready=true, commit 5253728)`
+  - `ccfa.readiness on papers/rag-attack-defense (exit 1, 2 blockers, 18/20 gates pass)`
+  - `ccfa_gui.main --self-check (probe_ok=true, exit 0)`
+- notes: Paper repo untouched: every report was written to %TEMP%, and the snapshot records that. 20 gates: 18 pass; argument-audit fails with 8 proof-review-not-verified + 6 citation-support-missing + 1 figure-support-missing, cross-review fails with review-blocking.
+
