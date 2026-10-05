@@ -110,6 +110,8 @@ def _check_audited_inputs(
     required_key: str | None,
     ledger_path: Path,
     problems: list[Problem],
+    *,
+    codes: tuple[str, str] = ("proof-review-unbound", "proof-review-stale"),
 ) -> None:
     """Bind a human attestation to the bytes it claims to have reviewed.
 
@@ -118,11 +120,12 @@ def _check_audited_inputs(
     """
 
     root = Path(paper_root).resolve()
+    unbound_code, stale_code = codes
     inputs = review.get("audited_inputs")
     if not isinstance(inputs, dict) or not inputs:
         problems.append(
             _problem(
-                "proof-review-unbound",
+                unbound_code,
                 ledger_path,
                 None,
                 f"{review_id}: status=verified 必须写 audited_inputs"
@@ -139,7 +142,7 @@ def _check_audited_inputs(
         except (OSError, ValueError):
             problems.append(
                 _problem(
-                    "proof-review-unbound",
+                    unbound_code,
                     ledger_path,
                     None,
                     f"{review_id}: audited_inputs 路径越界: {relative!r}",
@@ -149,7 +152,7 @@ def _check_audited_inputs(
         if not _DIGEST.match(str(digest)):
             problems.append(
                 _problem(
-                    "proof-review-unbound",
+                    unbound_code,
                     ledger_path,
                     None,
                     f"{review_id}: {relative} 的摘要必须是 sha256:<64 位十六进制>",
@@ -160,7 +163,7 @@ def _check_audited_inputs(
         if not target.is_file():
             problems.append(
                 _problem(
-                    "proof-review-unbound",
+                    unbound_code,
                     ledger_path,
                     None,
                     f"{review_id}: audited_inputs 指向的文件不存在: {relative}",
@@ -169,7 +172,7 @@ def _check_audited_inputs(
         elif sha256_of(target) != digest:
             problems.append(
                 _problem(
-                    "proof-review-stale",
+                    stale_code,
                     target,
                     None,
                     f"{review_id}: {relative} 在复核之后被修改，"
@@ -179,7 +182,7 @@ def _check_audited_inputs(
     if required_key is not None and required_key not in seen:
         problems.append(
             _problem(
-                "proof-review-unbound",
+                unbound_code,
                 ledger_path,
                 None,
                 f"{review_id}: audited_inputs 必须包含定理所在文件 {required_key}",
@@ -694,6 +697,26 @@ def _check_citation_support(
                     f"{support_id}: reviewed_at 必须是 YYYY-MM-DD",
                 )
             )
+        if _human_reviewer(support.get("reviewer")):
+            # The human read an evidence source; bind the verdict to those bytes.
+            source_path = support.get("source_path")
+            required = (
+                source_path.strip()
+                if isinstance(source_path, str) and source_path.strip()
+                else None
+            )
+            _check_audited_inputs(
+                support,
+                support_id,
+                paper_root,
+                required,
+                ledger_path,
+                problems,
+                codes=(
+                    "citation-support-unbound",
+                    "citation-support-stale",
+                ),
+            )
         verdict = support.get("verdict")
         if not isinstance(verdict, str) or verdict not in SUPPORT_VERDICTS:
             problems.append(
@@ -1127,6 +1150,22 @@ def _check_figure_support(
             )
             continue
         covered.add(figure_id)
+
+        if _human_reviewer(entry.get("reviewer")):
+            # The human looked at a delivered figure; bind the verdict to it.
+            figure_file = manifest_entry.get("file")
+            _check_audited_inputs(
+                entry,
+                figure_id,
+                paper_root,
+                figure_file if isinstance(figure_file, str) else None,
+                ledger_path,
+                problems,
+                codes=(
+                    "figure-support-unbound",
+                    "figure-support-stale",
+                ),
+            )
 
         note = entry.get("note")
         note_valid = (

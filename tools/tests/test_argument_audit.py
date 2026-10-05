@@ -49,13 +49,16 @@ class ArgumentAuditTests(unittest.TestCase):
     def _audited_main(self):
         """The audited_inputs block for the current manuscript bytes."""
 
-        digest = hashlib.sha256(
-            (self.manuscript / "main.tex").read_bytes()
-        ).hexdigest()
-        return (
-            "    audited_inputs:\n"
-            f"      manuscript/main.tex: sha256:{digest}\n"
-        )
+        return self._audited("manuscript/main.tex")
+
+    def _audited(self, *paths):
+        """The audited_inputs block for the current bytes of *paths*."""
+
+        lines = ["    audited_inputs:"]
+        for raw in paths:
+            digest = hashlib.sha256((self.root / raw).read_bytes()).hexdigest()
+            lines.append(f"      {raw}: sha256:{digest}")
+        return "\n".join(lines) + "\n"
 
     @staticmethod
     def _codes(problems):
@@ -387,13 +390,74 @@ class ArgumentAuditTests(unittest.TestCase):
             "    verdict: supports\n"
             f"    support_quote: \"{quote}\"\n"
             "    source_path: references/smith2024.md\n"
+            + self._audited("references/smith2024.md")
         )
 
         problems, advisories = self._run()
 
+        self.assertEqual(self._codes(problems), set())
         self.assertNotIn("citation-support-missing", self._codes(problems))
         self.assertNotIn("citation-support-quote-not-found", self._codes(problems))
         self.assertIn("citation-support-coverage", self._codes(advisories))
+
+    def test_support_record_without_audited_inputs_is_unbound(self):
+        quote = "Smith et al. show the exact semantic support for this claim."
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "Prior work shows this. \\cite{smith2024}\n"
+        )
+        (self.root / "references" / "smith2024.md").write_text(
+            f"# Notes\n\n{quote}\n",
+            encoding="utf-8",
+        )
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:abstract\n"
+            "    claim_text: Prior work shows this.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: supports\n"
+            f"    support_quote: \"{quote}\"\n"
+            "    source_path: references/smith2024.md\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-unbound", self._codes(problems))
+
+    def test_editing_the_source_afterwards_makes_support_stale(self):
+        quote = "Smith et al. show the exact semantic support for this claim."
+        self._write_tex(
+            "\\section{Abstract}\n"
+            "Prior work shows this. \\cite{smith2024}\n"
+        )
+        source = self.root / "references" / "smith2024.md"
+        source.write_text(f"# Notes\n\n{quote}\n", encoding="utf-8")
+        self._write_support_ledger(
+            "version: 1\n"
+            "supports:\n"
+            "  - id: claim:abstract\n"
+            "    claim_text: Prior work shows this.\n"
+            "    citations: [smith2024]\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    verdict: supports\n"
+            f"    support_quote: \"{quote}\"\n"
+            "    source_path: references/smith2024.md\n"
+            + self._audited("references/smith2024.md")
+        )
+        self.assertEqual(self._codes(self._run()[0]), set())
+
+        source.write_text(
+            f"# Notes\n\n{quote}\n\nAn extra sentence after the review.\n",
+            encoding="utf-8",
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("citation-support-stale", self._codes(problems))
 
     def test_quote_not_in_source_is_a_problem(self):
         self._write_tex(

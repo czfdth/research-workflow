@@ -367,6 +367,16 @@ scripts/rigor-rubric.ps1 check --paper-root $paper
 `audited_inputs`，列出复核时读过的文件及其 sha256。之后任何一次改稿都会让哈希对不上，
 复核当场作废（`proof-review-stale`），不会被一句"我评过了"蒙过去。
 
+同一条规则也覆盖另外两本人工台账：
+
+| 台账 | 必录文件 | 失效码 |
+| --- | --- | --- |
+| `proof-audit.yaml` | 定理所在的手稿文件 | `proof-review-stale` |
+| `citation-support.yaml` | 该条记录的 `source_path`（证据原文） | `citation-support-stale` |
+| `figure-support.yaml` | manifest 里这张图的 `file` | `figure-support-stale` |
+
+缺字段、路径越界、摘要格式错、漏掉必录文件，一律报对应的 `*-unbound`。
+
 ```powershell
 # 复核完成后按当前字节生成片段，粘到台账对应 review 下面
 scripts/argument-audit.ps1 --paper-root $paper `

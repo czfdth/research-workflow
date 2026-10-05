@@ -730,3 +730,19 @@ rewrite historical entries.
   - `tools.tests.test_readiness + test_proof_orchestrator + test_research_ledgers + test_dashboard + test_artifact_badge (95 tests)`
 - notes: 新增错误码 proof-review-unbound / proof-review-stale；--stamp 只打印片段，不写文件。
 
+## WC-20261005T182231Z-68d52db630 - Extend the audited_inputs binding to citation-support and figure-support attestations.
+
+- timestamp: `2026-10-05T18:22:31Z`
+- status: `complete`
+- author: `codex`
+- reason: 上一轮只把人工签字绑到了证明文件；引用语义与图表语义两本台账仍然只记'谁评过'，改稿后同样会静默保持有效。
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/argument_audit.py`
+  - `tools/tests/test_argument_audit.py`
+  - `tools/tests/test_figure_audit.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_argument_audit + test_figure_audit + test_readiness + test_proof_orchestrator (134 tests)`
+- notes: 必录文件：引用=记录里的 source_path，图表=manifest 里的 file；新增 citation-support-unbound/-stale 与 figure-support-unbound/-stale。
+
