@@ -467,3 +467,31 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_github_workflows`
 
+## WC-20261005T175113Z-ef2e542c53 - Extract candidate claims from PDFs and repository text
+
+- timestamp: `2026-10-05T17:51:13Z`
+- status: `complete`
+- author: `codex`
+- reason: Close the PDF/repo-to-claim gap without allowing model auto-acceptance: candidates carry source hashes, page/line locations and verbatim quotes, are written to claim-candidates.yaml, and are checked before human promotion.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/claim-extract.ps1`
+  - `tools/ccfa/claim_extract.py`
+  - `tools/ccfa/pdftext.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_claim_extract.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_pdftext.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_claim_extract`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_pdftext`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+

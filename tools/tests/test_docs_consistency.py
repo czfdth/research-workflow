@@ -70,6 +70,7 @@ CLI_WRAPPERS = {
     "research_state": "scripts/research-state.ps1",
     "ara_compile": "scripts/ara-compile.ps1",
     "ara_extract": "scripts/ara-extract.ps1",
+    "claim_extract": "scripts/claim-extract.ps1",
     "reference_audit": "scripts/reference-audit.ps1",
     "repro_container": "scripts/repro-container.ps1",
     "worktree_audit": "scripts/worktree-audit.ps1",

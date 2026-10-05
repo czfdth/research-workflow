@@ -22,6 +22,7 @@ from ccfa import (
     artifact_badge,
     artifact_store,
     citation_guard,
+    claim_extract,
     cross_review,
     experiment_loop,
     final_check,
@@ -83,6 +84,7 @@ EVIDENCE_LEDGER_PATHS = {
     "artifact-badge": Path("data/artifact-badge.yaml"),
     "formal-checks": Path("data/formal-checks.yaml"),
 }
+CLAIM_CANDIDATES_PATH = Path("data") / "claim-candidates.yaml"
 
 PROFILE_REQUIRED_LEDGERS = {
     "minimal": ("novelty",),
@@ -177,6 +179,12 @@ HUMAN_CHECKPOINT_SPECS = {
             "配置可验证的跨族 provider 后重跑评审，"
             "或完成外部人类评审并写 reviewer、结论与证据"
         ),
+    },
+    "claim-candidates": {
+        "type": "approve",
+        "stage": "idea",
+        "question": "自动抽取的候选 claim 中，哪些应晋升为 authoritative claim，哪些应拒绝？",
+        "answer_with": "逐条 promote/reject，并把接受项写入 data/claim-registry.yaml",
     },
 }
 
@@ -519,6 +527,11 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         specs["repro-package"] = lambda: repro_package.verify_bundle(
             paper_root / "submission" / "repro"
         )
+    if (paper_root / CLAIM_CANDIDATES_PATH).is_file():
+        specs["claim-candidates"] = lambda: claim_extract.check_candidates(
+            paper_root,
+            CLAIM_CANDIDATES_PATH,
+        )
     return list(specs.items())
 
 
@@ -723,6 +736,13 @@ def _human_review_status(
     }
     if review_codes:
         pending.append("cross-review")
+    candidate_payload = _load_structured(paper_root / CLAIM_CANDIDATES_PATH)
+    if (
+        isinstance(candidate_payload, dict)
+        and isinstance(candidate_payload.get("claims"), list)
+        and candidate_payload["claims"]
+    ):
+        pending.append("claim-candidates")
     pending = list(dict.fromkeys(pending))
     if not pending:
         status = "human-attested" if profile == "high-assurance" else "not-required"
@@ -740,7 +760,11 @@ def _human_checkpoints(pending: list[str]) -> list[dict]:
     checkpoints = []
     for key in pending:
         spec = HUMAN_CHECKPOINT_SPECS.get(key)
-        ledger = EVIDENCE_LEDGER_PATHS.get(key)
+        ledger = (
+            CLAIM_CANDIDATES_PATH
+            if key == "claim-candidates"
+            else EVIDENCE_LEDGER_PATHS.get(key)
+        )
         checkpoints.append(
             {
                 "id": key,

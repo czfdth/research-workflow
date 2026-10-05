@@ -122,6 +122,7 @@ jobs:
             tools/ccfa/artifact_badge.py `
             tools/ccfa/artifact_store.py `
             tools/ccfa/change_log.py `
+            tools/ccfa/claim_extract.py `
             tools/ccfa/cross_review.py `
             tools/ccfa/citation_calibration.py `
             tools/ccfa/dashboard.py `
