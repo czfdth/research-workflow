@@ -226,6 +226,7 @@ scripts/proof-run.ps1 check --run-dir "$paper/prompts/260101-01" `
     --notation-required --require-closed
 scripts/cross-review.ps1 check --paper-root $paper --out-dir reviews `
     --strict-cross-family
+scripts/verifiers.ps1 --paper-root $paper
 scripts/formal-check.ps1 --paper-root $paper `
     --out reviews/formal-check.json
 scripts/review-loop.ps1 check --paper-root $paper

@@ -83,6 +83,7 @@ jobs:
             tools/ccfa/dashboard.py `
             tools/ccfa/doctor.py `
             tools/ccfa/experiment_loop.py `
+            tools/ccfa/formal_check.py `
             tools/ccfa/governance_map.py `
             tools/ccfa/meta_optimize.py `
             tools/ccfa/post_submission.py `
@@ -102,6 +103,7 @@ jobs:
             tools/ccfa/test_impact.py
             tools/ccfa/talk_pipeline.py
             tools/ccfa/venue_fixtures.py
+            tools/ccfa/verifiers.py
 
       - name: Run impacted tool tests
         shell: pwsh

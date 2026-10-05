@@ -64,6 +64,7 @@ CCFA_WRAPPERS = {
     "ara_compile": "ara-compile.ps1",
     "dashboard": "dashboard.ps1",
     "formal_check": "formal-check.ps1",
+    "verifiers": "verifiers.ps1",
 }
 NEWPAPER_WRAPPER = "new-paper.ps1"
 NEWPAPER_MODULE = "newpaper.create"

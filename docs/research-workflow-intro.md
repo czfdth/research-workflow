@@ -83,7 +83,7 @@ submitted -> major-revision -> response-letter -> resubmitted -> accepted -> arc
 
 ### 1. 确定性检查
 
-目前仓库包含 28 个 PowerShell CLI 入口和 46 个工具模块，覆盖状态推进、引用核验、
+目前仓库包含 52 个 PowerShell CLI 入口和 69 个工具模块，覆盖状态推进、引用核验、
 数字溯源、来源登记、运行日志、实验队列、复现打包、LaTeX 检查、终稿检查、版本快照、
 文献库、研究记忆、跨模型评审、人工论证审计、readiness 汇总和平台预检。
 
@@ -156,6 +156,21 @@ cross-review 等检查器。
 图表与真人双编码台账继续视为阻塞。科学接受默认是 `not-claimed`，不会把“材料齐全”
 误写成“结论正确”。
 
+### 4.6 形式化验证
+
+`scripts/formal-check.ps1` 运行论文在 `data/formal-checks.yaml` 中声明的机器检查：
+每条检查给出 `engine`、`theorem_id` 和命令，工具执行命令、解析 JSON 输出，并核对
+`id`/`engine`/`theorem_id`/`status` 与台账一致，结果写入 `reviews/formal-check.json`。
+它只认 `proved`/`unsat`/`valid`；任何不一致或未证明都记为 problem。
+
+旗舰论文的 Proposition 4（非组合性）用两个独立 SMT 引擎交叉检查同一个算术核心：
+z3 与 cvc5 都证明其否定不可满足。两个不同实现给出同一结论，比单一引擎更有说服力，
+但仍只覆盖算术/条件核心，语义映射到继承公理这一步仍需人工复核。
+
+`scripts/verifiers.ps1` 清点本机可用的形式化引擎并对照论文声明的引擎：z3、cvc5 为
+可用/已接入，Lean、Julia 为可用，Coq、Isabelle、Agda、Why3、Sage 给出缺失状态与
+安装提示。缺失被如实报告，而不是让 `doctor` 保持“全绿”。
+
 ### 5. 长任务安全
 
 实验队列支持 wall-clock 预算、GPU 秒预算、重试上限、无输出停滞看门狗，以及
@@ -164,9 +179,10 @@ cross-review 等检查器。
 
 ### 6. 平台预检
 
-`scripts/doctor.ps1` 检查 git、LaTeX 工具链、codex、Docker、GPU 工具和两个虚拟环境，
-并说明缺失项会影响哪些能力。`found` 只表示命令在 PATH 上；除 Docker daemon 外，
-预检不会把「能找到」夸大成「已完整运行验证」。
+`scripts/doctor.ps1` 检查 git、LaTeX 工具链、codex、Docker、GPU 工具、两个虚拟环境，
+以及形式化验证器（z3/cvc5/lean/coq/isabelle/agda/why3/sage/julia）。`found` 只表示命令
+在 PATH 上；除 Docker daemon 外，预检不会把「能找到」夸大成「已完整运行验证」。核心
+形式化引擎（z3）缺失会判为 problem，其余引擎缺失为 advisory，`--strict` 全部升级。
 
 ### 7. 桌面工作台与自定义 API
 

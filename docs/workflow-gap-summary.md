@@ -196,3 +196,64 @@ cross-review check: 0 problems
 因此 `cross-review` 已从 blocking 变为 pass；readiness 现在只剩人工证明、
 引用语义、图表语义与后续人工验证阻塞。需要保留的边界是：本地 Qwen 3B 是
 真实不同 family，但推理能力弱于云端大模型，不能替代高质量人工复核。
+
+## 十、形式化验证器已接入（第十轮补记）
+
+上一轮的缺口是“有 proof-campaign、proof-orchestrator、notation gate、derivation gate，
+却没有一个真正的形式化验证器”，`lean`、`coq`、`isabelle`、`agda`、`z3`、`sage`、
+`julia` 在本机全部缺失。本轮把这层补齐，并让它可见、可追踪。
+
+### 1. 新工具
+
+```text
+tools/ccfa/verifiers.py      scripts/verifiers.ps1
+tools/ccfa/formal_check.py   scripts/formal-check.ps1
+```
+
+`formal_check` 运行论文在 `data/formal-checks.yaml` 声明的命令，解析 JSON 输出并核对
+`id`/`engine`/`theorem_id`/`status`；只接受 `proved`/`unsat`/`valid`。
+`verifiers` 清点本机引擎，并对照论文声明的引擎，缺失项如实报告而不是让 `doctor` 全绿。
+`doctor` 已把 z3 缺失判为 problem，其余引擎缺失判为 advisory，`--strict` 全部升级。
+
+### 2. 引擎状态（本机实测）
+
+| 引擎 | 类型 | 状态 | 备注 |
+| --- | --- | --- | --- |
+| z3 | SMT | 可用，已接入 | pip `z3-solver==5.1.0.0`，核心引擎 |
+| cvc5 | SMT | 可用，已接入 | pip `cvc5==1.3.1`，第二独立 SMT 引擎 |
+| lean | proof-assistant | 可用 | winget `Lean.Lean` 4.34.1 |
+| julia | language | 可用 | winget `Julialang.Julia` 1.13.1 |
+| coq | proof-assistant | 缺失 | 需 opam 或官方安装包 |
+| isabelle | proof-assistant | 缺失 | 体积大，依赖 JDK |
+| agda | proof-assistant | 缺失 | cabal 或 release 包 |
+| why3 | verification-platform | 缺失 | opam |
+| sage | CAS | 缺失 | 体积大；Windows 建议 WSL |
+
+### 3. Proposition 4 的双引擎交叉检查
+
+`data/formal-checks.yaml` 现在声明两条针对 `prop:noncomp` 的检查：
+
+```text
+z3-prop-noncomp    ccfa-workfiles/formal/proposition4_z3.py
+cvc5-prop-noncomp  ccfa-workfiles/formal/proposition4_cvc5.py
+```
+
+两个引擎独立编码同一个算术核心（k=5、b=1、corrupted=3，以及
+“继承 ⇒ 聚合证书前提”这一显式公理），都用否定不可满足的方式证明命题成立：
+
+```text
+z3    5.1.0  proved  prop:noncomp
+cvc5  1.3.1  proved  prop:noncomp
+```
+
+两个不同实现给出同一结论，比单一引擎更能排除“某个求解器的实现巧合”。但必须保留边界：
+**机器检查只覆盖算术/条件核心，不覆盖从防御到继承公理的语义映射**。这一步仍需人工复核，
+因此 `data/proof-audit.yaml` 的 `prop:noncomp` 仍是 pending，`proof-campaign` 的
+`pc-noncomp` 状态仍是 open。
+
+### 4. 还剩什么
+
+Lean 已安装，但尚未给 Proposition 4 写正式 Lean 证明，也未接入 `formal-checks.yaml`：
+接入交互式证明助手需要同时改 CI 以提供 toolchain，且需要真正写出形式化，而不是只装一个
+二进制。Coq/Isabelle/Agda/Why3/Sage 属重量级工具链，本轮只如实报告缺失与安装提示，
+未强行安装。当前命题的独立检查需求已由 z3 + cvc5 满足。

@@ -541,6 +541,86 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("1 advisory", stderr.getvalue())
         self.assertIn("--strict", stderr.getvalue())
 
+    def _engine(self, key, tier):
+        from ccfa.verifiers import Engine
+
+        return Engine(key=key, kind="SMT", capability="proofs", tier=tier)
+
+    def test_missing_optional_verifier_is_an_advisory(self):
+        engine = self._engine("lean", "optional")
+
+        problems, advisories, statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            formal_engines=(engine,),
+            engine_probe=lambda item: doctor_module.EngineStatus(
+                item, False, None, "missing"
+            ),
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(
+            self._codes(advisories),
+            ["doctor-missing-verifier"],
+        )
+        self.assertIn("lean", " ".join(statuses))
+
+    def test_missing_core_verifier_is_a_problem(self):
+        engine = self._engine("z3", "core")
+
+        problems, advisories, _statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            formal_engines=(engine,),
+            engine_probe=lambda item: doctor_module.EngineStatus(
+                item, False, None, "missing"
+            ),
+        )
+
+        self.assertEqual(
+            self._codes(problems),
+            ["doctor-missing-verifier"],
+        )
+        self.assertEqual(advisories, [])
+
+    def test_present_verifier_is_not_reported(self):
+        engine = self._engine("z3", "core")
+
+        problems, advisories, statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            formal_engines=(engine,),
+            engine_probe=lambda item: doctor_module.EngineStatus(
+                item, True, "python:z3", "module z3 5.1.0"
+            ),
+        )
+
+        self.assertEqual(problems, [])
+        self.assertEqual(advisories, [])
+        self.assertTrue(any("z3" in line for line in statuses))
+
+    def test_engine_probe_exception_is_reported_not_raised(self):
+        engine = self._engine("z3", "core")
+
+        def boom(item):  # pragma: no cover - only raised to simulate
+            raise RuntimeError("probe exploded")
+
+        problems, _advisories, _statuses = check_environment(
+            self.root,
+            dependencies=(),
+            venvs=(),
+            formal_engines=(engine,),
+            engine_probe=boom,
+        )
+
+        self.assertEqual(
+            self._codes(problems),
+            ["doctor-missing-verifier"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

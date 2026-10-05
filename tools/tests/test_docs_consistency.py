@@ -70,6 +70,7 @@ CLI_WRAPPERS = {
     "ara_compile": "scripts/ara-compile.ps1",
     "dashboard": "scripts/dashboard.ps1",
     "formal_check": "scripts/formal-check.ps1",
+    "verifiers": "scripts/verifiers.ps1",
 }
 NEWPAPER_ENTRY = "tools/newpaper/create.py"
 NEWPAPER_WRAPPER = "scripts/new-paper.ps1"

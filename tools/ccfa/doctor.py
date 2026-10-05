@@ -28,6 +28,13 @@ from pathlib import Path
 from typing import Callable, NamedTuple
 
 from ccfa.cli import Problem, emit
+from ccfa.verifiers import (
+    FORMAL_ENGINES,
+    TIER_CORE,
+    Engine,
+    EngineStatus,
+    probe_engine,
+)
 
 
 class Dependency(NamedTuple):
@@ -258,6 +265,8 @@ def check_environment(
     run: Callable[[list[str]], int] | None = None,
     services: tuple[Service, ...] = (),
     service_probe: Callable[[Service], ServiceResult] | None = None,
+    formal_engines: tuple[Engine, ...] = (),
+    engine_probe: Callable[[Engine], EngineStatus] | None = None,
 ) -> tuple[list[Problem], list[Problem], list[str]]:
     """Return (problems, advisories, human status lines)."""
     repo_root = Path(repo_root)
@@ -379,6 +388,24 @@ def check_environment(
             f"{service.key} 不可达：{service.capability} 尚不可用",
             False,
         )
+
+    engines_probe = engine_probe or probe_engine
+    for engine in formal_engines:
+        try:
+            status = engines_probe(engine)
+        except Exception as exc:  # a probe must never take down the preflight
+            status = EngineStatus(engine, False, None, type(exc).__name__)
+        if status.available:
+            statuses.append(f"installed    {engine.key:<12} {status.detail}")
+            continue
+        statuses.append(f"MISSING      {engine.key:<12} -")
+        report(
+            "doctor-missing-verifier",
+            engine.key,
+            f"缺少形式化引擎 {engine.key}：{engine.capability} 不可用"
+            f"（安装：{engine.install_hint}）",
+            engine.tier == TIER_CORE,
+        )
     return problems, advisories, statuses
 
 
@@ -392,6 +419,8 @@ def main(
     run: Callable[[list[str]], int] | None = None,
     services: tuple[Service, ...] | None = None,
     service_probe: Callable[[Service], ServiceResult] | None = None,
+    formal_engines: tuple[Engine, ...] = (),
+    engine_probe: Callable[[Engine], EngineStatus] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(
         description="检查本地平台依赖：报告缺什么，以及缺它会禁用哪个能力"
@@ -410,6 +439,11 @@ def main(
         "--skip-services",
         action="store_true",
         help="只检查本地安装，不探测 provider/Zotero",
+    )
+    parser.add_argument(
+        "--skip-verifiers",
+        action="store_true",
+        help="不检查形式化验证器（lean/coq/z3/...）是否可用",
     )
     parser.add_argument(
         "--codex-config",
@@ -441,6 +475,8 @@ def main(
         run=run,
         services=selected_services,
         service_probe=service_probe,
+        formal_engines=() if args.skip_verifiers else formal_engines,
+        engine_probe=engine_probe,
     )
     for line in statuses:
         print(line, file=sys.stderr)
@@ -460,4 +496,4 @@ if __name__ == "__main__":
         _reconfigure = getattr(_stream, "reconfigure", None)
         if _reconfigure is not None:
             _reconfigure(encoding="utf-8")
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main(sys.argv, formal_engines=FORMAL_ENGINES))
