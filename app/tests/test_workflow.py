@@ -11,6 +11,7 @@ from ccfa_core.workflow import (
     DEFAULT_ROOT,
     WorkflowClient,
     WorkflowError,
+    discover_root,
 )
 
 from . import write_project
@@ -26,6 +27,22 @@ class WorkflowClientTests(unittest.TestCase):
     def test_default_root_is_the_repository(self):
         self.assertEqual(self.client.root, DEFAULT_ROOT)
         self.assertTrue((self.client.root / "tools" / "ccfa").is_dir())
+
+    def test_discover_root_takes_the_first_real_checkout(self):
+        empty = self.root / "not-a-checkout"
+        empty.mkdir()
+        checkout = self.root / "research-workflow"
+        (checkout / "tools" / "ccfa").mkdir(parents=True)
+
+        found = discover_root([empty, checkout])
+
+        self.assertEqual(found, checkout)
+
+    def test_discover_root_falls_back_to_the_repository(self):
+        empty = self.root / "not-a-checkout"
+        empty.mkdir()
+
+        self.assertEqual(discover_root([empty]), DEFAULT_ROOT)
 
     def test_root_can_come_from_the_environment(self):
         with mock.patch.dict(

@@ -34,6 +34,39 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_S = 120.0
 
 
+def _candidate_roots() -> list[Path]:
+    """Places an installed copy may find a workflow checkout, best first.
+
+    A bundled copy that ships next to the frozen app wins over unrelated
+    checkouts elsewhere in the profile, and the repository this file lives in
+    stays the first choice while developing.
+    """
+
+    candidates = [DEFAULT_ROOT]
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "workflow")
+    local = os.environ.get("LOCALAPPDATA", "").strip()
+    if local:
+        candidates.append(Path(local) / "Programs" / "research-workflow")
+    home = Path.home()
+    candidates.append(home / "research-workflow")
+    candidates.append(home / "Documents" / "research-workflow")
+    return candidates
+
+
+def discover_root(candidates: list[Path] | None = None) -> Path:
+    """Return the first candidate that looks like a workflow checkout.
+
+    Falls back to ``DEFAULT_ROOT`` so callers still get an actionable path in
+    their error message instead of ``None``.
+    """
+
+    for candidate in candidates if candidates is not None else _candidate_roots():
+        if (candidate / "tools" / "ccfa").is_dir():
+            return Path(candidate)
+    return DEFAULT_ROOT
+
+
 class WorkflowError(RuntimeError):
     """A workflow call could not be made, or broke its output contract."""
 
@@ -72,7 +105,7 @@ class WorkflowClient:
         env: dict | None = None,
     ) -> None:
         configured = os.environ.get(WORKFLOW_ROOT_ENV, "").strip()
-        self.root = Path(root or configured or DEFAULT_ROOT)
+        self.root = Path(root or configured or discover_root())
         self.python = Path(python) if python else self._default_python()
         self.timeout = float(timeout)
         self._extra_env = dict(env or {})

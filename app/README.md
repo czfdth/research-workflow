@@ -57,10 +57,27 @@ scripts/build-workbench.ps1
 安装是按用户进行的（不需要管理员），默认装到
 `%LOCALAPPDATA%\Programs\ccfa-workbench`，卸载时保留 `%APPDATA%` 下的设置。
 
-**安装版必须配置工作流目录**：冻结包里没有 `ccfa`，所以第一次启动后要在设置页
-填写「工作流目录」（包含 `tools/.venv` 的仓库根），或者设置环境变量
-`CCFA_WORKFLOW_ROOT`。设置本身写在 `%APPDATA%\ccfa-workbench\settings.json`。
+**安装版怎么找到工作流**：冻结包里没有 `ccfa`，所以启动时按下面的顺序找
+"包含 `tools/ccfa` 的目录"，第一个命中就用：
 
+1. 设置页里填的「工作流目录」（或环境变量 `CCFA_WORKFLOW_ROOT`）
+2. 安装目录下的 `workflow\`（如果发行版把工作流捆进去了）
+3. `%LOCALAPPDATA%\Programs\research-workflow`
+4. `%USERPROFILE%\research-workflow`
+5. `%USERPROFILE%\Documents\research-workflow`
+
+开发时本仓库就是第 0 个候选（`app/` 的上一级），所以本地跑无需任何配置。
+一个都找不到时，报告里会给出具体路径并提示去设置页填写。设置写在
+`%APPDATA%\ccfa-workbench\settings.json`。
+
+**捆绑运行时的现状与代价**（给"不发仓库只发 exe"的合作者用）：
+
+- 现在只捆 app，工作流仍需一份检出 + 自己的 `tools/.venv`；
+- 真要做到开箱即用，需要把 **embeddable Python**（不是 venv，venv 里的
+  `pyvenv.cfg` 指向构建机的解释器，换机器就废）+ `tools/` 源码 +
+  `pip install --target` 出来的依赖打进安装包，体积约 250MB 起；
+- 再往上就是 TeX/Docker/GPU 这类外部依赖：Modex 那类产品是把 texlive 整体
+  捆进安装包（1GB 级），我们没有跟。
 **PySide6 版本**：`requirements.txt` 故意钉在 6.9.1 而不是最新版。用 6.11.2 冻结
 出来的程序启动即报 `DLL load failed while importing QtWidgets`（用一个 10 行的
 最小应用复现过，与本项目代码无关）。升级这个 pin 之前，一定要重跑

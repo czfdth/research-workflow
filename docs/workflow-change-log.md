@@ -761,3 +761,18 @@ rewrite historical entries.
   - `tools.tests.test_readiness (61 tests)`
 - notes: verdicts 由缺失台账映射（LEDGER_GATE_NAMES）+ gate 自身 status 推导；markdown 里每个 gate 行带 verdict，未执行的 blocked gate 单独列一行。
 
+## WC-20261005T182805Z-4eee662850 - Let the installed workbench discover a workflow checkout instead of requiring manual configuration.
+
+- timestamp: `2026-10-05T18:28:05Z`
+- status: `complete`
+- author: `codex`
+- reason: 给合作者用时最大的摩擦是装完必须自己找仓库并填路径；安装包已经支持把 workflow/ 放在 exe 旁边，客户端却只认显式配置。
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/workflow.py`
+  - `app/tests/test_workflow.py`
+- tests:
+  - `app unittest (tests.test_workflow + test_settings, 33 tests)`
+  - `ruff check app`
+- notes: 搜索顺序：显式配置/环境变量 → 安装目录 workflow\\ → LOCALAPPDATA Programs → 用户目录两个位置；开发时仓库本身仍优先。捆绑 embeddable Python 的代价写进 README。
+
