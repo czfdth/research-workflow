@@ -60,3 +60,14 @@ rewrite historical entries.
   - `app.tests.test_workbench_e2e`
   - `app.tests.test_workflow`
 
+## WC-20261005T164056Z-234290264d - Normalize temp paths before comparing in the chat E2E test
+
+- timestamp: `2026-10-05T16:40:56Z`
+- status: `complete`
+- author: `codex`
+- reason: The GitHub Windows runner exposes 8.3 short names (RUNNER~1), so the assertion compared a short path against the canonical long path and failed only on CI.
+- files:
+  - `app/tests/test_chat_e2e.py`
+- tests:
+  - `app.tests.test_chat_e2e`
+
