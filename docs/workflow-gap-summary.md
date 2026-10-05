@@ -137,3 +137,15 @@ scientifically-accepted
 真正决定论文质量的最后一段仍然必须由人完成：复核证明、确认引用支撑、
 检查图表语义、做独立双编码，并使用真实跨族评审。完成这些之后，论文才应该
 从 `internal-review` 进入 `review_cleared`。
+
+## 七、收尾后的新增修复
+
+- `a03ab2d` 回填了迁移验证运行的真实 `verify-all` 指标，关闭
+  `run-log-metrics-pending`。
+- `67ea3ff` 与 `904fdf2` 把 `paper-check` 拆成
+  `deterministic-paper-checks` 和 `readiness-and-human-review`；前者必须绿，
+  后者用 `continue-on-error` 暴露 readiness、governance、argument-audit 和
+  cross-review 的真实状态并上传报告。
+- `8abdad2` 与 `c77e362` 把工具和应用依赖切换到
+  `requirements.lock`，由 `uv pip compile --generate-hashes` 生成，并在 CI
+  安装时启用哈希校验。
