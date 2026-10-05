@@ -40,13 +40,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: tools/requirements.txt
+          cache-dependency-path: tools/requirements.lock
 
       - name: Install tool dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r tools/requirements.txt
+          python -m pip install -r tools/requirements.lock
 
       - name: Verify repro bundle
         shell: pwsh

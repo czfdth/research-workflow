@@ -24,6 +24,11 @@
 
 `paper-check.yml` 和 `repro-smoke.yml` 默认检出 `czfdth/rag-attack-defense`。由于论文是独立私有仓库，需在工具仓库配置只读 `PAPER_REPOSITORY_TOKEN`；论文仓库反向检出工具时则使用只读 `RESEARCH_WORKFLOW_TOKEN`。
 
+工具和应用 CI 都从带 SHA-256 的 `tools/requirements.lock`、
+`app/requirements.lock` 安装依赖，不再直接解析未锁定的 `requirements.txt`。
+lockfile 由 `uv pip compile --generate-hashes` 生成，锁文件变化会同时刷新
+pip cache key。
+
 `paper-check.yml` 不把人工科研 blocker 冒充成工程失败，也不把它们隐藏为
 通过：`deterministic-paper-checks` 只运行可机械判定的检查，必须为绿；
 `readiness-and-human-review` 使用 `continue-on-error` 运行 readiness、

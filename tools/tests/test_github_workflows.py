@@ -159,6 +159,24 @@ class GitHubWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 2)
 
+    def test_ci_installs_hash_locked_requirements(self):
+        workflow_texts = [
+            (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            for name in ("tests.yml", "paper-check.yml", "repro-smoke.yml")
+        ]
+        if PAPER_ROOT.is_dir():
+            workflow_texts.extend(
+                (PAPER_ROOT / ".github" / "workflows" / name).read_text(
+                    encoding="utf-8"
+                )
+                for name in ("paper-check.yml", "repro-smoke.yml")
+            )
+
+        for text in workflow_texts:
+            with self.subTest(workflow=text.splitlines()[0]):
+                self.assertNotIn("requirements.txt", text)
+                self.assertIn("requirements.lock", text)
+
     def test_ci_covers_cross_review_downstream_e2e_modules(self):
         selection = select_tests(
             ["tools/ccfa/cross_review.py"],

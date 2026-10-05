@@ -29,15 +29,15 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: |
-            tools/requirements.txt
-            app/requirements.txt
+            tools/requirements.lock
+            app/requirements.lock
 
       - name: Install tool dependencies
         shell: pwsh
         run: |
           python -m venv tools/.venv
           tools/.venv/Scripts/python.exe -m pip install --upgrade pip
-          tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.txt
+          tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.lock
 
       - name: Compile core modules
         shell: pwsh
@@ -107,17 +107,19 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: app/requirements.txt
+          cache-dependency-path: |
+            tools/requirements.lock
+            app/requirements.lock
 
       - name: Install app dependencies
         shell: pwsh
         run: |
           python -m venv tools/.venv
           tools/.venv/Scripts/python.exe -m pip install --upgrade pip
-          tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.txt
+          tools/.venv/Scripts/python.exe -m pip install -r tools/requirements.lock
           python -m venv app/.venv
           app/.venv/Scripts/python.exe -m pip install --upgrade pip
-          app/.venv/Scripts/python.exe -m pip install -r app/requirements.txt
+          app/.venv/Scripts/python.exe -m pip install -r app/requirements.lock
 
       - name: Run impacted app tests
         shell: pwsh
