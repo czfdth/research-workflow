@@ -16,6 +16,7 @@ from ccfa.skillpack import build_pack, unpack_pack, verify_pack
 
 REGISTRY = Path("skills") / "registry.yaml"
 MARKER = ".ccfa-skill-install.json"
+SOURCE_ROOTS_KEY = "source_roots"
 
 
 def _sha256_file(path: Path) -> str:
@@ -49,13 +50,70 @@ def _index(registry: dict) -> dict[str, dict]:
     return {item["id"]: item for item in registry.get("skills", []) if isinstance(item, dict)}
 
 
-def validate_registry(root: Path) -> list[Problem]:
+def _source_directory(root: Path, registry: dict, item: dict) -> Path:
+    source = item.get("source")
+    if source is None:
+        return (root / str(item["path"])).resolve()
+    if not isinstance(source, dict):
+        raise ValueError(f"{item.get('id')}: source 必须是映射")
+    source_root = source.get("root")
+    source_path = source.get("path")
+    if not isinstance(source_root, str) or not source_root:
+        raise ValueError(f"{item.get('id')}: source.root 必须是非空字符串")
+    if not isinstance(source_path, str) or not source_path:
+        raise ValueError(f"{item.get('id')}: source.path 必须是非空字符串")
+    roots = registry.get(SOURCE_ROOTS_KEY) or {}
+    if not isinstance(roots, dict):
+        raise ValueError("source_roots 必须是映射")
+    base_value = roots.get(source_root)
+    if source_root == "repo":
+        base = root
+    elif isinstance(base_value, str) and base_value:
+        base = Path(base_value).expanduser()
+    else:
+        raise ValueError(f"{item.get('id')}: 未知 source root: {source_root!r}")
+    if not base.is_absolute():
+        base = root / base
+    base = base.resolve()
+    target = (base / source_path).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"{item.get('id')}: source 逃出 source root") from exc
+    return target
+
+
+def _content_version(source: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(source).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return "content-" + digest.hexdigest()[:12]
+
+
+def _entry_version(root: Path, registry: dict, item: dict) -> str:
+    declared = item.get("version")
+    if isinstance(declared, str) and declared.strip():
+        return declared.strip()
+    return _content_version(_source_directory(root, registry, item))
+
+
+def validate_registry(root: Path, *, strict_external: bool = False) -> list[Problem]:
     root = Path(root).resolve()
     registry, problems = load_registry(root)
     if registry is None:
         return problems
     path = root / REGISTRY
     skills = registry["skills"]
+    source_roots = registry.get(SOURCE_ROOTS_KEY, {})
+    if not isinstance(source_roots, dict):
+        problems.append(
+            Problem("skill-registry-invalid", str(path), None, "source_roots 必须是映射")
+        )
     seen: set[str] = set()
     for index, item in enumerate(skills):
         if not isinstance(item, dict):
@@ -64,10 +122,12 @@ def validate_registry(root: Path) -> list[Problem]:
             )
             continue
         missing = [
-            key
-            for key in ("id", "version", "path", "description", "dependencies")
-            if key not in item
+            key for key in ("id", "description", "dependencies") if key not in item
         ]
+        if "path" not in item and "source" not in item:
+            missing.append("path/source")
+        if "source" not in item and "version" not in item:
+            missing.append("version")
         if missing:
             problems.append(
                 Problem(
@@ -89,7 +149,25 @@ def validate_registry(root: Path) -> list[Problem]:
                 Problem("skill-registry-duplicate", str(path), None, f"skill id 重复: {skill_id}")
             )
         seen.add(skill_id)
-        source = root / str(item["path"])
+        try:
+            source = _source_directory(root, registry, item)
+        except ValueError as exc:
+            problems.append(
+                Problem("skill-registry-source-invalid", str(path), None, str(exc))
+            )
+            continue
+        external = item.get("source") is not None
+        if external and not source.exists():
+            if strict_external:
+                problems.append(
+                    Problem(
+                        "skill-registry-source-missing",
+                        str(path),
+                        None,
+                        f"{skill_id}: 外部 skill 源不存在: {source}",
+                    )
+                )
+            continue
         if not (source / "SKILL.md").is_file():
             problems.append(
                 Problem(
@@ -100,7 +178,7 @@ def validate_registry(root: Path) -> list[Problem]:
                 )
             )
         metadata = source / "skill.yaml"
-        if not metadata.is_file():
+        if not metadata.is_file() and not external:
             problems.append(
                 Problem(
                     "skill-registry-source-missing",
@@ -109,7 +187,7 @@ def validate_registry(root: Path) -> list[Problem]:
                     f"{skill_id}: 缺少 skill.yaml",
                 )
             )
-        else:
+        elif metadata.is_file():
             try:
                 meta = yaml.safe_load(metadata.read_text(encoding="utf-8"))
             except (OSError, yaml.YAMLError) as exc:
@@ -126,7 +204,7 @@ def validate_registry(root: Path) -> list[Problem]:
                             "skill.yaml 的 id 与 registry 不一致",
                         )
                     )
-                if meta.get("version") != item.get("version"):
+                if item.get("version") is not None and meta.get("version") != item.get("version"):
                     problems.append(
                         Problem(
                             "skill-registry-source-invalid",
@@ -240,23 +318,24 @@ def pack_skill(
     item = _index(registry).get(skill_id)
     if item is None:
         raise ValueError(f"未知 skill: {skill_id}")
-    source = root / str(item["path"])
+    source = _source_directory(root, registry, item)
+    version = _entry_version(root, registry, item)
     out = Path(out_dir)
     if not out.is_absolute():
         out = root / out
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"{skill_id}-{item['version']}.skillpack"
+    target = out / f"{skill_id}-{version}.skillpack"
     manifest = build_pack(
         source,
         target,
         pack_id=skill_id,
-        version=str(item["version"]),
+        version=version,
         roles=["ccfa-skill"],
         overwrite=force,
     )
     return {
         "skill_id": skill_id,
-        "version": item["version"],
+        "version": version,
         "pack": str(target),
         "sha256": _sha256_file(target),
         "file_count": manifest["file_count"],
@@ -310,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--root", default=".")
     check = sub.add_parser("check")
     check.add_argument("--root", default=".")
+    check.add_argument("--strict-external", action="store_true")
     resolve_parser = sub.add_parser("resolve")
     resolve_parser.add_argument("--root", default=".")
     resolve_parser.add_argument("--skill", action="append", required=True)
@@ -337,7 +417,10 @@ def main(argv: list[str]) -> int:
             print(json.dumps(registry["skills"], ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.command == "check":
-            return emit(validate_registry(root), [])
+            return emit(
+                validate_registry(root, strict_external=args.strict_external),
+                [],
+            )
         if args.command == "resolve":
             print(json.dumps(resolve(root, args.skill), ensure_ascii=False))
             return 0

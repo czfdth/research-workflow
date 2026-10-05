@@ -108,6 +108,71 @@ class SkillRegistryTests(unittest.TestCase):
                 [problem.code for problem in problems],
             )
 
+    def test_external_source_can_be_packed_without_copying_it_into_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            external = root / "external"
+            skill = external / "demo"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("# demo\n", encoding="utf-8")
+            (root / "skills").mkdir()
+            (root / "skills" / "registry.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "source_roots": {"external": "external"},
+                        "skills": [
+                            {
+                                "id": "demo",
+                                "source": {"root": "external", "path": "demo"},
+                                "description": "demo skill",
+                                "dependencies": [],
+                            }
+                        ],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+
+            packed = pack_skill(root, "demo", root / "packs")
+
+            self.assertTrue(Path(packed["pack"]).is_file())
+            self.assertTrue(packed["version"].startswith("content-"))
+            self.assertEqual(verify_pack(Path(packed["pack"])), [])
+
+    def test_missing_external_source_is_advisory_unless_strict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "skills").mkdir()
+            (root / "skills" / "registry.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "source_roots": {"external": "missing"},
+                        "skills": [
+                            {
+                                "id": "demo",
+                                "source": {"root": "external", "path": "demo"},
+                                "description": "demo skill",
+                                "dependencies": [],
+                            }
+                        ],
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(validate_registry(root), [])
+            self.assertIn(
+                "skill-registry-source-missing",
+                [
+                    problem.code
+                    for problem in validate_registry(root, strict_external=True)
+                ],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

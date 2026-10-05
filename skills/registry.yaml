@@ -1,4 +1,8 @@
 version: 1
+source_roots:
+  repo: .
+  codex: ~/.codex/skills
+  agents: ~/.agents/skills
 skills:
   - id: ccfa-core
     version: 0.1.0
@@ -25,3 +29,63 @@ skills:
     path: skills/ccfa-evidence
     description: Readiness, cross-review, citation and governance gates.
     dependencies: [ccfa-core]
+  - id: ccf-common
+    source: {root: codex, path: ccf-common}
+    description: Shared CCFA preflight, routing, scope and evidence boundary.
+    dependencies: [ccfa-core]
+  - id: ccf-humanization
+    source: {root: codex, path: ccf-humanization}
+    description: Mandatory humanization preflight for CCFA research and writing workflows.
+    dependencies: [ccf-common]
+  - id: ccf-pipeline-orchestrator
+    source: {root: codex, path: ccf-pipeline-orchestrator}
+    description: Stage, gate, artifact and deadline orchestration.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-project-scaffolder
+    source: {root: codex, path: ccf-project-scaffolder}
+    description: Initialize research project directories, templates and ccfa.yaml.
+    dependencies: [ccf-common, ccfa-core]
+  - id: ccf-idea-optimizer
+    source: {root: codex, path: ccf-idea-optimizer}
+    description: Turn rough ideas into structured problems, insights and evidence plans.
+    dependencies: [ccf-common]
+  - id: ccf-idea-reviewer
+    source: {root: codex, path: ccf-idea-reviewer}
+    description: Review research ideas for value, novelty, insight and mechanism.
+    dependencies: [ccf-common]
+  - id: ccf-literature-searcher
+    source: {root: codex, path: ccf-literature-searcher}
+    description: Verify prior art, related work, benchmarks and citation candidates.
+    dependencies: [ccf-common]
+  - id: ccf-literature-monitor
+    source: {root: codex, path: ccf-literature-monitor}
+    description: Track recent papers, venue feeds and competitor overlap.
+    dependencies: [ccf-common]
+  - id: ccf-experiment-designer
+    source: {root: codex, path: ccf-experiment-designer}
+    description: Design experiment protocols, baselines, metrics, ablations and result tables.
+    dependencies: [ccf-common, ccfa-experiments]
+  - id: ccf-paper-writer
+    source: {root: codex, path: ccf-paper-writer}
+    description: Draft, revise, polish and compress CCF manuscript prose.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-paper-reviewer
+    source: {root: codex, path: ccf-paper-reviewer}
+    description: Review manuscript claims, evidence and submission maturity without rewriting.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-integrity-auditor
+    source: {root: codex, path: ccf-integrity-auditor}
+    description: Audit claims, numbers, terminology and citations against evidence.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-submission-checker
+    source: {root: codex, path: ccf-submission-checker}
+    description: Check venue rules, templates, anonymity, pages and reproducibility.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-rebuttal-writer
+    source: {root: codex, path: ccf-rebuttal-writer}
+    description: Draft rebuttals, revision ledgers and response letters.
+    dependencies: [ccf-common, ccfa-evidence]
+  - id: ccf-visual-composer
+    source: {root: codex, path: ccf-visual-composer}
+    description: Render CCF figures, visual tables and method diagrams.
+    dependencies: [ccf-common, ccfa-core]

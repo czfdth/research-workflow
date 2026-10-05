@@ -277,13 +277,16 @@ scripts/long-task.ps1 check --paper-root $paper --task T1
 
 ```powershell
 scripts/skill-registry.ps1 check --root .
+scripts/skill-registry.ps1 check --root . --strict-external
 scripts/skill-registry.ps1 resolve --skill ccfa-autoresearch
 scripts/skill-registry.ps1 pack --skill ccfa-core --out dist/skillpacks
 scripts/skill-registry.ps1 install --skill ccfa-autoresearch --target $target
 ```
 
 registry 会解析并安装依赖，拒绝依赖环；每个 skill 使用可校验 `.skillpack`
-安装，不要求把整个 monorepo 一起复制过去。
+安装，不要求把整个 monorepo 一起复制过去。registry 同时支持 `repo`、`codex`
+和 `agents` 三类 source root，因此全局技能可以只登记、不复制原文；外部源缺失时
+普通 check 记为不可用，`--strict-external` 会把它升级为 problem。
 
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 
