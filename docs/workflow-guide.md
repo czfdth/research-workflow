@@ -42,6 +42,11 @@ scripts/dashboard.ps1 --papers-root papers
 `doctor` 的 `found` 只表示命令可被发现；Docker daemon 会额外执行真实探测。
 准备使用所有可选能力时运行 `scripts/doctor.ps1 --strict`。
 
+Codex 桌面版把 CLI 装在版本化目录（`%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\`），
+不会写进持久 PATH。工作流因此有两层兜底：`cross_review` 自己会解析最新版本，
+另外在 `C:\Users\best\.local\bin\codex.cmd` 放一个稳定 shim，让普通终端里的
+`codex`、`doctor` 也能直接用；后者在 Codex 升级后无需改动。
+
 工作流支持三个 readiness profile：`minimal` 用于构思和短稿，`standard` 用于普通会议论文，`high-assurance` 用于安全、医学、正式证明或高风险研究。默认是 `standard`，也可在 `ccfa.yaml` 写 `workflow.profile`。
 
 ## 3. 创建论文
