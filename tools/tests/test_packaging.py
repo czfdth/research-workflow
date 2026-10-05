@@ -16,6 +16,9 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('ccfa = "ccfa.dispatch:run"', text)
         self.assertIn('package-dir = {"" = "tools"}', text)
         self.assertIn("requires-python", text)
+        # install-toolchain is dispatched to install.fetch_toolchain, so the
+        # package must ship that package too or the installed CLI loses a tool.
+        self.assertIn('"install*"', text)
 
     def test_dispatch_lists_modules(self):
         stdout = io.StringIO()
@@ -31,7 +34,7 @@ class PackagingTests(unittest.TestCase):
             code = dispatch.run(["not-a-module"])
 
         self.assertEqual(code, 2)
-        self.assertIn("unknown ccfa module", stderr.getvalue())
+        self.assertIn("unknown ccfa command", stderr.getvalue())
 
 
 if __name__ == "__main__":

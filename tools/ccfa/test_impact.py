@@ -204,6 +204,13 @@ _TOOLS_EXACT = {
         "tools.tests.test_state",
         "tools.tests.test_validate",
     ),
+    "tools/ccfa/dispatch.py": (
+        "tools.tests.test_dispatch",
+        "tools.tests.test_packaging",
+    ),
+    "tools/ccfa/__main__.py": (
+        "tools.tests.test_dispatch",
+    ),
 }
 
 

@@ -48,13 +48,26 @@ git -C $paper status --short
 | `library/refs.bib` | 共享 BibTeX 条目；派生项目时复制为 `manuscript/references.bib` |
 | `library/wiki/` | 跨项目研究记忆卡片；支持确定性索引与本地搜索 |
 | `papers/<slug>/` | 派生论文项目的默认目标目录，已在 `.gitignore` 中忽略 |
-| `scripts/` | 所有确定性 CLI 的 PowerShell 包装器 |
+| `scripts/` | 确定性 CLI 包装器：Windows 用 `*.ps1`，POSIX 用 `scripts/ccfa` |
 | `tools/` | 确定性工具与项目测试 |
 | `automation/` | 四类本地自动化 prompt 与接线说明 |
 
 ## 工具一览
 
 `tools/ccfa/` 下的每个 CLI 模块和 `newpaper.create` 都有对应的 `scripts/*.ps1` 入口，后者对应 `tools/newpaper/create.py`。包装器统一从仓库根设置 `PYTHONPATH`，调用 `tools/.venv/Scripts/python.exe`，并原样透传退出码、stdout 与 stderr。
+
+同一个工具在任何平台都能跑，三条路径进入同一份 Python 代码：
+
+```powershell
+scripts/readiness.ps1 --paper-root $paper    # Windows / PowerShell
+sh scripts/ccfa readiness --paper-root $paper # POSIX
+python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
+```
+
+`ccfa list` 列出全部可移植命令；命令名与 `scripts/*.ps1` 的文件名一致（包括
+`statistics`、`rigor-rubric`、`archive` 这些非规则命名）。只有三个纯 Windows
+打包/发布脚本（`build-workbench`、`bundle-workflow`、`publish-public`）没有
+跨平台等价物，它们在 `ccfa.dispatch` 中显式声明，而不是被悄悄忽略。
 
 | 模块 | 一句话作用 | PowerShell 入口 |
 | --- | --- | --- |

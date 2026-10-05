@@ -42,6 +42,20 @@ scripts/dashboard.ps1 --papers-root papers
 `doctor` 的 `found` 只表示命令可被发现；Docker daemon 会额外执行真实探测。
 准备使用所有可选能力时运行 `scripts/doctor.ps1 --strict`。
 
+Windows 以外不需要 PowerShell，同一个工具换个入口即可，三条路径进入同一份
+Python 代码：
+
+```text
+Windows:  scripts/<tool>.ps1
+POSIX:    sh scripts/ccfa <tool>
+任意平台: python -m ccfa <tool>      （pip 安装后可直接 ccfa <tool>）
+```
+
+命令名与 `scripts/*.ps1` 的文件名一致，`ccfa list` 列出全部；`scripts/ccfa`
+在 Git Bash 下也会自动把 `PYTHONPATH` 转成原生路径。只有 `build-workbench`、
+`bundle-workflow`、`publish-public` 三个纯 Windows 打包/发布脚本没有跨平台
+等价物，它们在 `ccfa.dispatch` 中显式声明。
+
 Codex 桌面版把 CLI 装在版本化目录（`%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\`），
 不会写进持久 PATH。工作流因此有两层兜底：`cross_review` 自己会解析最新版本，
 另外在 `C:\Users\best\.local\bin\codex.cmd` 放一个稳定 shim，让普通终端里的
