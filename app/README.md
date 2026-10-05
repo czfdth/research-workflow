@@ -110,7 +110,8 @@ cd app
 ## 主界面
 
 三栏同时可见：左栏 `papers/` 下的项目（坏项目显示 `▲` 与一行原因），中栏当前项目的
-阶段/门禁/截止徽章与检查结果，右栏对话。中栏三个按钮都走工作流自己的 CLI：
+阶段/门禁/截止徽章与检查结果，右栏对话。中栏每个动作都走工作流自己的 CLI
+（`ccfa_core` 只解析 JSON，不重复实现工具语义）：
 
 界面图标来自 `ccfa_gui/icon_paths.py` 的线性路径（无 Qt 依赖，同一条路径数据
 也供 `docs/design/generate_mockups.py` 生成设计稿），工具栏最左侧是产品标记；
@@ -139,7 +140,18 @@ cd app
 | 运行 validate | `ccfa.validate` | `ccfa.yaml` 的 schema 与状态问题 |
 | 运行 milestones | `ccfa.milestones due` | 倒排截止与 gate 缺口 |
 | 运行 readiness | `ccfa.readiness` | 一屏给出六个维度、每个 gate 的结论与阻塞清单 |
+| 阶段流转 | `ccfa.state` | 推进/回退 stage，写回 `ccfa.yaml` 并记入 `stage.history` |
 | 待人工复核 | `ccfa.readiness --checkpoints-only` | 人工复核队列：要判断什么、写进哪个台账 |
+
+动作按钮排在一行可换行的流式布局里（`ccfa_gui/flow_layout.py`）：中栏被对话栏挤窄时
+按钮换到第二行，而不是把「运行 milestones」这类标签省略成「运行 mileston」。窄窗口
+的回归测试直接断言每个按钮的宽度不小于 `sizeHint()`。
+
+阶段流转是唯一会写盘的动作：弹窗先选定推进/回退（按钮组，只列出工作流 stage 表里
+合法的目标）、填原因，回退时再逐行列出要作废的产物；原因是必填的，工作流自己也会
+拒绝空原因。确认后由 `ccfa_core.state` 调 `ccfa.state … --confirm`，成功后工作台重新
+扫描 `papers/` 并重新选中同一个项目，所以徽章显示的是工作流写回后的状态，而不是
+界面自己的推测。
 
 readiness 视图把三样东西排进同一张表：**维度**（`schema-valid` / `evidence-present` /
 `gate-verified` / `independently-reviewed` / `scientifically-accepted` /

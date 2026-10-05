@@ -7,6 +7,8 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
@@ -18,6 +20,7 @@ from ccfa_core.checks import CheckResult
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
 from ccfa_gui.settings_dialog import SettingsDialog
+from ccfa_gui.stage_dialog import StageTransitionDialog
 from ccfa_gui import theme
 from ccfa_gui.main import main as gui_main
 from ccfa_gui.window import MainWindow, image_non_background_ratio
@@ -515,6 +518,121 @@ class GuiSmokeTests(unittest.TestCase):
         APP.processEvents()
 
         self.assertEqual(self.window.project_list.count(), before + 1)
+
+    def test_stage_dialog_lists_targets_and_requires_a_reason(self):
+        dialog = StageTransitionDialog(
+            current="idea",
+            targets={"advance": ("grounded", "data-ready"), "rollback": ()},
+        )
+        self.addCleanup(dialog.deleteLater)
+
+        self.assertEqual(dialog.kind(), "advance")
+        self.assertEqual(
+            [
+                dialog.target_combo.itemText(index)
+                for index in range(dialog.target_combo.count())
+            ],
+            ["grounded", "data-ready"],
+        )
+        # The workflow refuses an empty reason, so the dialog never offers it.
+        self.assertFalse(dialog.ok_button.isEnabled())
+        dialog.reason_edit.setText("scope frozen")
+        self.assertTrue(dialog.ok_button.isEnabled())
+        self.assertEqual(dialog.reason(), "scope frozen")
+        self.assertEqual(dialog.void_artifacts(), ())
+
+    def test_stage_dialog_switches_to_rollback_and_collects_voided_artifacts(self):
+        dialog = StageTransitionDialog(
+            current="writing",
+            targets={
+                "advance": ("internal-review",),
+                "rollback": ("idea", "grounded"),
+            },
+        )
+        self.addCleanup(dialog.deleteLater)
+
+        dialog.rollback_button.click()
+
+        self.assertEqual(dialog.kind(), "rollback")
+        self.assertEqual(dialog.target(), "idea")
+        dialog.reason_edit.setText("the effect did not replicate")
+        dialog.void_edit.setPlainText("results/table.csv\n\nmanuscript/fig1.pdf ")
+        self.assertTrue(dialog.ok_button.isEnabled())
+        self.assertEqual(
+            dialog.void_artifacts(),
+            ("results/table.csv", "manuscript/fig1.pdf"),
+        )
+
+    def test_stage_transition_writes_through_and_refreshes_the_header(self):
+        self._select("good")
+
+        self.window._apply_stage_transition("advance", "grounded", "scope frozen")
+        APP.processEvents()
+
+        self.assertIn("grounded", self.window.stage_label.text())
+        self.assertIn("novelty_grounded", self.window.gate_label.text())
+        self.assertIn("阶段已推进", self.window.checkpoint_banner.text())
+        codes = [
+            self.window.results_table.item(row, 1).text()
+            for row in range(self.window.results_table.rowCount())
+        ]
+        self.assertIn("OK", codes)
+        state = yaml.safe_load(
+            (self.root / "papers" / "good" / "ccfa.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(state["stage"]["current"], "grounded")
+
+    def test_stage_transition_reports_a_workflow_refusal(self):
+        self._select("good")
+
+        # "idea" is already the first stage: rolling back has nowhere to go.
+        self.window._apply_stage_transition("rollback", "idea", "go back")
+        APP.processEvents()
+
+        codes = [
+            self.window.results_table.item(row, 1).text()
+            for row in range(self.window.results_table.rowCount())
+        ]
+        self.assertIn("错误", codes)
+        state = yaml.safe_load(
+            (self.root / "papers" / "good" / "ccfa.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(state["stage"]["current"], "idea")
+
+    def test_action_buttons_never_elide_at_the_collapse_width(self):
+        # 1000px is the narrowest window that still shows the conversation
+        # column, so the detail pane is at its tightest. Every action must
+        # still render its full label: the row wraps instead of squeezing.
+        window = self._window()
+        try:
+            window.resize(1000, 700)
+            window.layout().activate()
+            APP.processEvents()
+
+            buttons = [
+                window.validate_button,
+                window.milestones_button,
+                window.readiness_button,
+                window.stages_button,
+                window.checkpoints_button,
+            ]
+            for button in buttons:
+                self.assertGreaterEqual(
+                    button.width(),
+                    button.sizeHint().width(),
+                    f"{button.text()} 被压缩到 {button.width()}px",
+                )
+            # Two rows are expected at this width; one row is the wide case.
+            rows = {button.y() for button in buttons}
+            self.assertGreater(len(rows), 1)
+        finally:
+            window.close()
+            window.deleteLater()
+            APP.processEvents()
 
 
 if __name__ == "__main__":

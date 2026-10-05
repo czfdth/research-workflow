@@ -919,3 +919,24 @@ rewrite historical entries.
   - `ruff check app`
 - notes: Decorative lookup: an unreadable gate yields an empty hint instead of blocking the project from loading.
 
+## WC-20261005T191403Z-8e81189b54 - Drive stage advance and rollback from the workbench, and wrap the action row instead of eliding its labels.
+
+- timestamp: `2026-10-05T19:14:03Z`
+- status: `complete`
+- author: `codex`
+- reason: Stage transitions were CLI-only (scripts/state.ps1), so the panel could show the stage but not move it; and adding a fifth action squeezed the row until Qt elided button text even at 1280px.
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/state.py`
+  - `app/ccfa_gui/flow_layout.py`
+  - `app/ccfa_gui/icon_paths.py`
+  - `app/ccfa_gui/stage_dialog.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_state.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `app unittest discover (246 tests)`
+  - `ruff check app`
+- notes: The transition dialog only offers targets from the workflow stage table, requires a reason, and calls ccfa.state --confirm; the window then re-scans papers/ so the badges show what the workflow wrote. The action row uses a small FlowLayout so narrow panes wrap to a second line.
+

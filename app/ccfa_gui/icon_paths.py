@@ -48,6 +48,13 @@ ICONS: dict[str, tuple[str, ...]] = {
         '<path d="m12 14 4-4"/>',
         '<path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
     ),
+    # Stage transitions run both ways, so the glyph is a two-headed arrow.
+    "stages": (
+        '<path d="m16 3 4 4-4 4"/>',
+        '<path d="M20 7H4"/>',
+        '<path d="m8 21-4-4 4-4"/>',
+        '<path d="M4 17h16"/>',
+    ),
     "send": (
         '<path d="m5 12 7-7 7 7"/>',
         '<path d="M12 19V5"/>',

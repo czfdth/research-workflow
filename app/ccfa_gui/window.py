@@ -36,11 +36,24 @@ from ccfa_core.checks import (
 )
 from ccfa_core.checks import run_checkpoints as load_checkpoints
 from ccfa_core.checks import run_readiness as load_readiness
-from ccfa_core.projects import ProjectError, find_projects, load_project
+from ccfa_core.projects import (
+    ProjectError,
+    find_projects,
+    load_project,
+    stages_for,
+)
 from ccfa_core.secrets import KeyringSecretStore, SecretStoreUnavailable
 from ccfa_core.settings import default_settings_path, load_settings
+from ccfa_core.state import (
+    StageTransitionError,
+    rollback_stage,
+    set_stage,
+    transition_targets,
+)
 
 from .chat_panel import ChatPanel
+from .flow_layout import FlowLayout
+from .stage_dialog import StageTransitionDialog
 from .settings_dialog import SettingsDialog
 from . import appearance, icons, theme
 
@@ -403,8 +416,11 @@ class MainWindow(QMainWindow):
         head.addWidget(self.gate_criterion_label)
         column.addWidget(header)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(6)
+        # A flow layout keeps every action readable: the pane is narrow whenever
+        # the conversation column is open, and a box layout would elide the
+        # button text instead of using a second line.
+        actions_widget = QWidget(panel)
+        actions = FlowLayout(actions_widget, h_spacing=6, v_spacing=6)
         self.validate_button = QPushButton("运行 validate")
         self.validate_button.setObjectName("validate_button")
         self.validate_button.setProperty("role", "primary")
@@ -426,6 +442,14 @@ class MainWindow(QMainWindow):
         )
         self.readiness_button.clicked.connect(self.run_readiness)
         actions.addWidget(self.readiness_button)
+        self.stages_button = QPushButton("阶段流转")
+        self.stages_button.setObjectName("stages_button")
+        self.stages_button.setIcon(icons.icon("stages", colour=theme.INK))
+        self.stages_button.setToolTip(
+            "推进或回退 stage：写回 ccfa.yaml 并记入 stage.history"
+        )
+        self.stages_button.clicked.connect(self.open_stage_dialog)
+        actions.addWidget(self.stages_button)
         self.checkpoints_button = QPushButton("待人工复核")
         self.checkpoints_button.setObjectName("checkpoints_button")
         self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=theme.INK))
@@ -434,12 +458,16 @@ class MainWindow(QMainWindow):
         )
         self.checkpoints_button.clicked.connect(self.run_checkpoints)
         actions.addWidget(self.checkpoints_button)
-        actions.addStretch(1)
+        policy = actions_widget.sizePolicy()
+        policy.setHeightForWidth(True)
+        actions_widget.setSizePolicy(policy)
+        column.addWidget(actions_widget)
+        # The summary keeps its own line: inside the wrapping row it would wrap
+        # alone as soon as the buttons filled the width.
         self.results_summary = QLabel("尚未运行检查")
         self.results_summary.setObjectName("results_summary")
         self.results_summary.setProperty("role", "hint")
-        actions.addWidget(self.results_summary)
-        column.addLayout(actions)
+        column.addWidget(self.results_summary)
 
         self.checkpoint_banner = QLabel("")
         self.checkpoint_banner.setObjectName("checkpoint_banner")
@@ -674,6 +702,16 @@ class MainWindow(QMainWindow):
                 "--year 2027 --mode conference 创建第一篇，然后点「刷新」。",
             )
             self.chat_panel.set_project(None)
+
+    def _select_slug(self, slug: str) -> None:
+        """Re-select one project by slug after the list has been rebuilt."""
+
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            ref = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if ref is not None and ref.slug == slug:
+                self.project_list.setCurrentRow(row)
+                return
 
     def _on_project_selected(self, _current, _previous) -> None:
         ref = self._selected_ref()
@@ -981,6 +1019,92 @@ class MainWindow(QMainWindow):
             if not opened.exists():
                 opened = project_root
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(opened)))
+
+    def open_stage_dialog(self) -> None:
+        """Ask for one transition, then hand it to the workflow's own state tool."""
+
+        ref = self._selected_ref()
+        if ref is None or ref.error:
+            self._set_results([("state", "错误", "先选择一个可读取的项目")])
+            return
+        try:
+            state = load_project(ref.dir)
+            stages = stages_for(state.mode)
+        except (ProjectError, ValueError) as exc:
+            self._set_results([("state", "错误", str(exc))])
+            return
+        targets = {
+            kind: transition_targets(kind, state.current_stage, stages)
+            for kind in ("advance", "rollback")
+        }
+        if not targets["advance"] and not targets["rollback"]:
+            self._set_results([("state", "错误", "该项目没有可流转的阶段")])
+            return
+        dialog = StageTransitionDialog(
+            current=state.current_stage,
+            targets=targets,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._apply_stage_transition(
+            dialog.kind(),
+            dialog.target(),
+            dialog.reason(),
+            dialog.void_artifacts(),
+        )
+
+    def _apply_stage_transition(
+        self,
+        kind: str,
+        to: str,
+        reason: str,
+        void_artifacts=(),
+    ) -> None:
+        """Perform one transition and show what the workflow wrote back."""
+
+        ref = self._selected_ref()
+        if ref is None or ref.error:
+            self._set_results([("state", "错误", "先选择一个可读取的项目")])
+            return
+        slug = ref.slug
+        label = "回退" if kind == "rollback" else "推进"
+        try:
+            if kind == "rollback":
+                entry = rollback_stage(
+                    ref.dir,
+                    to=to,
+                    reason=reason,
+                    void_artifacts=void_artifacts,
+                )
+            else:
+                entry = set_stage(ref.dir, to=to, reason=reason)
+        except StageTransitionError as exc:
+            self._set_results([("state", "错误", str(exc))])
+            self._show_banner("pending", f"阶段流转失败：{exc}")
+            return
+
+        from_stage = str(entry.get("from", ""))
+        gate = str(entry.get("gate", ""))
+        rows = [
+            ("state", "OK", f"{label} {from_stage} → {to}（门禁 {gate}）"),
+        ]
+        if kind == "rollback":
+            voided = entry.get("void_artifacts") or []
+            rows.append(
+                (
+                    "state",
+                    "作废",
+                    "、".join(str(item) for item in voided) or "无",
+                )
+            )
+        # Rebuilding the list re-reads ccfa.yaml, so the header badges show the
+        # workflow's new state rather than the app's assumption about it. It
+        # also clears the results pane, so the outcome is written afterwards.
+        self.refresh_projects()
+        self._select_slug(slug)
+        self._set_results(rows)
+        self._show_banner("ok", f"阶段已{label}：{from_stage} → {to}")
 
     def _update_credential_status(self) -> None:
         try:
