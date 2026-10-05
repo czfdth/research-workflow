@@ -201,6 +201,9 @@ scripts/statistics.ps1 --paper-root $paper
 scripts/experiment-loop.ps1 check --paper-root $paper
 scripts/experiment-loop.ps1 run-next --paper-root $paper
 scripts/experiment-loop.ps1 run-next --paper-root $paper --execute
+scripts/experiment-optimize.ps1 check --paper-root $paper
+scripts/experiment-optimize.ps1 run --paper-root $paper
+scripts/experiment-optimize.ps1 run --paper-root $paper --execute
 scripts/research-state.ps1 check --paper-root $paper
 ```
 
@@ -211,6 +214,23 @@ scripts/research-state.ps1 check --paper-root $paper
 run-log 与 compute ledger。执行结果仍需人工写回 `run_ids`、`result` 和
 `decision`，工具不会替人开释。纯 SoK 或不含实验的论文应写明
 `not_applicable_reason`，不要把空台账伪装成完成。
+
+内层参数优化使用 `data/experiment-optimization.yaml`：
+
+```yaml
+version: 1
+claim_id: C1
+objective: {name: metrics.accuracy, direction: maximize, baseline: 0.80, min_delta: 0.001}
+budget: {max_trials: 8, minutes_per_trial: 10, gpus_per_trial: 0}
+command: ["{python}", "train.py", "--lr", "{lr}", "--metrics", "{metrics_path}"]
+search_space: {lr: [0.01, 0.001], seed: [1, 2]}
+strategy: grid
+patience: 3
+```
+
+`experiment-optimize run` 默认只预演；加 `--execute` 才真正运行 trial。
+每轮写 run-log、compute ledger 和 `experiments/optimization/<id>/trials.jsonl`，
+最终只写 `data/experiment-optimization-proposals.yaml`，由人决定是否接受。
 
 涉及人工编码时，在这一阶段准备双人编码协议，不要等结果出来后再定义标签。
 

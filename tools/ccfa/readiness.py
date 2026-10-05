@@ -25,6 +25,7 @@ from ccfa import (
     claim_extract,
     cross_review,
     experiment_loop,
+    experiment_optimizer,
     final_check,
     formal_check,
     governance_map,
@@ -85,6 +86,7 @@ EVIDENCE_LEDGER_PATHS = {
     "formal-checks": Path("data/formal-checks.yaml"),
 }
 CLAIM_CANDIDATES_PATH = Path("data") / "claim-candidates.yaml"
+OPTIMIZATION_PROPOSALS_PATH = Path("data") / "experiment-optimization-proposals.yaml"
 
 PROFILE_REQUIRED_LEDGERS = {
     "minimal": ("novelty",),
@@ -185,6 +187,12 @@ HUMAN_CHECKPOINT_SPECS = {
         "stage": "idea",
         "question": "自动抽取的候选 claim 中，哪些应晋升为 authoritative claim，哪些应拒绝？",
         "answer_with": "逐条 promote/reject，并把接受项写入 data/claim-registry.yaml",
+    },
+    "optimization-proposals": {
+        "type": "approve",
+        "stage": "experiments-running",
+        "question": "自动优化产生的 keep/revert proposal 是否接受？接受项如何写回内层实验循环？",
+        "answer_with": "逐条审阅 best trial、objective 与预算，把接受项写入 data/experiment-loop.yaml",
     },
 }
 
@@ -532,6 +540,10 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
             paper_root,
             CLAIM_CANDIDATES_PATH,
         )
+    if (paper_root / experiment_optimizer.SPEC_PATH).is_file():
+        specs["experiment-optimization"] = lambda: experiment_optimizer.check_spec(
+            paper_root
+        )
     return list(specs.items())
 
 
@@ -743,6 +755,13 @@ def _human_review_status(
         and candidate_payload["claims"]
     ):
         pending.append("claim-candidates")
+    proposals_payload = _load_structured(paper_root / OPTIMIZATION_PROPOSALS_PATH)
+    if (
+        isinstance(proposals_payload, dict)
+        and isinstance(proposals_payload.get("proposals"), list)
+        and proposals_payload["proposals"]
+    ):
+        pending.append("optimization-proposals")
     pending = list(dict.fromkeys(pending))
     if not pending:
         status = "human-attested" if profile == "high-assurance" else "not-required"
@@ -763,6 +782,8 @@ def _human_checkpoints(pending: list[str]) -> list[dict]:
         ledger = (
             CLAIM_CANDIDATES_PATH
             if key == "claim-candidates"
+            else OPTIMIZATION_PROPOSALS_PATH
+            if key == "optimization-proposals"
             else EVIDENCE_LEDGER_PATHS.get(key)
         )
         checkpoints.append(

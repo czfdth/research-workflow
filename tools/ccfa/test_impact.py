@@ -144,6 +144,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/experiment_optimizer.py": (
+        "tools.tests.test_experiment_optimizer",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/dashboard.py": (
         "tools.tests.test_dashboard",
         "tools.tests.test_docs_consistency",

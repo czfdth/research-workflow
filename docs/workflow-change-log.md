@@ -495,3 +495,28 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T175824Z-6bb05263a8 - Add a budgeted inner-loop parameter optimizer
+
+- timestamp: `2026-10-05T17:58:24Z`
+- status: `complete`
+- author: `codex`
+- reason: Replace the single-pilot executor gap with grid/random trial search, objective extraction, best tracking, patience/budget stops, append-only trial logs and a keep/revert proposal; claims and code remain human-reviewed.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-deficiency-checklist-2026-10-06.md`
+  - `docs/workflow-guide.md`
+  - `scripts/experiment-optimize.ps1`
+  - `tools/ccfa/experiment_optimizer.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_experiment_optimizer.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_experiment_optimizer`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+

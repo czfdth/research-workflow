@@ -20,7 +20,7 @@ This checklist turns the live GitHub comparison into explicit work items.
 | # | Deficiency | Status | Evidence / remaining work |
 | --- | --- | --- | --- |
 | P1-1 | Automatic ARA semantic extraction front-end | Candidate extraction code-resolved | `claim_extract.py` extracts PDF/repo text into `claim-candidates.yaml` with source hash, page/line, verbatim quote, Ollama or heuristic extraction, and `status=proposed`; promotion to claim registry stays human. `ara_extract.py` still maps structured inputs into `ara-input/` |
-| P1-2 | Inner experiment loop is not truly automatic | Code-resolved | `experiment-loop run-next` previews or executes a `pilot-planned` command through `compute.py`, enforcing `pilot_budget_minutes`, writing run-log and compute ledger; result/decision remains human |
+| P1-2 | Inner experiment loop is not truly automatic | Code-resolved for parameter search | `experiment_optimizer.py` runs grid/random trials under budget, parses objective metrics, tracks best/patience, writes per-trial logs and a keep/revert proposal. It does not mutate code or auto-promote claims; proposals remain human-reviewed |
 | P1-3 | Portability: no pipx/console entry | Resolved | Root `pyproject.toml` + `ccfa.dispatch:run` expose `ccfa <module> ...`; devcontainer is still optional |
 | P1-4 | Reference audit is not periodic | Code-resolved | `docs/reference-registry.yaml` pins audited commits; `reference-audit.yml` checks monthly and fails closed on upstream drift |
 
