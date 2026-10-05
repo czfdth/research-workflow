@@ -25,6 +25,7 @@ from ccfa import (
     cross_review,
     experiment_loop,
     final_check,
+    formal_check,
     governance_map,
     governance,
     latex_check,
@@ -73,6 +74,7 @@ EVIDENCE_LEDGER_PATHS = {
     "rigor-rubric": Path("data/rigor-rubric.yaml"),
     "proof-orchestrator": Path("data/proof-campaign.yaml"),
     "artifact-badge": Path("data/artifact-badge.yaml"),
+    "formal-checks": Path("data/formal-checks.yaml"),
 }
 
 PROFILE_REQUIRED_LEDGERS = {
@@ -299,6 +301,11 @@ def _human_coding_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
     return [], []
 
 
+def _formal_check_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
+    problems, advisories, _results = formal_check.run_checks(paper_root)
+    return problems, advisories
+
+
 def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
     specs: dict[str, object] = {
         "schema-valid": lambda: _schema_gate(paper_root),
@@ -352,6 +359,8 @@ def _gate_specs(paper_root: Path, profile: str) -> list[tuple[str, object]]:
         / "manifest.json"
     ).is_file():
         specs["artifact-store"] = lambda: artifact_store.verify_store(paper_root)
+    if (paper_root / "data" / "formal-checks.yaml").is_file():
+        specs["formal-check"] = lambda: _formal_check_gate(paper_root)
     if (paper_root / "data" / "resubmit-plan.yaml").is_file():
         specs["resubmit-pipeline"] = lambda: resubmit_pipeline.check(paper_root)
     if (paper_root / "data" / "talk-plan.yaml").is_file():

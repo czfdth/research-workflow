@@ -90,6 +90,9 @@ jobs:
           python -m ccfa.run_log `
             --paper-root "_paper" `
             --log-dir "_paper/experiments/log" check
+          python -m ccfa.formal_check `
+            --paper-root "_paper" `
+            --out "_paper/reviews/formal-check.json"
 
   readiness-and-human-review:
     name: readiness and human review status (informational)

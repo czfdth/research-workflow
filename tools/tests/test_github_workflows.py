@@ -253,6 +253,7 @@ class GitHubWorkflowTests(unittest.TestCase):
                 self.assertIn("ccfa.trace_claims", deterministic)
                 self.assertIn("ccfa.final_check", deterministic)
                 self.assertIn("ccfa.run_log", deterministic)
+                self.assertIn("ccfa.formal_check", deterministic)
                 self.assertNotIn("ccfa.readiness", deterministic)
                 self.assertNotIn("ccfa.governance", deterministic)
                 self.assertNotIn("ccfa.argument_audit", deterministic)
@@ -286,6 +287,7 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertIn("ccfa.argument_audit", workflow)
         self.assertIn("--strict-cross-family", workflow)
         self.assertIn("ccfa.repro_package", workflow)
+        self.assertIn("ccfa.formal_check", workflow)
         self.assertNotIn("continue-on-error", workflow)
 
     def test_main_paper_commands_are_parseable(self):
