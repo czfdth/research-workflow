@@ -640,3 +640,17 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T190625Z-dcd0351ab5 - Register drawio-skill as a local visual-composition capability
+
+- timestamp: `2026-10-05T19:06:25Z`
+- status: `complete`
+- author: `codex`
+- reason: The registry had CCF and Nature figure skills but no editable diagram authoring; drawio-skill produces editable .drawio architecture/UML/BPMN diagrams on Windows with no API key, so it is registered as a codex-root capability skill with a ccf-common dependency.
+- files:
+  - `docs/workflow-guide.md`
+  - `skills/registry.yaml`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_skill_registry`
+

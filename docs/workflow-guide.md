@@ -277,8 +277,11 @@ registry 会解析并安装依赖，拒绝依赖环；每个 skill 使用可校�
 和 `agents` 三类 source root，因此全局技能可以只登记、不复制原文；外部源缺失时
 普通 check 记为不可用，`--strict-external` 会把它升级为 problem。
 
-当前 registry 已登记 5 个仓库内 `ccfa-*` 技能、15 个 P0 CCF 技能，以及
-18 个 `nature-*` 加 `cell-cns-figure` 的 P1 方法学技能，共 39 个。
+当前 registry 已登记 5 个仓库内 `ccfa-*` 技能、15 个 P0 CCF 技能、18 个
+`nature-*` 方法学技能，加 `cell-cns-figure`、`drawio-skill` 两个可视化技能，
+以及 10 个外部文献服务技能，共 50 个。`drawio-skill` 生成可编辑 `.drawio`
+文件，核心 IR/XML/sync/query/review 流程只需 Python 3，原生导出需要 draw.io，
+自动布局可选装 Graphviz，均不需要 API key。
 
 外部服务 adapter 检查：
 
