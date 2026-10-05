@@ -111,7 +111,7 @@ class GitHubWorkflowTests(unittest.TestCase):
             self.skipTest("independent paper repository is not checked out")
 
         workflow_dir = PAPER_ROOT / ".github" / "workflows"
-        expected = {"paper-check.yml", "repro-smoke.yml"}
+        expected = {"paper-check.yml", "repro-smoke.yml", "submission-gate.yml"}
 
         self.assertEqual({path.name for path in workflow_dir.glob("*.yml")}, expected)
         for path in workflow_dir.glob("*.yml"):
@@ -271,6 +271,22 @@ class GitHubWorkflowTests(unittest.TestCase):
                     ),
                     4,
                 )
+
+    def test_submission_gate_is_fail_closed(self):
+        if not PAPER_ROOT.is_dir():
+            self.skipTest("independent paper repository is not checked out")
+
+        workflow = (
+            PAPER_ROOT / ".github" / "workflows" / "submission-gate.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("tags:", workflow)
+        self.assertIn("--profile high-assurance", workflow)
+        self.assertIn("ccfa.governance", workflow)
+        self.assertIn("ccfa.argument_audit", workflow)
+        self.assertIn("--strict-cross-family", workflow)
+        self.assertIn("ccfa.repro_package", workflow)
+        self.assertNotIn("continue-on-error", workflow)
 
     def test_main_paper_commands_are_parseable(self):
         workflow = ROOT / ".github" / "workflows" / "paper-check.yml"

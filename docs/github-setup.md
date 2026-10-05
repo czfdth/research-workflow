@@ -21,6 +21,7 @@
 | `paper-check.yml` | 手动 | 工程确定性检查必须通过；readiness 与人工 gate 单独作为 informational job 运行并上传报告 |
 | `repro-smoke.yml` | 手动 | 从干净的私有论文 checkout 验证已有 repro bundle |
 | `release.yml` | tag 或手动 | 打包源码、生成 SHA-256 manifest；tag 触发时发布 GitHub release |
+| `submission-gate.yml` | tag、手动（论文仓库） | fail-closed：high-assurance readiness、governance、argument-audit、严格跨族评审和复现包必须全部通过 |
 
 `paper-check.yml` 和 `repro-smoke.yml` 默认检出 `czfdth/rag-attack-defense`。由于论文是独立私有仓库，需在工具仓库配置只读 `PAPER_REPOSITORY_TOKEN`；论文仓库反向检出工具时则使用只读 `RESEARCH_WORKFLOW_TOKEN`。
 
@@ -34,6 +35,12 @@ pip cache key。
 `readiness-and-human-review` 使用 `continue-on-error` 运行 readiness、
 governance、argument-audit 和 cross-review，并始终上传对应 JSON/Markdown。
 因此工程 CI 可以保持绿色，同时 `ready=false` 与人工待办仍然可见。
+
+真正提交或打 `v*` tag 时，论文仓库的 `submission-gate.yml` 不接受
+`continue-on-error`。它会强制运行 high-assurance readiness、governance、
+argument-audit、`--strict-cross-family` cross-review 和复现包验证；任一失败
+都会阻止发布流程。informational job 负责日常可见性，submission gate 负责
+提交时的最终阻断。
 
 ## 已接入的远端
 
