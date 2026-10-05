@@ -770,5 +770,56 @@ class GateDrillTests(ReadinessTests):
         )
 
 
+    def _set_stage(self, current: str, gate: str) -> None:
+        path = self.paper_root / "ccfa.yaml"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace("  current: idea", f"  current: {current}").replace(
+                "  gate: scope_defined",
+                f"  gate: {gate}",
+            ),
+            encoding="utf-8",
+        )
+
+    def test_shared_stage_does_not_invent_tail_gates(self):
+        report = build_report(self.paper_root, profile="standard")
+
+        names = {result["name"] for result in report["gate_results"]}
+        self.assertNotIn("post-submission", names)
+        self.assertNotIn("talk-pipeline", names)
+
+    def test_conference_tail_stage_requires_the_post_submission_ledger(self):
+        self._set_stage("rebuttal", "rebuttal_submitted")
+
+        report = build_report(self.paper_root, profile="standard")
+
+        names = {result["name"] for result in report["gate_results"]}
+        self.assertIn("post-submission", names)
+        self.assertTrue(
+            any(
+                "post-submission gate failed" in reason
+                for reason in report["blocking"]
+            ),
+            report["blocking"],
+        )
+
+    def test_tail_requirements_are_stage_driven(self):
+        from ccfa.readiness import _tail_requirements
+
+        self.assertEqual(_tail_requirements({"current": "internal-review"}), {})
+        self.assertEqual(
+            _tail_requirements({"current": "rebuttal"}),
+            {"post-submission": True},
+        )
+        self.assertEqual(
+            _tail_requirements({"current": "resubmitted"}),
+            {"post-submission": True, "resubmit-pipeline": True},
+        )
+        self.assertEqual(
+            _tail_requirements({"current": "camera-ready"}),
+            {"post-submission": True, "talk-pipeline": True},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

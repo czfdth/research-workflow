@@ -311,6 +311,9 @@ scripts/run-log.ps1 --log-dir "$paper/experiments/log" `
 scripts/run-ledger.ps1 sync --paper-root $paper
 scripts/run-ledger.ps1 check --paper-root $paper
 scripts/passport-ledger.ps1 check --paper-root $paper
+scripts/citation-calibration.ps1 build `
+    --paper-root $paper `
+    --out "$paper/calibration/citation-guard"
 scripts/citation-calibration.ps1 `
     --gold data/citation-gold.jsonl `
     --predictions data/citation-predictions.jsonl
@@ -487,6 +490,21 @@ scripts/artifact-badge.ps1 check --paper-root $paper
 scripts/resubmit-pipeline.ps1 check --paper-root $paper
 scripts/talk-pipeline.ps1 check --paper-root $paper
 ```
+
+尾部 gate 不是可选项。一旦 `stage.current` 离开共享阶段（`idea` 到 `submitted`），
+`readiness` 会强制要求 `data/post-submission.yaml`，缺失时报
+`post-submission-missing` 并阻塞，而不是像以前那样因为文件不存在就悄悄跳过整条 gate：
+
+| stage | 额外强制要求 |
+| --- | --- |
+| `rebuttal` / `camera-ready` / `major-revision` / `response-letter` | `data/post-submission.yaml` |
+| `resubmitted` / `accepted` / `archived` | 再加 `data/resubmit-plan.yaml` |
+| `camera-ready` / `accepted` / `archived` | 再加 `data/talk-plan.yaml` |
+
+`citation-calibration` 现在有两条路径：`--gold/--predictions` 只算 FNR/FPR；
+`build` 从论文真实的 bib、引用台账和手稿构造客观金标集——干净条目是论文自己的
+verified 引用，负例是人为注入的缺陷（删除台账项、抽掉证据体、DOI 撞车、悬空
+引用），标签由构造方式决定，不依赖人工意见，也不依赖模型自评。
 
 ## 6. 推进与回退
 

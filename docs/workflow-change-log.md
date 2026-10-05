@@ -654,3 +654,27 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T195416Z-824712e3ea - Make the post-submission tail fail closed and give citation calibration a live gold set
+
+- timestamp: `2026-10-05T19:54:16Z`
+- status: `complete`
+- author: `codex`
+- reason: Two gaps from the GitHub comparison: the writing/rebuttal/resubmit/talk tail had contracts but no live run, and calibration had a harness but no data. readiness registered the tail gates only when their input files already existed, so a missing file silently deleted its own gate; and citation calibration had no producer of labels or predictions.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/citation_calibration.py`
+  - `tools/ccfa/post_submission.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/resubmit_pipeline.py`
+  - `tools/ccfa/talk_pipeline.py`
+  - `tools/tests/test_citation_calibration.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_citation_calibration`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_post_submission`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_resubmit_pipeline`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_talk_pipeline`
+
