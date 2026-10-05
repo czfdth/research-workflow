@@ -384,3 +384,15 @@ rewrite historical entries.
   - `tools.tests.test_readiness (47 tests)`
 - notes: 实测：真实 app 点按钮走 ccfa.readiness --checkpoints-only，表格列出 4 条 checkpoint，横幅显示待人工复核。
 
+## WC-20261005T171917Z-ce5fc363e9 - Reject duplicate citation calibration ids
+
+- timestamp: `2026-10-05T17:19:17Z`
+- status: `complete`
+- author: `codex`
+- reason: Duplicate JSONL ids silently overwrote earlier rows, allowing a calibration set to lose samples without any visible failure.
+- files:
+  - `tools/ccfa/citation_calibration.py`
+  - `tools/tests/test_citation_calibration.py`
+- tests:
+  - `tools.tests.test_citation_calibration`
+
