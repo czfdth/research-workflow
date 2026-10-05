@@ -64,8 +64,13 @@ scripts/build-workbench.ps1
 # {"probe_ok": true, "workflow_root": "...", "workflow_python": "...", ...}
 ```
 
-`probe_ok=false` 时 `probe_detail` 会说明是找不到工作流目录、没有解释器，
-还是工作流目录里缺 `tools/ccfa`。
+`probe_ok=false` 时 `probe_detail` 会说明是找不到工作流目录、没有解释器、
+工作流目录里缺 `tools/ccfa`，还是**解释器跑不动 gate**。最后一种是真实会咬人的：
+`ccfa.readiness` 用一个缺依赖的解释器跑时，`formal-check`、`claim-candidates`
+这类 gate 会失败——而失败的 gate 长得就像「论文被阻塞」。所以 probe 会再问一次
+工作流自己的 `ccfa.doctor --imports-only`（在该解释器里真的 `import` 一遍各 gate
+的依赖，约 0.4s），缺哪个模块就照实报，而不是让报告凭空多出几条阻塞。
+「设置 → 测试连接」走的是同一条 probe。
 
 **安装版怎么找到工作流**：冻结包里没有 `ccfa`，所以启动时按下面的顺序找
 "包含 `tools/ccfa` 的目录"，第一个命中就用：

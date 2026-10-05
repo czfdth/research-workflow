@@ -143,11 +143,20 @@ class WorkflowClientTests(unittest.TestCase):
 
         self.assertEqual(client.python, interpreter)
 
-    def test_probe_succeeds_against_the_real_workflow(self):
+    def test_probe_tells_the_truth_about_the_resolved_workflow(self):
+        # The verdict depends on the machine (a tools/.venv has the gate
+        # dependencies, a bare interpreter may not), so assert the contract:
+        # the probe reports exactly what the interpreter can actually do.
         ok, detail = self.client.probe()
+        missing, _note = self.client.probe_interpreter()
 
-        self.assertTrue(ok, detail)
-        self.assertIn("个 stage", detail)
+        if missing:
+            self.assertFalse(ok, detail)
+            for module in missing:
+                self.assertIn(module, detail)
+        else:
+            self.assertTrue(ok, detail)
+            self.assertIn("个 stage", detail)
 
     def test_probe_reports_a_missing_interpreter(self):
         client = WorkflowClient(self.root, python=self.root / "nope.exe")
@@ -164,6 +173,51 @@ class WorkflowClientTests(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertTrue(detail)
+
+
+    def test_probe_reports_an_interpreter_that_cannot_run_the_gates(self):
+        with mock.patch.object(
+            WorkflowClient,
+            "probe_interpreter",
+            return_value=(["z3", "pymupdf"], "依赖自检失败"),
+        ):
+            ok, detail = self.client.probe()
+
+        self.assertFalse(ok)
+        self.assertIn("z3", detail)
+        self.assertIn("pymupdf", detail)
+        self.assertIn("解释器", detail)
+
+    def test_probe_interpreter_names_the_modules_a_failing_check_reports(self):
+        payload = {"ok": False, "missing": [{"module": "z3"}, {"module": "cvc5"}]}
+
+        with mock.patch.object(WorkflowClient, "json", return_value=payload):
+            missing, note = self.client.probe_interpreter()
+
+        self.assertEqual(missing, ["z3", "cvc5"])
+        self.assertEqual(note, "依赖自检失败")
+
+    def test_probe_interpreter_tolerates_a_workflow_without_the_flag(self):
+        with mock.patch.object(
+            WorkflowClient,
+            "json",
+            side_effect=WorkflowError("unrecognized arguments: --imports-only"),
+        ):
+            missing, note = self.client.probe_interpreter()
+
+        self.assertEqual(missing, [])
+        self.assertIn("不可用", note)
+
+    def test_probe_interpreter_passes_when_the_check_is_green(self):
+        with mock.patch.object(
+            WorkflowClient,
+            "json",
+            return_value={"ok": True, "missing": [], "present": ["yaml"]},
+        ):
+            missing, note = self.client.probe_interpreter()
+
+        self.assertEqual(missing, [])
+        self.assertEqual(note, "依赖自检通过")
 
 
 if __name__ == "__main__":

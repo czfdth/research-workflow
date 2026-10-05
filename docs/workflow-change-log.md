@@ -989,3 +989,22 @@ rewrite historical entries.
   - `tools.tests.test_readiness + test_docs_consistency (88 tests)`
 - notes: readiness JSON gains deadline/mode/days_left/overdue and the Markdown leads with ## Summary (countdown, blocker count and first blocker, human checkpoint count) plus a ## Deadline section. The workbench badge shows the countdown and keeps the date in its tooltip, and a header icon button exports reviews/readiness-<date>.md through the workflow render and opens it; the report is never re-summarised by the app.
 
+## WC-20261005T194216Z-581900cade - Make the workbench probe verify that the resolved interpreter can actually import the gates dependencies, via a new ccfa.doctor --imports-only.
+
+- timestamp: `2026-10-05T19:42:16Z`
+- status: `complete`
+- author: `codex`
+- reason: Running readiness under an interpreter without pymupdf/z3/cvc5 turned formal-check and claim-candidates into failures, and a failed gate reads exactly like a blocked paper: a misconfigured interpreter silently inflated the blocking list from 2 to 4 with no hint that the machine was at fault.
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/workflow.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_workflow.py`
+  - `tools/ccfa/doctor.py`
+  - `tools/tests/test_doctor.py`
+- tests:
+  - `app unittest discover (268 tests)`
+  - `ruff check app tools`
+  - `tools.tests.test_doctor + test_readiness + test_docs_consistency (123 tests)`
+- notes: doctor --imports-only imports each dependency in the running interpreter and prints JSON (module, capability, error), green in tools/.venv and naming pymupdf/z3/cvc5/cryptography under app/.venv. probe() runs it and fails closed with the module list; an older workflow without the flag degrades to "self-check unavailable" instead of failing. Two tests that asserted a fixed verdict against "the real workflow" now assert the contract, since whether that interpreter has the deps is a property of the machine.
+

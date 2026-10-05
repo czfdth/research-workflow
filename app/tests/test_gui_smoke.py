@@ -23,6 +23,7 @@ from ccfa_core.checks import CheckResult
 from ccfa_core.collaboration import CollaborationState
 from ccfa_core.secrets import SecretStoreUnavailable
 from ccfa_core.settings import ProviderSettings, Settings, save_settings
+from ccfa_core.workflow import WorkflowClient
 from ccfa_gui.settings_dialog import SettingsDialog
 from ccfa_gui.stage_dialog import StageTransitionDialog
 from ccfa_gui import theme
@@ -372,14 +373,20 @@ class GuiSmokeTests(unittest.TestCase):
             code = gui_main(["--self-check", "--repo-root", str(self.root)])
 
         payload = json.loads(stream.getvalue())
-        self.assertEqual(code, 0)
         self.assertEqual(payload["repo_root"], str(self.root))
-        self.assertTrue(payload["probe_ok"])
         self.assertTrue(payload["workflow_root"])
         self.assertTrue(payload["workflow_python"])
         self.assertTrue(
             (Path(payload["workflow_root"]) / "tools" / "ccfa").is_dir()
         )
+        # The verdict follows the dependency self-test: a checkout whose
+        # interpreter cannot import the gates' deps must not report ready.
+        expected_ok, _detail = WorkflowClient(
+            payload["workflow_root"],
+            python=payload["workflow_python"],
+        ).probe()
+        self.assertEqual(bool(payload["probe_ok"]), expected_ok)
+        self.assertEqual(code, 0 if expected_ok else 1)
 
     def test_chat_column_slides_when_animations_are_enabled(self):
         window = MainWindow(

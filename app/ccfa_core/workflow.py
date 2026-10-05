@@ -261,7 +261,46 @@ class WorkflowClient:
             )
         stages = payload.get("stages")
         count = len(stages) if isinstance(stages, list) else 0
+        missing, note = self.probe_interpreter()
+        if missing:
+            # A gate that cannot import its engine fails, and a failed gate
+            # reads as a blocked paper. Say which side is broken before anyone
+            # trusts the report.
+            return (
+                False,
+                f"工作流解释器 {self.python.name} 缺少依赖："
+                f"{'、'.join(missing)}（相关 gate 会失败而不是通过）；"
+                "把工作流目录指到带 tools/.venv 的检出，"
+                f"或用 {WORKFLOW_PYTHON_ENV} 指定解释器",
+            )
         return (
             True,
-            f"OK：{self.root}（{count} 个 stage，解释器 {self.python.name}）",
+            f"OK：{self.root}（{count} 个 stage，"
+            f"解释器 {self.python.name}，{note}）",
         )
+
+    def probe_interpreter(self) -> tuple[list[str], str]:
+        """Ask the workflow whether this interpreter can import its gates' deps.
+
+        An older workflow without ``doctor --imports-only`` is reported as
+        "unavailable" rather than failing the probe: the workbench must stay
+        usable against a workflow it does not fully know.
+        """
+
+        try:
+            payload = self.json("doctor", ("--imports-only",))
+        except WorkflowError as exc:
+            return [], f"依赖自检不可用（{exc}）"
+        if payload.get("ok"):
+            return [], "依赖自检通过"
+        missing = payload.get("missing")
+        names = (
+            [
+                str(item.get("module"))
+                for item in missing
+                if isinstance(item, dict) and item.get("module")
+            ]
+            if isinstance(missing, list)
+            else []
+        )
+        return names or ["未知模块"], "依赖自检失败"
