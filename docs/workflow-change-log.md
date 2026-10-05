@@ -696,3 +696,30 @@ rewrite historical entries.
   - `tools.tests.test_readiness`
   - `tools.tests.test_scripts`
 
+## WC-20261005T201305Z-1f8150ba42 - Make the tool layer runnable without PowerShell
+
+- timestamp: `2026-10-05T20:13:05Z`
+- status: `complete`
+- author: `codex`
+- reason: Portability was the weakest axis: python -m ccfa did not exist, the ccfa.dispatch entry point was untested and its aliases were wrong for statistics/rigor-rubric/archive/experiment-optimize, and every tool was reachable only through 71 .ps1 wrappers. A portable dispatcher, a POSIX launcher and a fail-closed parity test make the same tools run on Linux and macOS, with a Linux CI job as evidence.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/workflow-guide.md`
+  - `pyproject.toml`
+  - `scripts/ccfa`
+  - `scripts/install-toolchain.ps1`
+  - `tools/ccfa/__main__.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_dispatch.py`
+  - `tools/tests/test_github_workflows.py`
+  - `tools/tests/test_packaging.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_packaging`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

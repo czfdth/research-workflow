@@ -163,7 +163,9 @@ class GitHubWorkflowTests(unittest.TestCase):
             "scripts/test-impact.ps1 run --suite app",
             workflow,
         )
-        self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 3)
+        # Three Windows jobs build a virtualenv; the fourth is the Linux
+        # portability job, which keeps the same UTF-8 contract for its output.
+        self.assertEqual(workflow.count("PYTHONUTF8: '1'"), 4)
 
     def test_ci_installs_hash_locked_requirements(self):
         workflow_texts = [
