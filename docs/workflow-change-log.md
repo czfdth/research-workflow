@@ -128,3 +128,40 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_change_log`
 
+## WC-20261005T165038Z-c0f50383ce - Make host-only tool end-to-end tests skip on a clean CI runner
+
+- timestamp: `2026-10-05T16:50:38Z`
+- status: `complete`
+- author: `codex`
+- reason: The venue derivation and compile suites run against the host ccf-latex-templates library and MiKTeX, neither of which exists on a GitHub runner or the public mirror. Skipping with an explicit reason keeps the full-suite CI job honest instead of red. Also resolve paths before comparing in the cross-review argv test so 8.3 short names do not fail it.
+- files:
+  - `tools/tests/__init__.py`
+  - `tools/tests/test_compile.py`
+  - `tools/tests/test_cross_review.py`
+  - `tools/tests/test_derivation_e2e.py`
+  - `tools/tests/test_e2e.py`
+  - `tools/tests/test_evidence_integrity_e2e.py`
+  - `tools/tests/test_productization_e2e.py`
+  - `tools/tests/test_venues.py`
+  - `tools/tests/test_workflow_e2e.py`
+- tests:
+  - `tools.tests.test_compile`
+  - `tools.tests.test_cross_review`
+  - `tools.tests.test_derivation_e2e`
+  - `tools.tests.test_e2e`
+  - `tools.tests.test_evidence_integrity_e2e`
+  - `tools.tests.test_productization_e2e`
+  - `tools.tests.test_venues`
+  - `tools.tests.test_workflow_e2e`
+
+## WC-20261005T165038Z-048c83d06d - Let the public mirror drop the private workflow change-log gate
+
+- timestamp: `2026-10-05T16:50:38Z`
+- status: `complete`
+- author: `codex`
+- reason: The mirror diff is not the private commit diff, so the change-log gate cannot be satisfied there; publish-public.ps1 now removes named workflow steps on the mirror via config.
+- files:
+  - `scripts/publish-public.ps1`
+- tests:
+  - `tools.tests.test_scripts`
+

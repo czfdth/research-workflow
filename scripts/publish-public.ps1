@@ -22,6 +22,7 @@ Config schema (JSON):
   replacements         array    of [from, to] literal string pairs
   forbidden            array    of literal strings that must not survive
   overlays             object   export path -> tracked source file to copy in
+  drop_steps           object   workflow path -> list of step names to remove
   exclude              array    repo-relative paths dropped from the export
 
 .PARAMETER Ref
@@ -115,6 +116,12 @@ if ($config.overlays) {
         $overlays[$property.Name] = [string]$property.Value
     }
 }
+$dropSteps = @{}
+if ($config.drop_steps) {
+    foreach ($property in $config.drop_steps.PSObject.Properties) {
+        $dropSteps[$property.Name] = @($property.Value | ForEach-Object { [string]$_ })
+    }
+}
 
 # --- preconditions: the private repository is the pushed source of truth ------
 $head = (git -C $root rev-parse HEAD).Trim()
@@ -169,6 +176,21 @@ foreach ($relative in $overlays.Keys) {
     Set-Content -LiteralPath $target -Value ($content -join "`n") -Encoding utf8
 }
 Write-Step ("applied " + $overlays.Count + " public overlay(s)")
+
+foreach ($relative in $dropSteps.Keys) {
+    $target = Join-Path $export $relative
+    if (-not (Test-Path -LiteralPath $target)) { continue }
+    $kept = New-Object System.Collections.Generic.List[string]
+    $skipping = $false
+    foreach ($line in (Get-Content -LiteralPath $target)) {
+        if ($line -match '^\s*-\s+name:\s*(.+?)\s*$') {
+            $skipping = $dropSteps[$relative] -contains $Matches[1]
+        }
+        if (-not $skipping) { $kept.Add($line) }
+    }
+    Set-Content -LiteralPath $target -Value ($kept -join "`n") -Encoding utf8
+}
+Write-Step ("dropped mirror-only steps from " + $dropSteps.Count + " workflow file(s)")
 
 # --- fail-closed leak scan ----------------------------------------------------
 $problems = New-Object System.Collections.Generic.List[string]
