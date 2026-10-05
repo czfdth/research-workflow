@@ -982,5 +982,33 @@ class GateDrillTests(ReadinessTests):
         )
 
 
+    def test_tail_stage_blocks_until_its_section_is_complete(self):
+        self._set_stage("rebuttal", "rebuttal_submitted")
+        data = self.paper_root / "data"
+        data.mkdir(exist_ok=True)
+        (data / "post-submission.yaml").write_text(
+            "version: 1\n"
+            "rebuttal:\n"
+            "  status: not-started\n"
+            "resubmit:\n"
+            "  status: not-applicable\n"
+            "  reason: conference submission\n"
+            "talk:\n"
+            "  status: not-started\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="standard")
+
+        self.assertTrue(
+            any(
+                "post-submission gate failed" in reason
+                and "section-incomplete" in reason
+                for reason in report["blocking"]
+            ),
+            report["blocking"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

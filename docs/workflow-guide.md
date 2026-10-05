@@ -545,11 +545,18 @@ run id、claim id 和 figure id：
 
 ```powershell
 scripts/revision-ledger.ps1 --ledger "$paper/reviews/revision-ledger.md"
+scripts/post-submission.ps1 init --paper-root $paper
 scripts/post-submission.ps1 check --paper-root $paper
 scripts/artifact-badge.ps1 check --paper-root $paper
 scripts/resubmit-pipeline.ps1 check --paper-root $paper
 scripts/talk-pipeline.ps1 check --paper-root $paper
 ```
+
+`post-submission init` 从论文真实的 run id、claim id、figure id 生成 schema 正确的骨架，
+默认**不覆盖**已有台账（确认后加 `--force`）。骨架本身不构成"已完成"：进入
+`rebuttal` / `major-revision` / `response-letter` 时 `rebuttal` 段必须为 `complete`，
+进入 `resubmitted` 时 `resubmit` 段必须为 `complete`，否则报
+`post-submission-section-incomplete`，空骨架无法把 gate 刷绿。
 
 尾部 gate 不是可选项。一旦 `stage.current` 离开共享阶段（`idea` 到 `submitted`），
 `readiness` 会强制要求 `data/post-submission.yaml`，缺失时报

@@ -1083,3 +1083,21 @@ rewrite historical entries.
   - `tools.tests.test_run_log + test_research_ledgers + test_docs_consistency + test_experiment_loop + test_readiness (201 tests)`
 - notes: record_run validates role against VALID_ROLES and refuses a role on a purpose=build run; run-log check reports run-log-role-invalid and run-log-role-on-build for hand-edited records. research_ledgers now reads run roles and reports claim-registry-control-run-missing for a supported empirical polarity=effect claim whose referenced runs contain no negative-control/ablation. Backfill note: the live paper has no experiment-purpose runs at all (all 7 run-log records are builds), and its 5 supported claims are descriptive, so there was nothing to label and the new rule does not fire on it.
 
+## WC-20261005T200124Z-8ebfd7ce94 - Add post-submission init and make a tail stage require its own section
+
+- timestamp: `2026-10-05T20:01:24Z`
+- status: `complete`
+- author: `codex`
+- reason: The tail still passed while empty: a skeleton file satisfied the missing-file check and every section stayed not-started. init now derives a schema-correct ledger from the paper's real run/claim/figure ids without overwriting, and readiness requires the section a stage is named after to be complete.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/post_submission.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_post_submission.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_post_submission`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+

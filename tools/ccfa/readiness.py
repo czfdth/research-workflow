@@ -517,6 +517,16 @@ def _formal_check_gate(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
 RESUBMIT_STAGES = frozenset({"resubmitted", "accepted", "archived"})
 TALK_STAGES = frozenset({"camera-ready", "accepted", "archived"})
 
+# A stage that names a tail section also owes that section. Without this, an
+# empty skeleton would satisfy the gate: the file exists, so the missing-file
+# check passes, and every section stays not-started.
+STAGE_REQUIRED_SECTIONS = {
+    "rebuttal": ("rebuttal",),
+    "major-revision": ("rebuttal",),
+    "response-letter": ("rebuttal",),
+    "resubmitted": ("resubmit",),
+}
+
 
 def _tail_requirements(state_stage: object) -> dict[str, bool]:
     name = state_stage.get("current") if isinstance(state_stage, dict) else None
@@ -528,6 +538,13 @@ def _tail_requirements(state_stage: object) -> dict[str, bool]:
     if name in TALK_STAGES:
         required["talk-pipeline"] = True
     return required
+
+
+def _tail_required_sections(state_stage: object) -> tuple[str, ...]:
+    name = state_stage.get("current") if isinstance(state_stage, dict) else None
+    if not isinstance(name, str):
+        return ()
+    return STAGE_REQUIRED_SECTIONS.get(name, ())
 
 
 def _gate_specs(
@@ -577,6 +594,7 @@ def _gate_specs(
         specs["post-submission"] = lambda: post_submission.check(
             paper_root,
             require_configured=bool(tail.get("post-submission")),
+            require_sections=_tail_required_sections(state_stage),
         )
     if (paper_root / "experiments" / "log" / "run-ledger.jsonl").is_file():
         specs["run-ledger"] = lambda: run_ledger.check_ledger(paper_root)

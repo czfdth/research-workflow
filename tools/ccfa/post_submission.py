@@ -12,12 +12,15 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
-from ccfa.cli import Problem, emit, tool_error
+from ccfa.cli import Problem, emit, save_text_atomically, tool_error
 from ccfa.ledger import is_nonempty_str, load_ledger, missing_fields, problem
+
+GENERATOR = "ccfa.post_submission/init"
 
 
 POST_SUBMISSION = Path("data/post-submission.yaml")
@@ -101,7 +104,12 @@ def _figure_ids(paper_root: Path) -> set[str]:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
         return set()
-    figures = payload.get("figures") if isinstance(payload, dict) else None
+    if isinstance(payload, list):
+        figures = payload
+    elif isinstance(payload, dict):
+        figures = payload.get("figures")
+    else:
+        figures = None
     if not isinstance(figures, list):
         return set()
     ids: set[str] = set()
@@ -112,6 +120,76 @@ def _figure_ids(paper_root: Path) -> set[str]:
         if is_nonempty_str(value):
             ids.add(value)
     return ids
+
+
+def _venue_mode(paper_root: Path) -> str:
+    path = paper_root / "ccfa.yaml"
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return "conference"
+    venue = payload.get("target_venue") if isinstance(payload, dict) else None
+    mode = venue.get("mode") if isinstance(venue, dict) else None
+    return mode.strip() if is_nonempty_str(mode) else "conference"
+
+
+def build_skeleton(paper_root: Path) -> dict:
+    """Derive a schema-correct tail ledger from the paper's own inventories."""
+    paper_root = Path(paper_root)
+    if _venue_mode(paper_root) == "conference":
+        resubmit: dict = {
+            "status": "not-applicable",
+            "reason": (
+                "conference submission: a resubmit plan applies only when a "
+                "rejected paper is moved to a different venue"
+            ),
+        }
+    else:
+        resubmit = {
+            "status": "not-started",
+            "from_venue": "",
+            "to_venue": "",
+            "allowed_paths": [],
+            "forbidden_paths": [],
+        }
+    return {
+        "version": 1,
+        "generated_by": GENERATOR,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "rebuttal": {
+            "status": "not-started",
+            "response_ledger": "reviews/revision-ledger.md",
+            "new_evidence_run_ids": [],
+            "commitments": [],
+        },
+        "resubmit": resubmit,
+        "talk": {
+            "status": "not-started",
+            "slides": [],
+        },
+        "inventory": {
+            "run_ids": sorted(_run_ids(paper_root)),
+            "claim_ids": sorted(_claim_ids(paper_root)),
+            "figure_ids": sorted(_figure_ids(paper_root)),
+        },
+    }
+
+
+def init_ledger(paper_root: Path, *, overwrite: bool = False) -> Path:
+    """Write the skeleton without overwriting an existing ledger by default."""
+    paper_root = Path(paper_root).resolve()
+    path = paper_root / POST_SUBMISSION
+    if path.exists() and not overwrite:
+        raise ValueError(
+            f"{path} 已存在；init 不覆盖已有台账，确认后加 --force"
+        )
+    payload = build_skeleton(paper_root)
+    save_text_atomically(
+        path,
+        yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+        description="post-submission 台账",
+    )
+    return path
 
 
 def _load_payload(
@@ -590,6 +668,7 @@ def check(
     paper_root: Path,
     *,
     require_configured: bool = False,
+    require_sections: tuple[str, ...] = (),
 ) -> tuple[list[Problem], list[Problem]]:
     paper_root = Path(paper_root).resolve()
     payload, problems, advisories = _load_payload(
@@ -639,6 +718,17 @@ def check(
             figure_ids=figure_ids,
         )
     )
+    for name in require_sections:
+        if statuses.get(name) != "complete":
+            problems.append(
+                problem(
+                    "post-submission-section-incomplete",
+                    path,
+                    None,
+                    f"{name} 段在当前 stage 必须为 complete，"
+                    f"实际为 {statuses.get(name)!r}",
+                )
+            )
     if all(status == "not-started" for status in statuses.values()):
         advisories.append(
             problem(
@@ -657,17 +747,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "action",
-        choices=("check",),
+        choices=("check", "init"),
         nargs="?",
         default="check",
     )
     parser.add_argument("--paper-root", default=".")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="init 覆盖已存在的台账（默认拒绝覆盖）",
+    )
     return parser
 
 
 def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
     try:
+        if args.action == "init":
+            path = init_ledger(Path(args.paper_root), overwrite=args.force)
+            print(
+                json.dumps(
+                    {"path": str(path), "status": "created"},
+                    ensure_ascii=False,
+                )
+            )
+            return 0
         problems, advisories = check(Path(args.paper_root))
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))
