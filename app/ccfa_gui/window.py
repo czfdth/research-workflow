@@ -36,8 +36,10 @@ from ccfa_core.checks import (
 )
 from ccfa_core.checks import run_checkpoints as load_checkpoints
 from ccfa_core.checks import run_readiness as load_readiness
+from ccfa_core.checks import export_readiness as write_readiness_report
 from ccfa_core.projects import (
     ProjectError,
+    deadline_note,
     find_projects,
     load_project,
     stages_for,
@@ -224,9 +226,11 @@ class MainWindow(QMainWindow):
         self.settings_button.setIcon(icons.icon("settings", colour=ink))
         self.chat_toggle.setIcon(icons.icon("chat", colour=ink))
         self.open_dir_button.setIcon(icons.icon("folder", colour=muted))
+        self.export_button.setIcon(icons.icon("export", colour=muted))
         self.validate_button.setIcon(icons.icon("validate", colour="#ffffff"))
         self.milestones_button.setIcon(icons.icon("milestones", colour=ink))
         self.readiness_button.setIcon(icons.icon("readiness", colour=ink))
+        self.stages_button.setIcon(icons.icon("stages", colour=ink))
         self.checkpoints_button.setIcon(icons.icon("checkpoints", colour=ink))
         self.chat_panel.send_button.setIcon(icons.icon("send", colour=ink))
         self.placeholder_icon.setPixmap(
@@ -405,6 +409,16 @@ class MainWindow(QMainWindow):
         self.open_dir_button.setEnabled(False)
         self.open_dir_button.clicked.connect(self._open_project_dir)
         title_row.addWidget(self.open_dir_button)
+        self.export_button = QPushButton()
+        self.export_button.setObjectName("export_button")
+        self.export_button.setIcon(icons.icon("export", colour=theme.MUTED))
+        self.export_button.setToolTip(
+            "导出 readiness 一页式报告（写入 reviews/readiness-<日期>.md 并打开）"
+        )
+        self.export_button.setFixedSize(26, 26)
+        self.export_button.setEnabled(False)
+        self.export_button.clicked.connect(self.export_readiness_report)
+        title_row.addWidget(self.export_button)
         head.addLayout(title_row)
         self.project_note = QLabel("从左侧选择一个项目")
         self.project_note.setObjectName("projectNote")
@@ -633,11 +647,13 @@ class MainWindow(QMainWindow):
         self.project_note.setText("从左侧选择一个项目")
         self.project_note.setToolTip("")
         self.open_dir_button.setEnabled(False)
+        self.export_button.setEnabled(False)
         self.gate_criterion_label.setText("")
         self.gate_criterion_label.setVisible(False)
         self._set_badge(self.stage_label, "")
         self._set_badge(self.gate_label, "")
         self._set_badge(self.deadline_label, "")
+        self.deadline_label.setToolTip("")
 
     def _show_placeholder(
         self,
@@ -824,6 +840,7 @@ class MainWindow(QMainWindow):
             self.chat_panel.set_project(None)
             return
         self.open_dir_button.setEnabled(True)
+        self.export_button.setEnabled(True)
         if ref.error:
             self._show_project_error(ref.slug, ref.error)
             self._set_results([("ccfa.yaml", "错误", ref.error)])
@@ -842,9 +859,11 @@ class MainWindow(QMainWindow):
         self.project_note.setToolTip(str(ref.dir))
         self._set_badge(self.stage_label, f"阶段 {state.current_stage}")
         self._set_badge(self.gate_label, f"门禁 {state.gate}")
-        self._set_badge(
-            self.deadline_label,
-            f"截止 {state.deadline if state.deadline else '无'}",
+        # The badge row is tight at narrow widths, so it carries the countdown
+        # and the tooltip keeps the absolute date.
+        self._set_badge(self.deadline_label, f"截止 {deadline_note(state.deadline)}")
+        self.deadline_label.setToolTip(
+            f"目标日 {state.deadline}" if state.deadline else "未设置投稿截止日"
         )
         criterion = state.gate_criterion
         self.gate_criterion_label.setText(
@@ -974,6 +993,28 @@ class MainWindow(QMainWindow):
                 f"ready=false · 阻塞 {len(result.problems)} 条 · {first}"
                 + (f" · gate {gates}" if gates else ""),
             )
+
+    def export_readiness_report(self) -> None:
+        """Write the workflow's one-page readiness report and open it."""
+
+        ref = self._selected_ref()
+        if ref is None or ref.error:
+            self._hide_checkpoint_banner()
+            self._set_results([("readiness", "错误", "先选择一个可读取的项目")])
+            return
+        try:
+            path = write_readiness_report(ref.dir)
+        except CheckError as exc:
+            self._hide_checkpoint_banner()
+            self._set_results([("readiness", "错误", str(exc))])
+            return
+        try:
+            display = path.relative_to(Path(ref.dir)).as_posix()
+        except ValueError:
+            display = str(path)
+        self._hide_checkpoint_banner()
+        self._set_results([("readiness", "OK", f"已导出 {display}")])
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def _show_banner(self, state: str, text: str) -> None:
         self.checkpoint_banner.setText(text)

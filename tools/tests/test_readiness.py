@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import date
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -54,6 +55,16 @@ class ReadinessTests(unittest.TestCase):
             "  path: submission/checks.md\n"
             "  status: not_started\n"
             f"{extra}",
+            encoding="utf-8",
+        )
+
+    def _set_deadline(self, value: str) -> None:
+        """Give the fixture a real target date so the countdown has a subject."""
+
+        path = self.paper_root / "ccfa.yaml"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace("  deadline: null", f"  deadline: {value}"),
             encoding="utf-8",
         )
 
@@ -619,6 +630,59 @@ class ReadinessTests(unittest.TestCase):
         self.assertIn("proof", by_id)
         self.assertTrue(by_id["proof"]["question"])
         self.assertEqual(by_id["proof"]["ledger"], "data/proof-audit.yaml")
+
+    def test_report_counts_down_to_the_submission_deadline(self):
+        self._set_deadline("'2026-10-15'")
+
+        report = build_report(
+            self.paper_root,
+            profile="minimal",
+            today=date(2026, 10, 6),
+        )
+
+        self.assertEqual(report["deadline"]["mode"], "countdown")
+        self.assertEqual(report["deadline"]["deadline"], "2026-10-15")
+        self.assertEqual(report["deadline"]["days_left"], 9)
+        self.assertFalse(report["deadline"]["overdue"])
+
+    def test_an_overdue_deadline_counts_negative_days(self):
+        self._set_deadline("'2026-09-30'")
+
+        report = build_report(
+            self.paper_root,
+            profile="minimal",
+            today=date(2026, 10, 6),
+        )
+
+        self.assertEqual(report["deadline"]["days_left"], -6)
+        self.assertTrue(report["deadline"]["overdue"])
+
+    def test_a_paper_without_a_deadline_has_no_countdown(self):
+        report = build_report(
+            self.paper_root,
+            profile="minimal",
+            today=date(2026, 10, 6),
+        )
+
+        self.assertIsNone(report["deadline"]["deadline"])
+        self.assertIsNone(report["deadline"]["days_left"])
+        self.assertFalse(report["deadline"]["overdue"])
+
+    def test_markdown_leads_with_the_countdown_and_the_blocker_count(self):
+        self._set_deadline("'2026-10-15'")
+        report = build_report(
+            self.paper_root,
+            profile="minimal",
+            today=date(2026, 10, 6),
+        )
+
+        markdown = render_markdown(report)
+
+        self.assertIn("## Summary", markdown)
+        self.assertIn("还有 9 天（2026-10-15）", markdown)
+        self.assertIn(f"阻塞: {len(report['blocking'])} 条", markdown)
+        self.assertIn("## Deadline", markdown)
+        self.assertIn("## Blocking", markdown)
 
     def test_collaboration_only_agrees_with_the_full_report(self):
         self._git_init()

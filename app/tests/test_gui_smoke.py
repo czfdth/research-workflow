@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from contextlib import redirect_stdout
+from datetime import date
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -637,6 +638,46 @@ class GuiSmokeTests(unittest.TestCase):
             )
         )
         self.assertEqual(state["stage"]["current"], "idea")
+
+    def test_deadline_badge_shows_the_countdown_and_keeps_the_date(self):
+        write_project(self.root, "deadline", deadline="2030-01-01")
+        self.window.refresh_button.click()
+        APP.processEvents()
+
+        self._select("deadline")
+
+        self.assertTrue(
+            self.window.deadline_label.text().startswith("截止 剩 "),
+            self.window.deadline_label.text(),
+        )
+        self.assertIn("2030-01-01", self.window.deadline_label.toolTip())
+
+    def test_export_button_writes_and_opens_the_readiness_report(self):
+        self._select("good")
+        fake = mock.Mock()
+
+        with mock.patch("ccfa_gui.window.QDesktopServices", fake):
+            self.window.export_button.click()
+            APP.processEvents()
+
+        expected = (
+            self.root
+            / "papers"
+            / "good"
+            / "reviews"
+            / f"readiness-{date.today().isoformat()}.md"
+        )
+        self.assertTrue(expected.is_file(), expected)
+        self.assertIn(
+            "# Readiness Report",
+            expected.read_text(encoding="utf-8"),
+        )
+        fake.openUrl.assert_called_once()
+        messages = [
+            self.window.results_table.item(row, 2).text()
+            for row in range(self.window.results_table.rowCount())
+        ]
+        self.assertTrue(any("已导出" in text for text in messages), messages)
 
     def test_collaboration_state_marks_the_project_row(self):
         state = CollaborationState(

@@ -965,3 +965,27 @@ rewrite historical entries.
   - `tools.tests.test_readiness + test_docs_consistency (80 tests)`
 - notes: The slim report reuses the full report own git probe and dirty rule (generated readiness records do not count), pinned by a test that compares both blockers lists. Rows show a marker instead of an inline reason because the 180px sidebar elides any suffix; the probe runs on a shared QThreadPool with a generation guard, and tests disable it except one real subprocess case.
 
+## WC-20261005T193531Z-60ed2618fc - Turn the readiness report into a countdown-first one-page report, and let the workbench export and show it.
+
+- timestamp: `2026-10-05T19:35:31Z`
+- status: `complete`
+- author: `codex`
+- reason: The report listed dimensions first and never named the deadline, so the one number that changes behaviour (days to submission) was only visible by running milestones separately; the app could also not produce the file at all.
+- files:
+  - `app/README.md`
+  - `app/ccfa_core/checks.py`
+  - `app/ccfa_core/projects.py`
+  - `app/ccfa_gui/icon_paths.py`
+  - `app/ccfa_gui/window.py`
+  - `app/tests/test_checks.py`
+  - `app/tests/test_gui_smoke.py`
+  - `app/tests/test_projects.py`
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `app unittest discover (264 tests)`
+  - `ruff check app tools`
+  - `tools.tests.test_readiness + test_docs_consistency (88 tests)`
+- notes: readiness JSON gains deadline/mode/days_left/overdue and the Markdown leads with ## Summary (countdown, blocker count and first blocker, human checkpoint count) plus a ## Deadline section. The workbench badge shows the countdown and keeps the date in its tooltip, and a header icon button exports reviews/readiness-<date>.md through the workflow render and opens it; the report is never re-summarised by the app.
+

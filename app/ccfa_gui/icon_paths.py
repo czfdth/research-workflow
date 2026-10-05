@@ -55,6 +55,12 @@ ICONS: dict[str, tuple[str, ...]] = {
         '<path d="m8 21-4-4 4-4"/>',
         '<path d="M4 17h16"/>',
     ),
+    # Export writes a file to disk, so the glyph is a download-to-tray arrow.
+    "export": (
+        '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+        '<path d="m7 10 5 5 5-5"/>',
+        '<path d="M12 15V3"/>',
+    ),
     "send": (
         '<path d="m5 12 7-7 7 7"/>',
         '<path d="M12 19V5"/>',

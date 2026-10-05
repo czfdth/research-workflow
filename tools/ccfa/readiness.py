@@ -908,6 +908,29 @@ def _human_checkpoints(pending: list[str]) -> list[dict]:
     return checkpoints
 
 
+def _deadline_summary(due: dict, today: date) -> dict:
+    """The countdown facts the one-page report leads with.
+
+    ``ccfa.milestones due`` owns the milestone schedule; this only turns its
+    deadline into the number a researcher actually looks at ("还有几天").
+    """
+
+    raw = due.get("deadline")
+    deadline = None
+    if isinstance(raw, str):
+        try:
+            deadline = date.fromisoformat(raw)
+        except ValueError:
+            deadline = None
+    days_left = (deadline - today).days if deadline is not None else None
+    return {
+        "deadline": deadline.isoformat() if deadline is not None else None,
+        "mode": due.get("mode"),
+        "days_left": days_left,
+        "overdue": bool(days_left is not None and days_left < 0),
+    }
+
+
 def _scientific_status(paper_root: Path) -> dict:
     path = paper_root / "data" / "scientific-acceptance.yaml"
     if not path.is_file():
@@ -954,6 +977,7 @@ def build_report(
     paper_root = Path(paper_root).resolve()
     state = _load_state(paper_root)
     selected_profile = _profile(state, profile)
+    today = today or date.today()
     assurance = _assurance(state)
     audit_profile = _audit_profile(selected_profile, assurance)
     state_path = paper_root / "ccfa.yaml"
@@ -961,7 +985,7 @@ def build_report(
     stage = stage_report(paper_root)
     mode = state.get("target_venue", {}).get("mode", "conference")
     gate = gate_for(mode, stage["current"])
-    due = due_report(paper_root, today or date.today())
+    due = due_report(paper_root, today)
     ledgers = _ledger_status(paper_root, audit_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
@@ -1060,6 +1084,7 @@ def build_report(
         "schema_problems": schema_problems,
         "evidence": ledgers,
         "deadline": {
+            **_deadline_summary(due, today),
             "due": due.get("due", []),
             "problems": due.get("problems", []),
             "advisories": due.get("advisories", []),
@@ -1083,6 +1108,16 @@ def build_report(
 
 
 def render_markdown(report: dict) -> str:
+    deadline = report.get("deadline", {})
+    checkpoints = report.get("human_review", {}).get("checkpoints", [])
+    days_left = deadline.get("days_left")
+    if not deadline.get("deadline"):
+        countdown = "无截止日期（sequential 模式）"
+    elif isinstance(days_left, int) and days_left < 0:
+        countdown = f"已逾期 {abs(days_left)} 天（{deadline['deadline']}）"
+    else:
+        countdown = f"还有 {days_left} 天（{deadline['deadline']}）"
+    first_blocker = report["blocking"][0] if report["blocking"] else None
     lines = [
         "# Readiness Report",
         "",
@@ -1093,17 +1128,39 @@ def render_markdown(report: dict) -> str:
         f"- stage: `{report['stage']['current']}` / gate `{report['stage']['gate']}`",
         f"- ready: `{str(report['ready']).lower()}`",
         "",
+        "## Summary",
+        "",
+        f"- 投稿倒计时: {countdown}",
+        f"- 阻塞: {len(report['blocking'])} 条"
+        + (f"（第一条：{first_blocker}）" if first_blocker else ""),
+        f"- 待人工复核: {len(checkpoints)} 项",
+        "",
         "## Dimensions",
         "",
     ]
     for key, value in report["dimensions"].items():
         lines.append(f"- `{key}`: `{value}`")
+    lines.extend(["", "## Deadline", ""])
+    lines.append(f"- mode: `{deadline.get('mode')}`")
+    lines.append(f"- deadline: `{deadline.get('deadline')}`")
+    lines.append(f"- days_left: `{days_left}`")
+    due_items = deadline.get("due", [])
+    if due_items:
+        for item in due_items:
+            if isinstance(item, dict):
+                lines.append(
+                    f"- `{item.get('checkpoint')}` ({item.get('date')})："
+                    f"stage `{item.get('stage')}` / gate `{item.get('gate')}`"
+                )
+            else:
+                lines.append(f"- {item}")
+    else:
+        lines.append("- 没有到期的里程碑")
     lines.extend(["", "## Blocking", ""])
     if report["blocking"]:
         lines.extend(f"- {item}" for item in report["blocking"])
     else:
         lines.append("- none")
-    checkpoints = report.get("human_review", {}).get("checkpoints", [])
     lines.extend(["", "## Human Checkpoints", ""])
     if checkpoints:
         for item in checkpoints:

@@ -161,3 +161,37 @@ def run_readiness(project, *, client: WorkflowClient | None = None) -> CheckResu
         problems=tuple(str(item) for item in blocking),
         report=report,
     )
+
+
+def export_readiness(
+    project,
+    *,
+    out: str | Path | None = None,
+    today: str | date | None = None,
+    client: WorkflowClient | None = None,
+) -> Path:
+    """Write the workflow's one-page readiness report and return its path.
+
+    The report is the workflow's own Markdown render, not a workbench
+    summary: exporting must not become a second, drifting description of the
+    same paper.
+    """
+
+    project_dir = _project_dir(project)
+    if out is None:
+        report_date = today or date.today()
+        if isinstance(report_date, str):
+            report_date = date.fromisoformat(report_date)
+        target = project_dir / "reviews" / f"readiness-{report_date.isoformat()}.md"
+    else:
+        target = Path(out)
+    args = ["--paper-root", str(project_dir), "--out", str(target)]
+    if today is not None:
+        args += ["--today", today if isinstance(today, str) else today.isoformat()]
+    try:
+        (client or WorkflowClient()).json("readiness", args)
+    except WorkflowError as exc:
+        raise CheckError(f"导出 readiness 报告失败：{exc}") from exc
+    if not target.is_file():
+        raise CheckError(f"readiness 没有写出报告：{target}")
+    return target

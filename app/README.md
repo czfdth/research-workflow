@@ -151,6 +151,13 @@ collaboration_probe.py`），因为一次 `--collaboration-only` 约 0.6s，不�
 | 运行 readiness | `ccfa.readiness` | 一屏给出六个维度、每个 gate 的结论与阻塞清单 |
 | 阶段流转 | `ccfa.state` | 推进/回退 stage，写回 `ccfa.yaml` 并记入 `stage.history` |
 | 待人工复核 | `ccfa.readiness --checkpoints-only` | 人工复核队列：要判断什么、写进哪个台账 |
+| 导出报告（头部图标） | `ccfa.readiness --out` | 写出 `reviews/readiness-<日期>.md` 一页式报告并打开 |
+
+头部徽章的「截止」显示的是倒计时（`剩 9 天` / `已逾期 6 天` / `今天截止`），绝对日期
+在 tooltip 里：徽章行在窄窗口本来就紧，塞进完整日期会挤掉其它徽章，而 readiness 的
+Markdown 报告第一段就是 `## Summary`（投稿倒计时、阻塞条数与第一条阻塞、待人工复核
+项数），所以日期并没有丢。导出报告走工作流自己的 `render_markdown`，不是工作台另写
+一份摘要——同一篇论文不能有两套会漂移的描述。
 
 动作按钮排在一行可换行的流式布局里（`ccfa_gui/flow_layout.py`）：中栏被对话栏挤窄时
 按钮换到第二行，而不是把「运行 milestones」这类标签省略成「运行 mileston」。窄窗口
