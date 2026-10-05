@@ -467,3 +467,15 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_github_workflows`
 
+## WC-20261005T173802Z-5d4940b771 - Record the Figma design file in the workbench UI spec.
+
+- timestamp: `2026-10-05T17:38:02Z`
+- status: `complete`
+- author: `codex`
+- reason: 五屏已通过 Figma MCP 导入为可编辑矢量图层并按列排布；原文说'没有配置 Figma MCP'已经过期，会把读者带偏。
+- files:
+  - `docs/design/2026-10-06-workbench-ui-spec.md`
+- tests:
+  - `docs consistency (tools.tests.test_docs_consistency)`
+- notes: Figma 文件 XpIadzobOUEEPimh31y0TC，导入后 get_screenshot 复核过。
+

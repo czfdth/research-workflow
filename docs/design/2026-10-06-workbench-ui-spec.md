@@ -98,9 +98,9 @@ severity 上色，消息列超出截断并把全文放进 tooltip。
 Figma：`File → Import`（或直接把 `.svg` 拖进画布）。每个 `<g id="...">`
 会变成一个可命名的图层，文字保持可编辑。
 
-注意：本机 Figma 插件已启用，但**没有配置 Figma MCP server**，所以这一轮
-无法直接读写 Figma 文件；要让我在 Figma 里继续改，需要先把 Figma MCP
-接上（插件设置里连接账号即可）。
+已导入的 Figma 文件：<https://www.figma.com/design/XpIadzobOUEEPimh31y0TC>
+（五屏按列排布，都是可编辑矢量图层；`get_screenshot` 复核过导入结果与设计稿一致）。
+早期那版说明里"没有配置 Figma MCP"已经过期：插件接上账号后 MCP 工具可用。
 
 ## 七、还没做的
 
