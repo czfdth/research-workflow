@@ -1585,3 +1585,15 @@ rewrite historical entries.
   - `tools.tests.test_github_workflows`
   - `tools.tests.test_packaging`
 
+## WC-20261005T223811Z-7da4601920 - Pin the rule that dependency files force the full test suite
+
+- timestamp: `2026-10-05T22:38:11Z`
+- status: `complete`
+- author: `codex`
+- reason: No behaviour change. While fixing the lock drift I claimed the impact selector also missed tools/requirements.lock; testing the original code showed both lock files already returned full=True through the generic 'unmapped path under tools/ or app/' fall-through. The two explicit entries plus a new test make an implicit, load-bearing rule explicit, so a future early return cannot silently downgrade a dependency change to a partial run.
+- files:
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_test_impact`
+

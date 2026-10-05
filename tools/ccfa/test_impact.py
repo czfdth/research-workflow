@@ -46,6 +46,7 @@ _TOOLS_FULL_PATHS = {
     "tools/ccfa/cli.py",
     "tools/ccfa/stages.py",
     "tools/requirements.txt",
+    "tools/requirements.lock",
 }
 
 _TOOLS_EXACT = {
@@ -253,6 +254,7 @@ _APP_EXACT = {
         "app.tests.test_engine_openai",
     ),
     "app/requirements.txt": (),
+    "app/requirements.lock": (),
 }
 
 
@@ -342,7 +344,9 @@ def _select_app(path: str) -> tuple[str, ...] | None:
     if path.startswith("app/") and not (REPO_ROOT / path).is_file():
         return None
     if path in _APP_EXACT:
-        if path.endswith("requirements.txt"):
+        # A dependency change affects every test in the suite, so both the
+        # direct list and the lock that CI actually installs must force full.
+        if path.endswith(("requirements.txt", "requirements.lock")):
             return None
         return _APP_EXACT[path]
     if path.startswith("app/tests/"):
