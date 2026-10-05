@@ -1545,3 +1545,16 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Documentation only; no workflow code changed.
 
+## WC-20261005T222126Z-9983a0e142 - Correct the workflow introduction: the Windows workbench installer is delivered, not pending.
+
+- timestamp: `2026-10-05T22:21:26Z`
+- status: `complete`
+- author: `codex`
+- reason: docs/research-workflow-intro.md still claimed the Windows launcher, shortcut and PyInstaller installer were not delivered, but dist/ccfa-workbench-setup-0.1.0.exe exists and the installed ccfa-workbench.exe --self-check passes; the remaining gap is a clean-machine acceptance run, not the build.
+- files:
+  - `docs/research-workflow-intro.md`
+- tests:
+  - `ccfa-workbench.exe --self-check (probe_ok=true, exit 0)`
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Documentation corrected against the built artifact; the product-readiness table and the next-step list now say the installer is built and only the clean-machine acceptance remains.
+
