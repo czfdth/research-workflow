@@ -1025,3 +1025,19 @@ rewrite historical entries.
   - `tools.tests.test_datavalue + test_trace_claims + test_trace_claims_e2e + test_dataval + test_claims_policy + test_readiness + test_docs_consistency (161 tests)`
 - notes: values_match gains max_rounding_error (default 0.05 = about two significant figures); the implied half-unit may not exceed it, integer claims are untouched (they were already exact). trace_claims.check and the CLI forward it, and a failure caused only by the cap says 小数位不足 plus the --max-rounding-error 0 escape. Verified against the live paper: all 58 dataval tags there are integers, readiness still reports 2 blockers and trace-claims still passes.
 
+## WC-20261005T195052Z-7535723af0 - Add a claim polarity field to the claim registry, require it for supported empirical/theoretical claims, and require an experiment behind a supported null claim.
+
+- timestamp: `2026-10-05T19:50:52Z`
+- status: `complete`
+- author: `codex`
+- reason: A claim registry entry recorded what a claim was about (type) and how strong it was (status) but never what it asserted, so a "no difference" result could be marked supported on the strength of a citation or a figure, and nothing distinguished an effect claim from a null one when judging whether the evidence matched the sentence.
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/research_ledgers.py`
+  - `tools/tests/test_research_ledgers.py`
+- tests:
+  - `ccfa.research_ledgers --paper-root papers/rag-attack-defense --require-core (0 problems)`
+  - `ruff check tools`
+  - `tools.tests.test_research_ledgers + test_docs_consistency (43 tests)`
+- notes: polarity is optional (effect/null/descriptive) and validated when present; descriptive claims are exempt because a count asserts no direction, which is why the live paper 5 supported descriptive claims are untouched. A supported empirical/theoretical claim without polarity is claim-registry-polarity-missing, and polarity=null without an experiment is claim-registry-null-experiment-missing. Verified the live registry still reports 0 problems and the readiness research-ledgers gate still passes.
+

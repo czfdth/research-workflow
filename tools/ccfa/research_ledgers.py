@@ -39,6 +39,14 @@ CLAIM_FIELDS = (
     "citations",
 )
 CLAIM_TYPES = {"theoretical", "empirical", "descriptive"}
+# What the claim asserts, not what it is about: "effect" claims a difference,
+# "null" claims the absence of one, "descriptive" only characterises (counts,
+# taxonomy). A supported effect/null claim is the one a reader can over-read,
+# so those have to say which they are; a count does not.
+CLAIM_POLARITIES = {"effect", "null", "descriptive"}
+# Purely descriptive claims are exempt: "43 of the works do X" asserts no
+# direction, so demanding one would be a schema tax rather than a check.
+POLARITY_REQUIRED_TYPES = {"theoretical", "empirical"}
 CLAIM_STATUSES = {
     "pending-human-review",
     "supported",
@@ -247,6 +255,33 @@ def _claim_registry(
             problems.append(
                 problem("claim-registry-invalid", path, None, f"{claim_id}: status 非法")
             )
+        polarity = claim.get("polarity")
+        if polarity is not None and polarity not in CLAIM_POLARITIES:
+            problems.append(
+                problem(
+                    "claim-registry-invalid",
+                    path,
+                    None,
+                    f"{claim_id}: polarity 非法（应为 "
+                    f"{'、'.join(sorted(CLAIM_POLARITIES))} 之一）",
+                )
+            )
+            polarity = None
+        if (
+            status == "supported"
+            and claim_type in POLARITY_REQUIRED_TYPES
+            and polarity is None
+        ):
+            problems.append(
+                problem(
+                    "claim-registry-polarity-missing",
+                    path,
+                    None,
+                    f"{claim_id}: supported 的 {claim_type} claim 必须声明 polarity"
+                    "（effect/null/descriptive）——不写清方向，就没有人能判断"
+                    "证据是否真的支撑它",
+                )
+            )
         for field in ("assumptions", "limitations", "experiments", "figures", "citations"):
             if not _string_list(claim.get(field)):
                 problems.append(
@@ -330,6 +365,23 @@ def _claim_registry(
                     path,
                     None,
                     f"{claim_id}: supported empirical claim 必须绑定 experiment",
+                )
+            )
+        if (
+            status == "supported"
+            and polarity == "null"
+            and not (
+                isinstance(claim.get("experiments"), list)
+                and claim.get("experiments")
+            )
+        ):
+            problems.append(
+                problem(
+                    "claim-registry-null-experiment-missing",
+                    path,
+                    None,
+                    f"{claim_id}: polarity=null 的 supported claim 必须绑定 experiment；"
+                    "「没有差异」只能由真的对照实验支撑，citation/figure 不算",
                 )
             )
     return problems, ids

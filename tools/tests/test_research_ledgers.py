@@ -56,6 +56,7 @@ class ResearchLedgerTests(unittest.TestCase):
                         "statement": "A bounded claim.",
                         "type": "empirical",
                         "status": "supported",
+                        "polarity": "effect",
                         "assumptions": ["A1"],
                         "limitations": ["L1"],
                         "proof": None,
@@ -310,6 +311,61 @@ class ResearchLedgerTests(unittest.TestCase):
 
         self.assertIn(
             "claim-registry-empirical-experiment-missing",
+            self._codes(problems),
+        )
+
+    def _edit_registry(self, mutate):
+        registry = yaml.safe_load(
+            (self.root / "data" / "claim-registry.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        mutate(registry["claims"][0])
+        self._write("data/claim-registry.yaml", registry)
+
+    def test_supported_empirical_claim_must_declare_its_polarity(self):
+        self._edit_registry(lambda claim: claim.pop("polarity"))
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn(
+            "claim-registry-polarity-missing",
+            self._codes(problems),
+        )
+
+    def test_a_descriptive_count_does_not_need_a_polarity(self):
+        def make_descriptive(claim):
+            claim["type"] = "descriptive"
+            claim.pop("polarity")
+
+        self._edit_registry(make_descriptive)
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertNotIn(
+            "claim-registry-polarity-missing",
+            self._codes(problems),
+        )
+
+    def test_an_unknown_polarity_is_rejected(self):
+        self._edit_registry(lambda claim: claim.update(polarity="maybe"))
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn("claim-registry-invalid", self._codes(problems))
+
+    def test_a_null_claim_needs_an_experiment_not_just_a_citation(self):
+        def make_null(claim):
+            claim["type"] = "descriptive"
+            claim["polarity"] = "null"
+            claim["experiments"] = []
+
+        self._edit_registry(make_null)
+
+        problems, _advisories = check(self.root, require_core=True)
+
+        self.assertIn(
+            "claim-registry-null-experiment-missing",
             self._codes(problems),
         )
 

@@ -165,6 +165,13 @@ scripts/claim-extract.ps1 check --paper-root $paper `
 `check` 会拒绝 source drift 和 quote 已不存在；工具不会自动写入
 `data/claim-registry.yaml`，promotion 仍由人完成。
 
+登记进 `data/claim-registry.yaml` 的 `supported` claim，若类型是 `empirical` 或
+`theoretical`，必须声明 `polarity`：`effect`（断言存在差异）、`null`（断言不存在
+差异）、`descriptive`（只做计数或分类）。纯 `descriptive` claim 不强制填。
+`polarity: null` 且已 supported 的 claim 还必须绑定至少一个 `experiment`——
+「没有差异」只能由真的对照实验支撑，citation 或 figure 不算。不写 `polarity`
+等于丢掉了方向信息，读者无法判断这条证据到底能不能支撑那句话。
+
 ## 5. 阶段操作表
 
 ### `idea`：定义问题
