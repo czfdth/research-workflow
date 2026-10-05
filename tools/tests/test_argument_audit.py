@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -45,6 +46,17 @@ class ArgumentAuditTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _audited_main(self):
+        """The audited_inputs block for the current manuscript bytes."""
+
+        digest = hashlib.sha256(
+            (self.manuscript / "main.tex").read_bytes()
+        ).hexdigest()
+        return (
+            "    audited_inputs:\n"
+            f"      manuscript/main.tex: sha256:{digest}\n"
+        )
+
     @staticmethod
     def _codes(problems):
         return {problem.code for problem in problems}
@@ -78,14 +90,110 @@ class ArgumentAuditTests(unittest.TestCase):
             "    reviewer: Alice Zhang\n"
             "    reviewed_at: '2026-10-04'\n"
             "    method: line-by-line\n"
-            "    status: verified\n"
+            "    status: verified\n" + self._audited_main()
         )
 
         problems, advisories = self._run()
 
+        self.assertEqual(self._codes(problems), set())
         self.assertNotIn("proof-review-missing", self._codes(problems))
         self.assertNotIn("proof-review-not-human", self._codes(problems))
         self.assertIn("proof-audit-coverage", self._codes(advisories))
+
+    def test_verified_review_without_audited_inputs_is_unbound(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        self._write_proof_ledger(
+            "version: 1\n"
+            "reviews:\n"
+            "  - id: prop:main\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    method: line-by-line\n"
+            "    status: verified\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("proof-review-unbound", self._codes(problems))
+
+    def test_editing_the_manuscript_afterwards_makes_the_review_stale(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        self._write_proof_ledger(
+            "version: 1\n"
+            "reviews:\n"
+            "  - id: prop:main\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    method: line-by-line\n"
+            "    status: verified\n" + self._audited_main()
+        )
+        self.assertEqual(self._codes(self._run()[0]), set())
+
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A different claim.\n"
+            "\\end{proposition}\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("proof-review-stale", self._codes(problems))
+
+    def test_audited_inputs_cannot_escape_the_paper_root(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        self._write_proof_ledger(
+            "version: 1\n"
+            "reviews:\n"
+            "  - id: prop:main\n"
+            "    reviewer: Alice Zhang\n"
+            "    reviewed_at: '2026-10-04'\n"
+            "    method: line-by-line\n"
+            "    status: verified\n"
+            "    audited_inputs:\n"
+            "      ../outside.tex: sha256:" + "0" * 64 + "\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("proof-review-unbound", self._codes(problems))
+
+    def test_stamp_prints_the_current_digests(self):
+        self._write_tex(
+            "\\begin{proposition}\\label{prop:main}\n"
+            "A claim.\n"
+            "\\end{proposition}\n"
+        )
+        stream = StringIO()
+
+        with redirect_stdout(stream):
+            code = main(
+                [
+                    "argument-audit",
+                    "--paper-root",
+                    str(self.root),
+                    "--stamp",
+                    "manuscript/main.tex",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        self.assertIn("audited_inputs:", stream.getvalue())
+        self.assertRegex(
+            stream.getvalue(),
+            r"manuscript/main\.tex: sha256:[0-9a-f]{64}",
+        )
 
     def test_model_name_cannot_be_a_proof_reviewer(self):
         self._write_tex(

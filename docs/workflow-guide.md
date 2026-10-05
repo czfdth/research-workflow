@@ -363,6 +363,19 @@ scripts/review-loop.ps1 drive --paper-root $paper `
 scripts/rigor-rubric.ps1 check --paper-root $paper
 ```
 
+**签字要绑定版本**：`proof-audit.yaml` 里 `status: verified` 的复核必须写
+`audited_inputs`，列出复核时读过的文件及其 sha256。之后任何一次改稿都会让哈希对不上，
+复核当场作废（`proof-review-stale`），不会被一句"我评过了"蒙过去。
+
+```powershell
+# 复核完成后按当前字节生成片段，粘到台账对应 review 下面
+scripts/argument-audit.ps1 --paper-root $paper `
+    --stamp manuscript/main.tex --stamp manuscript/sections/4-proof.tex
+```
+
+`audited_inputs` 的路径必须是论文目录相对路径；越界（`../`）、摘要格式不对、
+或漏掉定理所在文件，都报 `proof-review-unbound`。
+
 人工复核应由真实的人完成。模型名字不能冒充 reviewer。跨族 provider 不可用时，
 同族 override 只能作为异常记录，不能当作独立评审；即使模型返回 pass，
 effective verdict 也会被检查器重算为 blocking。Rigor rubric 的六个维度必须

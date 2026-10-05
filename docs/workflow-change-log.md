@@ -714,3 +714,19 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_skill_registry`
 
+## WC-20261005T181834Z-f6e3da5ec9 - Bind human proof attestations to the reviewed bytes: proof-audit verified reviews need audited_inputs, and argument-audit gains --stamp.
+
+- timestamp: `2026-10-05T18:18:34Z`
+- status: `complete`
+- author: `codex`
+- reason: 人工复核只记录'谁评过'，不记录'评的是哪一版字节'；改稿之后旧签字仍然有效，这是人工验证链条上最后一个静默失效点。
+- files:
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/argument_audit.py`
+  - `tools/tests/test_argument_audit.py`
+- tests:
+  - `ruff check tools`
+  - `tools.tests.test_argument_audit (25 tests)`
+  - `tools.tests.test_readiness + test_proof_orchestrator + test_research_ledgers + test_dashboard + test_artifact_badge (95 tests)`
+- notes: 新增错误码 proof-review-unbound / proof-review-stale；--stamp 只打印片段，不写文件。
+
