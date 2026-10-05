@@ -377,9 +377,14 @@ def run_optimization(
     runner=None,
 ) -> dict:
     paper_root = Path(paper_root).resolve()
-    spec_file = spec_path or (paper_root / SPEC_PATH)
+    spec_file = Path(spec_path) if spec_path is not None else (paper_root / SPEC_PATH)
     if not spec_file.is_absolute():
         spec_file = paper_root / spec_file
+    # Normalize before any relative_to(): Windows can name the same directory
+    # twice (8.3 short path, or different case), and paper_root is already
+    # resolved, so an unnormalized spec_file would look like it is outside the
+    # paper even though it is the file we just read.
+    spec_file = spec_file.resolve()
     spec, problems = _load_spec(paper_root, spec_file)
     if spec is None:
         raise ValueError(problems[0].message if problems else "optimization spec 不存在")
