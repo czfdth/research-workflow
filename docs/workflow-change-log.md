@@ -2581,3 +2581,33 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `scripts/change-log.ps1 check --base origin/master -> problem_count=0`
 
+## WC-20261006T163206Z-68b4bebea7 - 成本/吞吐指标改为从产物推导（cost-metrics derive/check），并接入 readiness；state 迁移写完整 ISO 时间戳
+
+- timestamp: `2026-10-06T16:32:06Z`
+- status: `complete`
+- author: `codex`
+- reason: 两个指标此前是手写的：time_to_first_attempt 空着、cost_per_attempt 固定 0.0，正是用户点名的占位值。新模块从 ccfa.yaml 的 grounded 时间戳（或计划里的 Frozen at 行）、experiments/log 的非 build 运行与 compute-ledger + data/compute.yaml 的 pricing 推出两个指标，推不出来就报 not-applicable 并写明缺哪个文件，永不估计；readiness 的 cost-ledger 门现在真的跑这个推导，手写的数字与产物不符即 problem。ccfa.state 之后的 stage 迁移写完整 ISO-8601 UTC 时间戳（旧日期格式仍可读），否则任何论文都算不出这个间隔。顺带修掉脚手架写 CI 续行符用反斜杠的错误（PowerShell 用反引号）。
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/cost-metrics.ps1`
+  - `tools/ccfa/cost_metrics.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/e2e_check.py`
+  - `tools/ccfa/milestones.py`
+  - `tools/ccfa/new_module.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/state.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_cost_metrics.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_new_module.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `ccfa cost-metrics derive --write + check --paper-root papers/rag-attack-defense -> problem_count=0（两条 not-applicable advisory：计划冻结只有日期、0 次非 build 尝试）`
+  - `ccfa research_ledgers --paper-root papers/rag-attack-defense -> problem_count=0`
+  - `tools.tests.test_cost_metrics (16 tests, OK)`
+  - `tools.tests.test_cost_metrics + test_e2e_check + test_state + test_milestones + test_readiness + test_docs_consistency + test_scripts + test_dispatch + test_github_workflows + test_research_ledgers + test_tool_eval + test_packaging (472 tests, OK)`
+  - `tools.tests.test_new_module + test_github_workflows + test_scripts (211 tests, OK，含续行符修复后的重跑)`
+  - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
+

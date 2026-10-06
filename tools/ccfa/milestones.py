@@ -390,12 +390,17 @@ def stage_report(paper_root: Path) -> dict:
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"stage.{field} 必须是非空字符串")
         result[field] = value
+    # Accept both the legacy date-only stamp and the full ISO-8601 UTC stamp
+    # that ``ccfa.state`` writes now; cost_metrics needs the time component.
     try:
         date.fromisoformat(result["updated_at"])
-    except ValueError as exc:
-        raise ValueError(
-            f"stage.updated_at 不是合法日期: {result['updated_at']!r}"
-        ) from exc
+    except ValueError:
+        try:
+            datetime.fromisoformat(result["updated_at"].replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"stage.updated_at 不是合法日期或时间戳: {result['updated_at']!r}"
+            ) from exc
 
     venue = state.get("target_venue")
     mode = venue.get("mode", "conference") if isinstance(venue, dict) else "conference"

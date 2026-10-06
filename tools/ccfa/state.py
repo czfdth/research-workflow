@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -207,7 +207,11 @@ def _transition(
     elif target_index >= current_index:
         raise ValueError("rollback 只能回退到当前 stage 之前")
 
-    at = date.today().isoformat()
+    # Full ISO-8601 UTC, not a bare date: ``ccfa.cost_metrics`` measures the
+    # distance from this transition to the first non-build attempt, and a
+    # date-only stamp cannot produce that interval. Legacy date-only entries
+    # stay readable; only new transitions carry the time.
+    at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry = {
         "from": current,
         "to": to,

@@ -26,6 +26,7 @@ from ccfa import (
     autoresearch,
     citation_guard,
     claim_extract,
+    cost_metrics,
     cross_review,
     experiment_loop,
     experiment_optimizer,
@@ -128,6 +129,7 @@ LEDGER_GATE_NAMES = {
     "proof": "argument-audit",
     "citation-support": "argument-audit",
     "figure-support": "argument-audit",
+    "cost-ledger": "cost-metrics",
     "governance": "governance",
     "novelty": "novelty",
     "statistics": "statistics",
@@ -594,6 +596,10 @@ def _gate_specs(
     tail = _tail_requirements(state_stage)
     runners = {
         "argument-audit": lambda: argument_audit.check(paper_root),
+        # The cost ledger is derived from run-log, compute-ledger and pricing,
+        # so readiness runs the derivation instead of trusting the YAML: a
+        # hand-written value the artifacts no longer support fails here.
+        "cost-metrics": lambda: cost_metrics.check(paper_root),
         "governance": lambda: governance.check(paper_root),
         "human-coding": lambda: _human_coding_gate(paper_root),
         "novelty": lambda: novelty.check(paper_root),

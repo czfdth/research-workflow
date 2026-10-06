@@ -116,6 +116,22 @@ def _metric_value(payload: dict, name: str) -> float | None:
     return float(value)
 
 
+def _metric_status(payload: dict, name: str) -> str:
+    """Why a value is missing: ``not-applicable`` is an answer, ``missing`` is not.
+
+    The trend used to print a bare em dash for both, which is how a SoK with
+    no experiments looked identical to a paper whose ledger was never filled
+    in. Recording the status keeps those two states apart.
+    """
+
+    metrics = payload.get("metrics")
+    item = metrics.get(name) if isinstance(metrics, dict) else None
+    if not isinstance(item, dict):
+        return "missing"
+    status = item.get("status")
+    return status if isinstance(status, str) and status.strip() else "missing"
+
+
 def collect_sample(report: dict, *, today: date) -> dict:
     """One trend point: attempt economics plus how much is still blocking."""
 
@@ -129,6 +145,11 @@ def collect_sample(report: dict, *, today: date) -> dict:
             "time_to_first_attempt",
         ),
         "cost_per_attempt": _metric_value(payload, "cost_per_attempt"),
+        "time_to_first_attempt_status": _metric_status(
+            payload,
+            "time_to_first_attempt",
+        ),
+        "cost_per_attempt_status": _metric_status(payload, "cost_per_attempt"),
     }
 
 
@@ -165,6 +186,14 @@ def append_sample(paper_root: Path, sample: dict) -> Path:
     return path
 
 
+def _trend_cell(value: object, status: object) -> str:
+    if value is not None:
+        return str(value)
+    if status == "not-applicable":
+        return "— (not-applicable)"
+    return "—"
+
+
 def render_trend(
     samples: list[dict],
     *,
@@ -183,11 +212,15 @@ def render_trend(
     for item in recent:
         ttf = item.get("time_to_first_attempt")
         cpa = item.get("cost_per_attempt")
+        # "—" alone cannot be told apart from "never filled in", so a
+        # not-applicable metric says so in the cell.
+        ttf_cell = _trend_cell(ttf, item.get("time_to_first_attempt_status"))
+        cpa_cell = _trend_cell(cpa, item.get("cost_per_attempt_status"))
         lines.append(
             f"| {item.get('date')} | {str(bool(item.get('ready'))).lower()} "
             f"| {item.get('blocking')} "
-            f"| {ttf if ttf is not None else '—'} "
-            f"| {cpa if cpa is not None else '—'} |"
+            f"| {ttf_cell} "
+            f"| {cpa_cell} |"
         )
     first, last = recent[0], recent[-1]
     start, end = first.get("blocking"), last.get("blocking")

@@ -14,6 +14,7 @@ CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 # This is the single explicit CLI inventory. The discovery test below compares
 # it with the modules that actually define a top-level main().
 CCFA_WRAPPERS = {
+    "cost_metrics": "cost-metrics.ps1",
     "new_module": "new-module.ps1",
     "adversarial_review": "adversarial-review.ps1",
     "anonymity": "anonymity.ps1",

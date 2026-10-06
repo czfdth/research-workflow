@@ -63,8 +63,8 @@ FIXTURE_FILES = {
         "    steps:\n"
         "      - name: Compile core modules\n"
         "        run: |\n"
-        "          python -m py_compile \\\n"
-        "            tools/ccfa/existing.py\n"
+        "          python -m py_compile `\n"
+        "            tools/ccfa/existing.py `\n"
     ),
     "scripts/existing.ps1": "# existing wrapper\n",
     "README.md": (
@@ -115,7 +115,7 @@ class CreateTests(unittest.TestCase):
                           (root / "tools/tests/test_scripts.py").read_text("utf-8"))
             self.assertIn('"demo_gate": "scripts/demo-gate.ps1",',
                           (root / "tools/tests/test_docs_consistency.py").read_text("utf-8"))
-            self.assertIn("tools/ccfa/demo_gate.py",
+            self.assertIn("tools/ccfa/demo_gate.py `",
                           (root / ".github/workflows/tests.yml").read_text("utf-8"))
             self.assertIn('"tools/ccfa/demo_gate.py":',
                           (root / "tools/ccfa/test_impact.py").read_text("utf-8"))

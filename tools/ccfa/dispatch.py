@@ -20,6 +20,7 @@ VERSION = "ccfa-research-workflow 0.1.0"
 # test fails closed when a wrapper is neither dispatched nor declared
 # platform-specific.
 COMMANDS: dict[str, str] = {
+    "cost-metrics": "ccfa.cost_metrics",
     "new-module": "ccfa.new_module",
     "adversarial-review": "ccfa.adversarial_review",
     "anonymity": "ccfa.anonymity",

@@ -168,6 +168,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
 | `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），Slurm/PBS 目前只探测不提交；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
 | `tools/ccfa/new_module.py` | 新增模块的一体化脚手架与清单审计：`create` 一次写模块、PowerShell 包装器、测试存根与六份清单（dispatch / wrapper manifest / docs manifest / CI py_compile / test-impact / README），任一锚点缺失即整体拒写；`audit` 只读报告磁盘与六份清单之间的双向漂移 | `scripts/new-module.ps1` |
+| `tools/ccfa/cost_metrics.py` | 把成本与吞吐指标接到真实产物：derive 从 stage 时间戳、run-log 与 compute-ledger 推出 time_to_first_attempt 与 cost_per_attempt，缺证据时 fail closed 而不是给估计值；check 对台账做漂移校验 | `scripts/cost-metrics.ps1` |
 
 ## 阶段到命令速查
 

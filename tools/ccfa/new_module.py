@@ -322,13 +322,15 @@ def create(root: Path, name: str, summary: str) -> dict:
 
     workflow_path = root / WORKFLOW_PATH
     workflow_text = workflow_path.read_text(encoding="utf-8")
+    # PowerShell continues a command with a backtick, not a backslash; using
+    # the wrong one silently truncates the compile list at that line.
     edits.append(
         (
             workflow_path,
             _insert_after(
                 workflow_text,
                 "py_compile",
-                f"            tools/ccfa/{name}.py \\",
+                f"            tools/ccfa/{name}.py `",
                 where=WORKFLOW_PATH,
             ),
         )
