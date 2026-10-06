@@ -1769,3 +1769,21 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_docs_consistency`
 
+## WC-20261006T071809Z-ca1f4b7d39 - Install MiKTeX in CI only when the impacted tests compile documents
+
+- timestamp: `2026-10-06T07:18:09Z`
+- status: `complete`
+- author: `codex`
+- reason: The tools job installed MiKTeX unconditionally, and the Chocolatey step took about 12.5 minutes even for a docs-only change. Only three test modules hand a real document to a real engine (test_compile, test_derivation_e2e, test_e2e); every other LaTeX test injects a fake runner or stubs find_engine. The impact selector now exposes a needs-latex action that answers the boolean from the same git diff it already resolves, the workflow gates the install on it, and a probe that cannot decide falls back to installing so a broken check cannot silently weaken the run. A test derives the engine-dependent set from the tests' own request_latex_engine calls so the constant cannot drift.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_github_workflows.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

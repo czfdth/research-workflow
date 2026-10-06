@@ -227,6 +227,32 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/test-impact.ps1 run --suite tools --full", workflow)
         self.assertIn("scripts/test-impact.ps1 run --suite app --full", workflow)
 
+    def test_ci_only_installs_miktex_when_the_run_compiles_documents(self):
+        payload = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / "tests.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        steps = payload["jobs"]["tools-impact"]["steps"]
+
+        decide = next(
+            step for step in steps if step.get("id") == "latex-engine"
+        )
+        self.assertIn("needs-latex", decide["run"])
+        self.assertIn("GITHUB_OUTPUT", decide["run"])
+        # A probe that cannot decide must not silently drop the install.
+        self.assertIn('$needs = "true"', decide["run"])
+
+        miktex = next(
+            step
+            for step in steps
+            if step.get("name") == "Install MiKTeX for real compile evidence"
+        )
+        self.assertEqual(
+            miktex.get("if"),
+            "steps.latex-engine.outputs.needs_latex == 'true'",
+        )
+
     def test_ci_change_log_check_is_fail_closed(self):
         if (ROOT / ".public-mirror").is_file():
             self.skipTest(

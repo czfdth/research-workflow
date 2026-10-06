@@ -1,12 +1,17 @@
+import ast
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from ccfa.test_impact import (
+    LATEX_ENGINE_TESTS,
     Selection,
     build_run_command,
     collect_changed_paths,
+    requires_latex_engine,
     select_tests,
 )
 
@@ -376,6 +381,93 @@ class SelectTestsTests(unittest.TestCase):
         selection = select_tests([], suite="tools")
 
         self.assertEqual(selection, Selection("tools", (), (), False, (), "no changes"))
+
+
+class RequiresLatexEngineTests(unittest.TestCase):
+    def test_a_full_selection_needs_an_engine(self):
+        selection = Selection("tools", (), (), True, (), "forced full suite")
+
+        self.assertTrue(requires_latex_engine(selection))
+
+    def test_a_selected_engine_module_needs_an_engine(self):
+        selection = Selection(
+            "tools",
+            ("tools/tests/test_compile.py",),
+            ("tools.tests.test_compile",),
+            False,
+            (),
+            "impacted tests",
+        )
+
+        self.assertTrue(requires_latex_engine(selection))
+
+    def test_a_docs_only_selection_does_not_need_an_engine(self):
+        selection = select_tests(["README.md"], suite="tools")
+
+        self.assertFalse(selection.full)
+        self.assertFalse(requires_latex_engine(selection))
+
+    def test_an_unknown_path_fails_closed_to_needing_an_engine(self):
+        selection = select_tests(
+            ["tools/ccfa/does_not_exist.py"],
+            suite="tools",
+        )
+
+        self.assertTrue(selection.full)
+        self.assertTrue(requires_latex_engine(selection))
+
+    def test_the_engine_set_matches_the_tests_that_request_an_engine(self):
+        # The constant is the one place the TeX install decision reads, so it
+        # has to keep matching the tests that actually call the helper. A test
+        # added later that forgets the constant would otherwise silently run
+        # without an engine and skip.
+        found = set()
+        for path in (ROOT / "tools" / "tests").glob("test_*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            calls_helper = any(
+                isinstance(node, ast.Call)
+                and (
+                    (
+                        isinstance(node.func, ast.Name)
+                        and node.func.id == "request_latex_engine"
+                    )
+                    or (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "request_latex_engine"
+                    )
+                )
+                for node in ast.walk(tree)
+            )
+            if calls_helper:
+                found.add(f"tools.tests.{path.stem}")
+
+        self.assertEqual(found, set(LATEX_ENGINE_TESTS))
+
+    def test_the_needs_latex_action_prints_a_boolean(self):
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT / "tools")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ccfa.test_impact",
+                "needs-latex",
+                "--suite",
+                "tools",
+                "--full",
+            ],
+            cwd=str(ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "true")
 
 
 class CollectChangedPathsTests(unittest.TestCase):

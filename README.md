@@ -365,7 +365,13 @@ scripts/change-log.ps1 check --base origin/master
 cd <仓库根>
 scripts/test-impact.ps1 plan --base origin/master
 scripts/test-impact.ps1 run --base origin/master
+scripts/test-impact.ps1 needs-latex --base origin/master
 ```
+
+`needs-latex` 只回答一个布尔问题：本次选中的测试是否会把真实文稿交给真实 TeX
+引擎。只有 `test_compile`、`test_derivation_e2e`、`test_e2e`，以及全量回退，才
+算需要；其余 LaTeX 相关测试都注入假 runner 或 stub `find_engine`。CI 用它决定
+是否安装 MiKTeX，判定失败时按需要处理（fail closed）。
 
 工作台改动使用 `--suite app`。未知路径、`cli.py` / `stages.py`、
 依赖文件等共享边界会 fail closed，自动回退到对应 suite 的全量测试。

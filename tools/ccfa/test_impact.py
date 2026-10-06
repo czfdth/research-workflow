@@ -49,6 +49,29 @@ _TOOLS_FULL_PATHS = {
     "tools/requirements.lock",
 }
 
+# Test modules that hand a real document to a real engine. Every other
+# LaTeX-related test injects a fake runner or stubs ``find_engine``, so a
+# missing engine does not change its result. The set is asserted against the
+# tests' own ``request_latex_engine`` calls, so it cannot drift silently.
+LATEX_ENGINE_TESTS = (
+    "tools.tests.test_compile",
+    "tools.tests.test_derivation_e2e",
+    "tools.tests.test_e2e",
+)
+
+
+def requires_latex_engine(selection: Selection) -> bool:
+    """True when the selection compiles real documents.
+
+    A full run always counts because it includes the engine-dependent modules.
+    Callers use this to decide whether a costly TeX install is worth doing.
+    """
+
+    if selection.full:
+        return True
+    return any(test in LATEX_ENGINE_TESTS for test in selection.tests)
+
+
 _TOOLS_EXACT = {
     "tools/ccfa/experiment_loop.py": (
         "tools.tests.test_docs_consistency",
@@ -546,7 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "action",
-        choices=("plan", "run"),
+        choices=("plan", "run", "needs-latex"),
         default="plan",
         nargs="?",
     )
@@ -602,6 +625,9 @@ def main(argv=None) -> int:
 
     if args.action == "plan":
         print(json.dumps(selection.as_dict(), ensure_ascii=False))
+        return 0
+    if args.action == "needs-latex":
+        print("true" if requires_latex_engine(selection) else "false")
         return 0
     try:
         return run_selection(repo_root, selection)
