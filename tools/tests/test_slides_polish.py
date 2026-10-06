@@ -1,10 +1,10 @@
 """Layout-only Beamer polish with versioned, content-preserving output."""
 
 import json
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import fitz
 
@@ -190,25 +190,38 @@ class CheckTests(unittest.TestCase):
 
 
 class PageRenderTests(unittest.TestCase):
-    @unittest.skipUnless(
-        any(
-            shutil.which(name)
-            for name in ("pdftoppm", "mutool", "magick")
-        ),
-        "no PDF page renderer available",
-    )
     def test_pages_are_rendered_and_traced(self):
         with tempfile.TemporaryDirectory() as tmp:
             deck = Path(tmp)
             (deck / "main.tex").write_text(TEX, encoding="utf-8", newline="\n")
             _write_pdf(deck / "main.pdf", pages=2)
+            # A binary on PATH is not a working renderer: ImageMagick ships a
+            # policy that blocks PDF, so probe the real path before asserting.
+            if not module._render_pages(deck / "main.pdf", deck / "probe"):
+                self.skipTest("no PDF page renderer actually works here")
 
             result = module.polish(deck)
 
             self.assertEqual(len(result["pages"]), 2)
+            self.assertEqual(result["page_render"], "rendered")
             self.assertTrue(Path(result["pages"][0]["image"]).is_file())
             traces = sorted((deck / module.STATE_DIR / "traces").glob("slide_*.json"))
             self.assertEqual(len(traces), 2)
+
+    def test_an_unavailable_renderer_is_reported_not_hidden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = Path(tmp)
+            (deck / "main.tex").write_text(TEX, encoding="utf-8", newline="\n")
+            _write_pdf(deck / "main.pdf", pages=2)
+            with mock.patch.object(module, "_render_pages", return_value=[]):
+                result = module.polish(deck)
+
+            self.assertEqual(result["pages"], [])
+            self.assertEqual(result["page_render"], "unavailable")
+            state = json.loads(Path(result["state"]).read_text(encoding="utf-8"))
+            self.assertEqual(state["page_render"], "unavailable")
+            changelog = Path(result["changelog"]).read_text(encoding="utf-8")
+            self.assertIn("逐页像素复核：未完成", changelog)
 
 
 class SlidesPolishCliTests(unittest.TestCase):

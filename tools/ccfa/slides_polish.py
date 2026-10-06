@@ -254,8 +254,15 @@ def polish(
 
     pages: list[dict] = []
     pdf = deck_dir / f"{tex.stem}.pdf"
+    # A renderer on PATH is not the same as a renderer that works: ImageMagick
+    # ships with a policy that blocks the PDF coder, so the attempt has to be
+    # judged by its output. The reference skill hard-fails here; this reports.
+    page_render = "not-run"
     if render_pages and pdf.is_file():
+        page_render = "rendered"
         pages = _render_pages(pdf, state_dir / "traces")
+        if not pages:
+            page_render = "unavailable"
         for entry in pages:
             _write(
                 state_dir / "traces" / f"slide_{entry['page']:02d}.json",
@@ -267,6 +274,8 @@ def polish(
                 )
                 + "\n",
             )
+    elif not render_pages:
+        page_render = "disabled"
     changelog = [
         f"# Polish changelog: {tex.name}",
         "",
@@ -295,6 +304,17 @@ def polish(
             f"- `{item['rule']}`: {item['message']}" for item in findings
         )
         changelog.append("")
+    if page_render == "unavailable":
+        changelog.extend(
+            [
+                "## 逐页像素复核：未完成",
+                "",
+                "- PDF 存在，但本机 `pdftoppm` / `mutool` / `magick` 都没能"
+                "真正渲染出页面（ImageMagick 默认 policy 会禁用 PDF coder）。",
+                "- 结果：本轮只做了源码级版式检查，逐页视觉复核尚未发生。",
+                "",
+            ]
+        )
     changelog_path = state_dir / CHANGELOG_NAME
     _write(changelog_path, "\n".join(changelog).rstrip("\n") + "\n")
 
@@ -311,6 +331,8 @@ def polish(
         "findings": len(findings),
         "frames": inventory["frame_count"],
         "rendered_pages": len(pages),
+        "page_render": page_render,
+        "finding_rules": [item["rule"] for item in findings],
         "not_implemented": ["pptx"],
     }
     state_path = state_dir / STATE_NAME
@@ -328,6 +350,7 @@ def polish(
         "changes": changes,
         "findings": findings,
         "pages": pages,
+        "page_render": page_render,
         "polished_text": polished_text,
     }
 

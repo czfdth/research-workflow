@@ -2011,3 +2011,15 @@ rewrite historical entries.
   - `tools.tests.test_slides_polish`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T093453Z-347d141464 - Report an unusable PDF renderer instead of assuming it worked
+
+- timestamp: `2026-10-06T09:34:53Z`
+- status: `complete`
+- author: `codex`
+- reason: CI caught this: the Windows runner has magick on PATH, so the page-render test did not skip, but ImageMagick's default policy blocks the PDF coder, so rendering produced nothing and the test failed with 0 rendered pages. A binary on PATH is not a working renderer. slides_polish.polish now records page_render (rendered / unavailable / disabled / not-run) in POLISH_STATE.json and writes an explicit '逐页像素复核：未完成' section into POLISH_CHANGELOG.md when a PDF exists but nothing rendered, so a missing pixel pass is visible rather than implied. The test now probes the real render path and skips only when no renderer actually produces an image, and a new test covers the unavailable path with a patched renderer.
+- files:
+  - `tools/ccfa/slides_polish.py`
+  - `tools/tests/test_slides_polish.py`
+- tests:
+  - `tools.tests.test_slides_polish`
+
