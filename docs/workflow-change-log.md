@@ -2227,3 +2227,35 @@ Wiring: dispatch gains patent and domain-adapters commands; scripts/domain-adapt
   - `tools.unittest discover (2227 tests)`
 - notes: Also records the current environment regression (docker daemon and zotero unreachable, 2 advisories), the four cross-review blockers, and that reviews/adversarial-review.json has still not been produced.
 
+## WC-20261006T122230Z-4525cb7c4d - Add the anonymity gate and wire it into readiness from internal-review
+
+- timestamp: `2026-10-06T12:22:30Z`
+- status: `complete`
+- author: `codex`
+- reason: Closes the one real capability gap found by a full re-comparison against ARIS: anonymity / double-blind was asserted by the checklists but enforced by nothing. checklists/conference.md and checklists/journal.md both list 匿名 as a pass condition of the submission-check gate, yet the only code that touched anonymity was resubmit_pipeline (which validates re-submission targets, not the submitted manuscript), and neither venue_fixtures nor final_check looked at it. For a double-blind venue that is a desk-reject risk: an author name, an acknowledgements section, self-referential phrasing, a self-owned repository URL or PDF metadata all leak identity, and the workflow only reminded the author in prose.
+
+New tools/ccfa/anonymity.py + scripts/anonymity.ps1 implements a fail-closed gate over manuscript/*.tex and any built PDFs. Hard problems: an \author{...} block that is not an anonymous marker; a real author name or affiliation declared in data/anonymity.yaml appearing in the sources; self-referential phrasing that identifies the authors through their own citations (our previous work, we previously showed, in our prior work, and the Chinese equivalents 我们之前的工作 / 我们之前提出); an author-owned URL declared in self_urls; and PDF metadata (Author/Title/Subject/Keywords/Creator/Producer) carrying a real name, an affiliation, or a non-anonymous Author value. Judgement calls stay advisories so the gate cannot force a false statement: an acknowledgements section is an advisory by default because venues such as CSF require the AI-use disclosure there (set acknowledgements: forbidden in the config to escalate it to a problem), and an unlisted code-hosting URL is an advisory because a third-party artifact URL is legitimate. Comment-only lines are ignored so a name in a % note does not fail. Config data/anonymity.yaml is optional (blind/authors/affiliations/self_urls/allow/acknowledgements); without it the gate runs the generic double-blind checks with an empty name list.
+
+Wiring: dispatch gains the anonymity command, scripts/anonymity.ps1 is a thin wrapper, CCFA_WRAPPERS, CLI_WRAPPERS, the py_compile list in .github/workflows/tests.yml and the test_impact mapping all move together with the new module, and README documents the gate. readiness now runs anonymity as a first-class gate from the internal-review stage onwards (minimal profile excluded) via a new _stage_at_least helper, with mode threaded through _run_gates so journal papers get the journal stage order.
+
+Tests: 26 new in tools/tests/test_anonymity.py (config defaults and validation, author name / affiliation / self-reference in both English and Chinese, ordinary first-person prose not flagged, non-anonymous and anonymous author blocks, comment lines ignored, self-url vs unlisted-url vs allow-listed-url, acknowledgements advisory vs forbidden, missing manuscript, PDF metadata created with PyMuPDF, and CLI exit codes), plus the readiness, docs-consistency, scripts, dispatch and test-impact suites. Verified live: the flagship paper now reports the anonymity gate as pass with 0 problems and 1 advisory (the acknowledgements notice) and its blocking list is unchanged, so the gate does not invent work.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/anonymity.ps1`
+  - `tools/ccfa/anonymity.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_anonymity.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_anonymity`
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

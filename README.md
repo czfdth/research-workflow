@@ -110,6 +110,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
 | `tools/ccfa/governance.py` | 检查署名/贡献、利益冲突、伦理与许可、AI 使用、查重、双用途与负责任披露 | `scripts/governance.ps1` |
+| `tools/ccfa/anonymity.py` | 双盲投稿的匿名门：扫 `manuscript/*.tex` 与 PDF，硬失败于未匿名的 `\author{...}`、配置里声明的真实姓名/单位、自指措辞（our previous work / 我们之前的工作）、作者自有 URL、以及 PDF 元数据里的作者信息；致谢章节与未列出的代码仓 URL 先是 advisory（venue 强制 AI 披露时不该逼人撒谎） | `scripts/anonymity.ps1` |
 | `tools/ccfa/governance_map.py` | 校验 risk→control→evidence status→residual gap，以及 machine-readable data flows 和明文凭据 | `scripts/governance-map.ps1` |
 | `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
@@ -573,6 +574,18 @@ workdir 内）和 `threshold`。判定只有三种诚实结果：达到阈值是
 没装这个基准"算成"方法失败"是最容易骗自己的地方，这里直接排除。跑完退出 0（这是度量，
 不是 gate）。`docs/examples/benchmark-example.yaml` 是 spec 形状的示意，接真实外部基准
 时把 `workdir` 指到那个 checkout、命令照抄它自己的 README。
+
+## 双盲投稿的匿名门
+
+checklist 一直把「匿名」写成 `submission-check` 的通过条件，但在这之前没有任何脚本真的去看过它——唯一碰匿名的是 `resubmit_pipeline`，那是改投用的。对双盲会议来说这不是小事：正文里的作者名、致谢、自指措辞、仓库 URL、PDF 元数据，任何一处泄漏都可能直接 desk reject。
+
+```powershell
+scripts/anonymity.ps1 --paper-root <paper-root>
+```
+
+硬失败（problem）覆盖五类真实触发点：`\author{...}` 不是匿名写法、配置里声明的真实姓名/单位出现在正文、`our previous work` / `我们之前的工作` 这类自指措辞、作者自有 URL、以及 PDF 的 Author/Subject/Keywords 等元数据里带身份信息。judgement call 留成 advisory，避免逼人做假陈述：**致谢章节**默认只提醒（CSF 这类会议要求把 AI 使用写进致谢，禁掉它就是错的；venue 真禁止时在 config 里写 `acknowledgements: forbidden` 升级为 problem），**未列出的代码托管 URL** 也只提醒（第三方 artifact 链接是合法的，作者自有的写进 `self_urls` 才升级）。
+
+数据来自 `data/anonymity.yaml`（可选）：`blind`、`authors`、`affiliations`、`self_urls`、`allow`、`acknowledgements`。没有这个文件时按"双盲 + 无已知姓名"跑通用检查。`readiness` 从 `internal-review` 阶段起把 `anonymity` 作为正式 gate 执行（`minimal` profile 除外）。
 
 ## 跑测试
 

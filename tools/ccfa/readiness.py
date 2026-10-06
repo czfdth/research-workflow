@@ -19,6 +19,7 @@ import yaml
 
 from ccfa import (
     adversarial_review,
+    anonymity,
     argument_audit,
     artifact_badge,
     artifact_store,
@@ -50,7 +51,7 @@ from ccfa import (
 )
 from ccfa.cli import Problem, ToolEnvironmentError, save_text_atomically, tool_error
 from ccfa.milestones import due_report, stage_report
-from ccfa.stages import SHARED_STAGES, gate_for
+from ccfa.stages import SHARED_STAGES, gate_for, stages_for
 from ccfa.texscan import iter_tex_files
 from ccfa.validate import validate_yaml
 
@@ -560,11 +561,31 @@ def _tail_required_sections(state_stage: object) -> tuple[str, ...]:
     return STAGE_REQUIRED_SECTIONS.get(name, ())
 
 
+def _stage_at_least(mode: str, state_stage: object, target: str) -> bool:
+    """True when the paper has reached ``target`` (or a later stage).
+
+    The anonymisation gate is only meaningful once a manuscript exists and the
+    paper is heading for submission, so it engages from ``internal-review``
+    onwards rather than nagging during ideation.
+    """
+    name = state_stage.get("current") if isinstance(state_stage, dict) else None
+    if not isinstance(name, str):
+        return False
+    try:
+        order = stages_for(mode)
+    except ValueError:
+        return False
+    if name not in order or target not in order:
+        return False
+    return order.index(name) >= order.index(target)
+
+
 def _gate_specs(
     paper_root: Path,
     profile: str,
     *,
     state_stage: object = None,
+    mode: str = "conference",
 ) -> list[tuple[str, object]]:
     specs: dict[str, object] = {
         "schema-valid": lambda: _schema_gate(paper_root),
@@ -600,6 +621,11 @@ def _gate_specs(
 
     if profile == "minimal":
         return list(specs.items())
+
+    # 匿名/双盲：checklists 把「匿名」写成 submission-check 的通过条件，但在此
+    # 之前没有任何机制真的去扫。从 internal-review 起强制，最小 profile 除外。
+    if _stage_at_least(mode, state_stage, "internal-review"):
+        specs["anonymity"] = lambda: anonymity.check(paper_root)
 
     if tail.get("post-submission") or (
         paper_root / EVIDENCE_LEDGER_PATHS["post-submission"]
@@ -718,6 +744,7 @@ def _run_gates(
     profile: str,
     *,
     state_stage: object = None,
+    mode: str = "conference",
 ) -> list[dict]:
     return [
         _run_gate(name, runner)
@@ -725,6 +752,7 @@ def _run_gates(
             paper_root,
             profile,
             state_stage=state_stage,
+            mode=mode,
         )
     ]
 
@@ -1087,6 +1115,7 @@ def build_report(
         paper_root,
         audit_profile,
         state_stage=stage,
+        mode=mode,
     )
     human_review = _human_review_status(paper_root, audit_profile, gate_results)
     executed_gates = [result["name"] for result in gate_results]

@@ -21,6 +21,7 @@ VERSION = "ccfa-research-workflow 0.1.0"
 # platform-specific.
 COMMANDS: dict[str, str] = {
     "adversarial-review": "ccfa.adversarial_review",
+    "anonymity": "ccfa.anonymity",
     "meta-apply": "ccfa.meta_apply",
     "figure-spec": "ccfa.figure_spec",
     "talk-gates": "ccfa.talk_gates",

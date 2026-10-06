@@ -15,6 +15,7 @@ CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 # it with the modules that actually define a top-level main().
 CCFA_WRAPPERS = {
     "adversarial_review": "adversarial-review.ps1",
+    "anonymity": "anonymity.ps1",
     "meta_apply": "meta-apply.ps1",
     "figure_spec": "figure-spec.ps1",
     "talk_gates": "talk-gates.ps1",

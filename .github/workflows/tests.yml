@@ -161,6 +161,7 @@ jobs:
           $env:PYTHONPATH = "tools"
           tools/.venv/Scripts/python.exe -m py_compile `
             tools/ccfa/adversarial_review.py `
+            tools/ccfa/anonymity.py `
             tools/ccfa/meta_apply.py `
             tools/ccfa/figure_spec.py `
             tools/ccfa/talk_gates.py `
