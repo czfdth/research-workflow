@@ -184,3 +184,40 @@ slide 输出 `fill`。两者的共同点正是这套 gate 的价值所在——*
 
 **仍未对齐**：`slides` / `slides-polish` / `poster-html` 的**生成器**（Beamer/PPTX
 模板、逐页视觉打磨、HTML 海报模板）没有实现，本轮补的是它们的测量与验收那半。
+
+## 九、第十一切片：Beamer 生成器（读源码后对齐）
+
+同一次读取里还看了 `skills/paper-slides/SKILL.md`（22.9KB）。它给出的产出契约是：
+`slides/main.tex`（beamer，`aspectratio=169`，venue 配色，每帧 `\note{}`）、
+`slides/main.pdf`、`slides/speaker_notes.md`、`slides/main.pptx`、
+`slides/SLIDES_STATE.json`；配色表固定五种 venue；字号下限 title ≥28pt、
+body ≥20pt、footnote ≥14pt；一页一消息、≤6 行、≤8 词；不放相关工作总结页。
+
+据此实现 `tools/ccfa/talk_deck.py`（21 项测试）：
+
+| 契约 | 实现 |
+| --- | --- |
+| beamer + venue 配色 | 五种 venue 配色表照抄；未知 venue 回退 GENERIC 并在 stderr 说明，不静默 |
+| 每页一帧 + `\note{}` | 标题帧 + 每 slide 一帧 + 致谢帧；`\note{}` 取 `speaker_notes` |
+| 独立 speaker notes | `speaker_notes.md`，逐页标题 + 备注 + 要点 |
+| 状态文件 | `SLIDES_STATE.json`：venue / aspect / engine / slide_count / frame_count / 声明字号 / 图件；**不带时间戳**，因为它同时是确定性产物 |
+| 图件 | 从 `figures/manifest.yaml` 解析、复制进 `slides/figures/`（ARIS 用符号链接，Windows 需要权限） |
+| CJK | 自动检测全角字符 → `xelatex` + `\usepackage{ctex}`，并写进状态 |
+| PPTX | **未实现**：本地没有 python-pptx；状态文件里写 `not_implemented: ["pptx"]` |
+
+**一处必要的偏离。** ARIS 的字号下限（28pt/20pt）是按 13.33in 画布说的，而
+Beamer 的 16:9 页只有 16cm 宽。若照抄字号或按比例缩字号，`talk_gates.measure`
+量到的字号和投影时实际渲染的字号就变成了两件事，`verify-final --from-plan`
+也不可能和 PDF 对上。所以生成的 `main.tex` 用
+`\geometry{paperwidth=…,paperheight=…}` 把页面钉到 plan 声明的画布，并直接用
+声明的字号。实测编译出来的 PDF 是 959.98×540pt = 13.333×7.5in，与 plan 完全一致。
+
+**实测**：写一份三页中文 talk plan（含 ICML venue 与一张 800×500 的图），
+`talk-deck render` → `talk-deck compile`（自动选 xelatex）→
+`talk-gates verify-final --from-plan --pages 5` 0 problem；把 PDF 渲染成 PNG
+目视检查，中文、标题配色、页脚 `2/5` 都正常。
+
+目视检查还抓出一个测试抓不到的问题：宽画布下 `\includegraphics[width=0.85\textwidth]`
+会让图高超出内容区，把正文挤出画面。改成 `width+height+keepaspectratio` 双向约束，
+并把图高（按真实像素算）计入 `measure`——那一页的 fill 从 0.23 变成 0.83，现在
+量到的就是实际占位。

@@ -1954,3 +1954,33 @@ rewrite historical entries.
   - `tools.tests.test_talk_gates`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T090706Z-2a155ca003 - Generate a Beamer deck from the talk plan
+
+- timestamp: `2026-10-06T09:07:06Z`
+- status: `complete`
+- author: `codex`
+- reason: talk_pipeline checked the plan and talk_gates measured the result, but nothing turned the plan into slides, so 'the plan is complete' and 'a deck exists' were separate facts. Read ARIS's skills/paper-slides/SKILL.md for its output contract (beamer+PDF+PPTX, per-frame notes, standalone speaker_notes.md, SLIDES_STATE.json, a five-entry venue colour table, title >=28pt, body >=20pt) and implemented tools/ccfa/talk_deck.py: venue colours, title frame plus one frame per slide plus a thank-you frame, note{} from speaker_notes, the standalone notes file, a state file that names the unimplemented PPTX export, figures resolved from the figure manifest and copied in (ARIS symlinks, which needs privileges on Windows), CJK auto-switching to xelatex+ctex, and byte-identical output for the same plan. One deliberate deviation, forced by a live defect: ARIS's point sizes assume a 13.33in canvas while Beamer's 16:9 page is 16cm wide, so the generated document pins paperwidth/paperheight with geometry to the plan's canvas and uses the declared sizes literally; otherwise measure would check different typography than the deck renders and verify-final --from-plan could never agree with the PDF. talk_gates.measure also now counts a figure's drawn height using the real pixel dimensions, because the first live render showed width-only includegraphics pushing the bullets off a wide slide; the template now uses width+height+keepaspectratio. verify-final's pdfinfo call gained an explicit UTF-8 decode after it crashed with GBK on a PDF carrying a Chinese title. Verified live: a three-slide Chinese plan with an ICML venue and a figure rendered, compiled with xelatex to five frames of 959.98x540pt, passed verify-final --from-plan, and the PNG render was inspected.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/talk-deck.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/talk_deck.py`
+  - `tools/ccfa/talk_gates.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_talk_deck.py`
+  - `tools/tests/test_talk_gates.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_talk_deck`
+  - `tools.tests.test_talk_gates`
+  - `tools.tests.test_test_impact`
+

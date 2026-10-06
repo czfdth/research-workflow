@@ -18,6 +18,7 @@ CCFA_WRAPPERS = {
     "meta_apply": "meta-apply.ps1",
     "figure_spec": "figure-spec.ps1",
     "talk_gates": "talk-gates.ps1",
+    "talk_deck": "talk-deck.ps1",
     "citation_guard": "citation-guard.ps1",
     "trace_claims": "trace-claims.ps1",
     "latex_check": "latex-check.ps1",

@@ -87,6 +87,11 @@ PDF_DIM_TOLERANCE_IN = 0.05
 MIN_FIGURE_EDGE_PX = 64
 MIN_FIGURE_BYTES = 64
 VECTOR_SUFFIXES = (".svg", ".pdf")
+# How the deck template places a figure: width-capped, height-capped, aspect
+# kept. The measurement has to use the same numbers or it will pass a slide the
+# renderer then overflows.
+FIGURE_WIDTH_FRACTION = 0.85
+FIGURE_HEIGHT_FRACTION = 0.6
 
 
 def _now_iso() -> str:
@@ -174,7 +179,41 @@ def _wrapped_lines(text: str, size_pt: float, content_width_in: float) -> int:
     return max(1, math.ceil(width_in / content_width_in))
 
 
-def _measure_slide(slide: dict, fmt: dict) -> dict:
+def _figure_height_in(paper_root: Path, slide: dict, fmt: dict) -> float:
+    """Height the deck will give this slide's figures, from real pixels."""
+    index, manifest_path = manifest_index(paper_root)
+    if manifest_path is None:
+        return 0.0
+    content_width = fmt["width_in"] - 2 * fmt["margin_in"]
+    content_height = fmt["height_in"] - 2 * fmt["margin_in"]
+    ceiling = FIGURE_HEIGHT_FRACTION * content_height
+    total = 0.0
+    for figure_id in slide.get("figure_ids") or []:
+        item = index.get(str(figure_id))
+        if item is None:
+            continue
+        path, advisory = _resolve_figure(item, Path(paper_root))
+        if advisory is not None or not path.is_file():
+            continue
+        if path.suffix.casefold() in VECTOR_SUFFIXES or _is_svg(path):
+            # No pixels to read; assume the template's cap.
+            total += ceiling
+            continue
+        kind = sniff(path)
+        dimensions = image_size(path, kind) if kind else None
+        if dimensions is None:
+            total += ceiling
+            continue
+        width_px, height_px = dimensions
+        if width_px <= 0 or height_px <= 0:
+            continue
+        drawn_width = FIGURE_WIDTH_FRACTION * content_width
+        drawn_height = drawn_width * height_px / width_px
+        total += min(drawn_height, ceiling)
+    return total
+
+
+def _measure_slide(slide: dict, fmt: dict, *, figure_in: float = 0.0) -> dict:
     """Render one slide's text into the declared typography."""
     content_width_in = fmt["width_in"] - 2 * fmt["margin_in"]
     content_height_in = fmt["height_in"] - 2 * fmt["margin_in"]
@@ -192,11 +231,12 @@ def _measure_slide(slide: dict, fmt: dict) -> dict:
         body_height += (
             lines * fmt["body_pt"] * fmt["line_spacing"] / POINTS_PER_INCH
         )
-    gap = 0.15 if body_height else 0.0
-    used = title_height + gap + body_height
+    gap = 0.15 if (body_height or figure_in) else 0.0
+    used = title_height + gap + figure_in + body_height
     return {
         "slide": str(slide.get("id", "")),
         "title_lines": title_lines,
+        "figure_in": round(figure_in, 3),
         "used_in": round(used, 3),
         "available_in": round(content_height_in, 3),
         "fill": round(used / content_height_in, 4) if content_height_in else 0.0,
@@ -267,7 +307,8 @@ def gate_preflight(
     return findings
 
 
-def _manifest_index(paper_root: Path) -> tuple[dict[str, dict], Path | None]:
+def manifest_index(paper_root: Path) -> tuple[dict[str, dict], Path | None]:
+    """Index ``figures/manifest.yaml`` by both id and name."""
     path = Path(paper_root) / FIGURE_MANIFEST
     if not path.is_file():
         return {}, None
@@ -341,7 +382,7 @@ def _is_svg(path: Path) -> bool:
 def gate_asset(paper_root: Path, plan: dict) -> list[dict]:
     """Every figure a slide claims must exist on disk, with real bytes."""
     findings: list[dict] = []
-    index, manifest_path = _manifest_index(paper_root)
+    index, manifest_path = manifest_index(paper_root)
     for slide in _slides(plan):
         slide_id = str(slide.get("id", ""))
         for figure_id in slide.get("figure_ids") or []:
@@ -448,7 +489,11 @@ def gate_measure(
     warnings: list[dict] = []
     measurements: list[dict] = []
     for slide in _slides(plan):
-        reading = _measure_slide(slide, fmt)
+        reading = _measure_slide(
+            slide,
+            fmt,
+            figure_in=_figure_height_in(paper_root, slide, fmt),
+        )
         measurements.append(reading)
         if reading["fill"] > 1.0:
             errors.append(
@@ -640,6 +685,11 @@ def _pdfinfo(pdf: Path) -> dict:
         output = subprocess.check_output(
             ["pdfinfo", str(pdf)],
             text=True,
+            # pdfinfo echoes the document metadata, which is UTF-8; without an
+            # explicit encoding Windows decodes it with the console codepage and
+            # crashes on any non-ASCII title.
+            encoding="utf-8",
+            errors="replace",
             stderr=subprocess.STDOUT,
             env=env,
         )

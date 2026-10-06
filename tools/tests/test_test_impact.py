@@ -93,6 +93,16 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_docs_consistency", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_talk_deck_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/talk_deck.py"],
+            suite="tools",
+        )
+
+        self.assertIn("tools.tests.test_talk_deck", selection.tests)
+        self.assertIn("tools.tests.test_talk_gates", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_experiment_loop_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/experiment_loop.py"],

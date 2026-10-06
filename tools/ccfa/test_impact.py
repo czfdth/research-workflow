@@ -57,6 +57,7 @@ LATEX_ENGINE_TESTS = (
     "tools.tests.test_compile",
     "tools.tests.test_derivation_e2e",
     "tools.tests.test_e2e",
+    "tools.tests.test_talk_deck",
 )
 
 
@@ -220,6 +221,12 @@ _TOOLS_EXACT = {
         "tools.tests.test_scripts",
     ),
     "tools/ccfa/talk_gates.py": (
+        "tools.tests.test_talk_gates",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
+    "tools/ccfa/talk_deck.py": (
+        "tools.tests.test_talk_deck",
         "tools.tests.test_talk_gates",
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",

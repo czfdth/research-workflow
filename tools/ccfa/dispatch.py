@@ -24,6 +24,7 @@ COMMANDS: dict[str, str] = {
     "meta-apply": "ccfa.meta_apply",
     "figure-spec": "ccfa.figure_spec",
     "talk-gates": "ccfa.talk_gates",
+    "talk-deck": "ccfa.talk_deck",
     "ara-compile": "ccfa.ara_compile",
     "ara-extract": "ccfa.ara_extract",
     "archive": "ccfa.archive_client",

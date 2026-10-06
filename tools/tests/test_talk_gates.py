@@ -126,6 +126,43 @@ class MeasureTests(unittest.TestCase):
 
         self.assertGreater(reading["fill"], 1.0)
 
+    def test_a_figure_counts_towards_the_fill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "figures").mkdir()
+            (root / "figures" / "manifest.yaml").write_text(
+                "figures:\n"
+                "  - id: tall\n    name: tall\n    file: figures/tall.png\n",
+                encoding="utf-8",
+            )
+            # 400x1000 in a 16:9 frame: the width cap gives a 12in-wide image
+            # whose height is capped, which is most of the slide.
+            (root / "figures" / "tall.png").write_bytes(_png_bytes(400, 1000))
+            slide = _slide(figure_ids=["tall"], talking_points=["one"])
+
+            figure_in = module._figure_height_in(
+                root,
+                slide,
+                module.DEFAULT_FORMAT,
+            )
+
+        content_height = (
+            module.DEFAULT_FORMAT["height_in"]
+            - 2 * module.DEFAULT_FORMAT["margin_in"]
+        )
+        self.assertAlmostEqual(
+            figure_in,
+            module.FIGURE_HEIGHT_FRACTION * content_height,
+            places=6,
+        )
+        reading = module._measure_slide(
+            slide,
+            module.DEFAULT_FORMAT,
+            figure_in=figure_in,
+        )
+        self.assertGreater(reading["figure_in"], 3.0)
+        self.assertGreater(reading["fill"], 0.5)
+
 
 class GateTests(unittest.TestCase):
     def setUp(self):
@@ -475,6 +512,25 @@ class VerifyFinalTests(unittest.TestCase):
 
         self.assertEqual(findings, [])
         self.assertEqual(detail["engine"], "pymupdf")
+
+    def test_non_ascii_pdf_metadata_does_not_break_the_reader(self):
+        # pdfinfo echoes the Info dictionary; without an explicit UTF-8 decode
+        # Windows used the console codepage and crashed on a Chinese title.
+        pdf = self.root / "cjk.pdf"
+        document = fitz.open()
+        document.new_page(width=960, height=540)
+        document.set_metadata({"title": "中文标题", "author": "研究者"})
+        document.save(str(pdf))
+        document.close()
+
+        findings, detail = module.verify_final(
+            pdf,
+            expected_canvas=(13.333, 7.5),
+            expected_pages=1,
+        )
+
+        self.assertEqual(findings, [])
+        self.assertEqual(detail["pages"], 1)
 
     def test_a_missing_pdf_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "PDF 不存在"):
