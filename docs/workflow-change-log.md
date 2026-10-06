@@ -2647,3 +2647,21 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `tools.tests.test_docs_consistency (README/文档路径一致性，随 472 项批量通过)`
 
+## WC-20261006T170817Z-5556e17b1d - 成本指标补上按阶段预算告警（cost-budget-exceeded / cost-budget-unmeasured），e2e 趋势表标注采样时刻与历史-当前差异
+
+- timestamp: `2026-10-06T17:08:17Z`
+- status: `complete`
+- author: `codex`
+- reason: 上一轮把两个指标接到真实产物，但报告里 item 10 还差"按阶段设预算告警"这半句：没有上限时指标只是描述，突破上限才是要人干预的事。data/cost-ledger.yaml 现在可声明 budgets（default + 按 stage 覆盖，未知 stage/键名/负值都是 problem），check 在 readiness 的 cost-metrics 门里同时报突破（problem）与"声明了预算但指标不可测"（advisory）。趋势表原来只有日期，同一天两次采样分不清，且历史采样与当前快照阻塞数不同时读者要自己猜；现在每条采样带 sampled_at 时刻，两个数字不一致时明确写"历史 vs 当前，以当前快照为准"。
+- files:
+  - `README.md`
+  - `tools/ccfa/cost_metrics.py`
+  - `tools/ccfa/e2e_check.py`
+  - `tools/tests/test_cost_metrics.py`
+  - `tools/tests/test_e2e_check.py`
+- tests:
+  - `scripts/test-impact.ps1 plan --base origin/master -> full=false，聚焦 4 个测试模块（根目录 scratch 清理后不再回退全量）`
+  - `tools.tests.test_cost_metrics + test_docs_consistency + test_e2e_check + test_scripts + test_readiness (303 tests, OK)`
+  - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
+  - `现场演示：stage=experiments-running 且 limit=2.0、实际 2.2681 -> cost-metrics check exit 1 + cost-budget-exceeded（按 stage 覆盖 default=1.0）`
+

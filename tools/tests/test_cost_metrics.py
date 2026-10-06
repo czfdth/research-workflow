@@ -91,17 +91,22 @@ def _compute_config(root: Path, pricing: dict | None, backends: list | None = No
     )
 
 
-def _ledger(root: Path, metrics: dict, *, extra: str = "") -> None:
-    text = yaml.safe_dump(
-        {
-            "version": 1,
-            "currency": "USD",
-            "notes": "fixture ledger",
-            "entries": [{"kind": "gpu", "amount": 0, "unit": "hours"}],
-        },
-        allow_unicode=True,
-        sort_keys=False,
-    )
+def _ledger(
+    root: Path,
+    metrics: dict,
+    *,
+    budgets: dict | None = None,
+    extra: str = "",
+) -> None:
+    payload = {
+        "version": 1,
+        "currency": "USD",
+        "notes": "fixture ledger",
+        "entries": [{"kind": "gpu", "amount": 0, "unit": "hours"}],
+    }
+    if budgets is not None:
+        payload["budgets"] = budgets
+    text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
     text = text.rstrip("\n") + "\n" + yaml.safe_dump(
         {"metrics": metrics}, allow_unicode=True, sort_keys=False
     )
@@ -369,6 +374,107 @@ class CheckTests(unittest.TestCase):
             self.assertIn("# keep this trailing comment", text)
             problems, _advisories = cost_metrics.check(root)
             self.assertEqual(problems, [])
+
+
+class BudgetTests(unittest.TestCase):
+    def _exceeded_fixture(self, root: Path, budgets: dict) -> None:
+        _state(root, at="2026-10-04T02:00:00Z")
+        _run(root, "20261004T041605-01", started_at="2026-10-04T04:16:05Z")
+        report = cost_metrics.derive(root)
+        _ledger(
+            root,
+            {name: report["metrics"][name] for name in cost_metrics.METRIC_NAMES},
+            budgets=budgets,
+        )
+
+    def test_a_stage_budget_that_is_exceeded_becomes_a_problem(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._exceeded_fixture(
+                root,
+                {"default": {"time_to_first_attempt_hours_max": 1.0}},
+            )
+
+            problems, advisories = cost_metrics.check(root)
+
+            codes = {problem.code for problem in problems}
+            self.assertIn("cost-budget-exceeded", codes)
+            self.assertTrue(any("2.2681" in item.message for item in problems))
+            self.assertEqual(advisories, [])
+
+    def test_a_stage_entry_overrides_the_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._exceeded_fixture(
+                root,
+                {
+                    "default": {"time_to_first_attempt_hours_max": 1.0},
+                    "internal-review": {"time_to_first_attempt_hours_max": 10.0},
+                },
+            )
+
+            problems, advisories = cost_metrics.check(root)
+
+            self.assertEqual(problems, [])
+            self.assertEqual(advisories, [])
+
+    def test_unknown_budget_stage_and_key_are_problems(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._exceeded_fixture(
+                root,
+                {
+                    "not-a-stage": {"time_to_first_attempt_hours_max": 1.0},
+                    "default": {"bogus_max": 1.0},
+                },
+            )
+
+            problems, _advisories = cost_metrics.check(root)
+
+            messages = " ".join(item.message for item in problems)
+            self.assertIn("不是合法 stage", messages)
+            self.assertIn("不是已知预算项", messages)
+
+    def test_a_budget_for_an_unmeasurable_metric_is_an_advisory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _state(root)
+            _ledger(
+                root,
+                {
+                    "time_to_first_attempt": {
+                        "status": "not-applicable",
+                        "reason": "no attempts yet",
+                    },
+                    "cost_per_attempt": {
+                        "status": "not-applicable",
+                        "reason": "no attempts yet",
+                    },
+                },
+                budgets={"default": {"time_to_first_attempt_hours_max": 72.0}},
+            )
+
+            problems, advisories = cost_metrics.check(root)
+
+            self.assertEqual(problems, [])
+            codes = {item.code for item in advisories}
+            self.assertIn("cost-budget-unmeasured", codes)
+
+    def test_write_metrics_preserves_the_budgets_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._exceeded_fixture(
+                root,
+                {"default": {"time_to_first_attempt_hours_max": 1.0}},
+            )
+
+            path = cost_metrics.write_metrics(root)
+
+            payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["budgets"]["default"]["time_to_first_attempt_hours_max"],
+                1.0,
+            )
 
 
 class CliTests(unittest.TestCase):

@@ -82,6 +82,10 @@ class CollectSampleTests(unittest.TestCase):
         )
 
         self.assertEqual(sample["date"], "2026-10-06")
+        self.assertRegex(
+            sample["sampled_at"],
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+        )
         self.assertFalse(sample["ready"])
         self.assertEqual(sample["blocking"], 2)
         self.assertEqual(sample["time_to_first_attempt"], 4.5)
@@ -152,6 +156,29 @@ class HistoryTests(unittest.TestCase):
         self.assertIn("| date |", text)
         self.assertIn("—", text)
         self.assertIn("5 → 3（-2）", text)
+
+    def test_trend_marks_the_sample_time_and_the_history_versus_current_gap(self):
+        lines = e2e_check.render_trend(
+            [
+                {
+                    "date": "2026-10-06",
+                    "sampled_at": "2026-10-06T12:34:56Z",
+                    "ready": False,
+                    "blocking": 5,
+                    "time_to_first_attempt": None,
+                    "cost_per_attempt": None,
+                    "time_to_first_attempt_status": "not-applicable",
+                    "cost_per_attempt_status": "not-applicable",
+                }
+            ],
+            current_blocking=2,
+        )
+        text = "\n".join(lines)
+
+        self.assertIn("2026-10-06 12:34Z", text)
+        self.assertIn("not-applicable", text)
+        self.assertIn("历史 vs 当前", text)
+        self.assertIn("当前快照阻塞 2", text)
 
     def test_empty_history_says_how_to_start_one(self):
         text = "\n".join(e2e_check.render_trend([]))

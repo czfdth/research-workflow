@@ -20,7 +20,7 @@ import argparse
 import json
 import sys
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -138,6 +138,9 @@ def collect_sample(report: dict, *, today: date) -> dict:
     payload = _load_cost_ledger(Path(report["paper_root"]))
     return {
         "date": today.isoformat(),
+        # Date alone cannot tell two samples from the same day apart, and the
+        # trend is read right after a snapshot, so record the wall clock too.
+        "sampled_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "ready": bool(report.get("ready")),
         "blocking": len(report.get("blocking") or []),
         "time_to_first_attempt": _metric_value(
@@ -198,6 +201,7 @@ def render_trend(
     samples: list[dict],
     *,
     limit: int = TREND_LIMIT,
+    current_blocking: int | None = None,
 ) -> list[str]:
     if not samples:
         return [
@@ -216,8 +220,13 @@ def render_trend(
         # not-applicable metric says so in the cell.
         ttf_cell = _trend_cell(ttf, item.get("time_to_first_attempt_status"))
         cpa_cell = _trend_cell(cpa, item.get("cost_per_attempt_status"))
+        sampled = item.get("sampled_at")
+        if isinstance(sampled, str) and len(sampled) >= 16:
+            date_cell = f"{item.get('date')} {sampled[11:16]}Z"
+        else:
+            date_cell = str(item.get("date"))
         lines.append(
-            f"| {item.get('date')} | {str(bool(item.get('ready'))).lower()} "
+            f"| {date_cell} | {str(bool(item.get('ready'))).lower()} "
             f"| {item.get('blocking')} "
             f"| {ttf_cell} "
             f"| {cpa_cell} |"
@@ -229,6 +238,16 @@ def render_trend(
             [
                 "",
                 f"- 近 {len(recent)} 次采样里阻塞数 {start} → {end}（{end - start:+d}）。",
+            ]
+        )
+    if isinstance(current_blocking, int) and isinstance(end, int) and current_blocking != end:
+        # History and the current snapshot can disagree right after a fix; the
+        # reader must not have to guess which number the page is about.
+        lines.extend(
+            [
+                "",
+                f"- 当前快照阻塞 {current_blocking}，最近一次采样 {end}："
+                "两者不同（历史 vs 当前），以当前快照为准。",
             ]
         )
     return lines
@@ -347,7 +366,12 @@ def render_snapshot(
             "",
         ]
     )
-    lines.extend(render_trend(list(history or [])))
+    lines.extend(
+        render_trend(
+            list(history or []),
+            current_blocking=len(report.get("blocking") or []),
+        )
+    )
 
     lines.extend(
         [

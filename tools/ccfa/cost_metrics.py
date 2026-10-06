@@ -50,6 +50,14 @@ FREEZE_LINE = re.compile(
 )
 METRIC_NAMES = ("time_to_first_attempt", "cost_per_attempt")
 METRICS_BLOCK = re.compile(r"^metrics:[^\n]*\n(?:[ \t][^\n]*\n|\n)*", re.MULTILINE)
+# Optional per-stage ceilings. Without them the metrics are descriptive; with
+# them the same derivation turns into a budget alert, which is the point of
+# measuring an attempt at all.
+BUDGET_KEYS = {
+    "time_to_first_attempt_hours_max": "time_to_first_attempt",
+    "cost_per_attempt_max": "cost_per_attempt",
+}
+BUDGET_DEFAULT = "default"
 
 
 @dataclass(frozen=True)
@@ -437,9 +445,17 @@ def derive(paper_root: Path) -> dict:
     attempts, builds = _run_entries(paper_root)
     entries, malformed = _compute_entries(paper_root)
     freeze = _plan_freeze(paper_root)
+    stage = _current_stage(paper_root)
+    budget_problems, budget_advisories = budget_report(paper_root)
     return {
         "paper_root": str(paper_root),
         "metrics": {name: verdict.as_report() for name, verdict in metrics.items()},
+        "budget": {
+            "stage": stage,
+            "limits": effective_budget(paper_root, stage) if stage else {},
+            "problems": [item._asdict() for item in budget_problems],
+            "advisories": [item._asdict() for item in budget_advisories],
+        },
         "evidence": {
             "plan_freeze": {
                 "status": freeze["status"],
@@ -464,6 +480,159 @@ def _load_ledger_metrics(paper_root: Path) -> tuple[dict | None, str | None]:
     if not isinstance(metrics, dict):
         return None, f"{COST_LEDGER.as_posix()} 缺少 metrics 映射"
     return metrics, None
+
+
+def _stage_names(paper_root: Path) -> list[str]:
+    """Stage names for the paper's own mode, or an empty list if unavailable."""
+
+    from ccfa.stages import stages_for
+
+    payload, _error = _load_yaml(paper_root / STATE_FILE)
+    venue = payload.get("target_venue") if payload else None
+    mode = venue.get("mode", "conference") if isinstance(venue, dict) else "conference"
+    try:
+        return list(stages_for(mode))
+    except ValueError:
+        return list(stages_for("conference"))
+
+
+def _budgets(paper_root: Path) -> tuple[dict | None, list[Problem]]:
+    """Read and validate the optional ``budgets:`` block.
+
+    Shape:
+
+    ``budgets: {default: {time_to_first_attempt_hours_max: 72,
+    cost_per_attempt_max: 25}, experiments-running: {cost_per_attempt_max: 50}}``
+
+    Stage entries override ``default``. An unknown stage or metric name is a
+    problem rather than a silently ignored key: a budget that matches nothing
+    is indistinguishable from no budget at all.
+    """
+
+    path = paper_root / COST_LEDGER
+    payload, error = _load_yaml(path)
+    if error:
+        return None, [Problem("cost-budget-invalid", str(path), None, error)]
+    budgets = payload.get("budgets") if payload else None
+    if budgets is None:
+        return None, []
+    if not isinstance(budgets, dict):
+        return None, [
+            Problem("cost-budget-invalid", str(path), None, "budgets 必须是映射")
+        ]
+    problems: list[Problem] = []
+    stages = _stage_names(paper_root)
+    for stage, limits in budgets.items():
+        if stage != BUDGET_DEFAULT and stage not in stages:
+            problems.append(
+                Problem(
+                    "cost-budget-invalid",
+                    str(path),
+                    None,
+                    f"budgets.{stage} 不是合法 stage（{BUDGET_DEFAULT} 或 "
+                    f"{'/'.join(stages)}）",
+                )
+            )
+            continue
+        if not isinstance(limits, dict):
+            problems.append(
+                Problem(
+                    "cost-budget-invalid",
+                    str(path),
+                    None,
+                    f"budgets.{stage} 必须是映射",
+                )
+            )
+            continue
+        for key, amount in limits.items():
+            if key not in BUDGET_KEYS:
+                problems.append(
+                    Problem(
+                        "cost-budget-invalid",
+                        str(path),
+                        None,
+                        f"budgets.{stage}.{key} 不是已知预算项（"
+                        f"{'/'.join(BUDGET_KEYS)}）",
+                    )
+                )
+                continue
+            if (
+                isinstance(amount, bool)
+                or not isinstance(amount, (int, float))
+                or not math.isfinite(amount)
+                or amount < 0
+            ):
+                problems.append(
+                    Problem(
+                        "cost-budget-invalid",
+                        str(path),
+                        None,
+                        f"budgets.{stage}.{key} 必须是有限非负数",
+                    )
+                )
+    return budgets, problems
+
+
+def _current_stage(paper_root: Path) -> str:
+    payload, _error = _load_yaml(paper_root / STATE_FILE)
+    stage = payload.get("stage") if payload else None
+    current = stage.get("current") if isinstance(stage, dict) else None
+    return current if isinstance(current, str) else ""
+
+
+def effective_budget(paper_root: Path, stage: str) -> dict:
+    """Merge ``default`` with the entry for *stage* (stage wins)."""
+
+    budgets, _problems = _budgets(paper_root)
+    if not budgets:
+        return {}
+    merged = dict(budgets.get(BUDGET_DEFAULT) or {})
+    merged.update(budgets.get(stage) or {})
+    return merged
+
+
+def budget_report(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
+    """Compare the derived metrics against the declared per-stage ceilings."""
+
+    paper_root = Path(paper_root)
+    path = paper_root / COST_LEDGER
+    budgets, problems = _budgets(paper_root)
+    advisories: list[Problem] = []
+    if not budgets:
+        return problems, advisories
+    stage = _current_stage(paper_root) or "(未知)"
+    limits = effective_budget(paper_root, stage)
+    derived = {
+        "time_to_first_attempt": derive_time_to_first_attempt(paper_root),
+        "cost_per_attempt": derive_cost_per_attempt(paper_root),
+    }
+    for key, metric in BUDGET_KEYS.items():
+        limit = limits.get(key)
+        if limit is None:
+            continue
+        verdict = derived[metric]
+        if verdict.status != "recorded":
+            advisories.append(
+                Problem(
+                    "cost-budget-unmeasured",
+                    str(path),
+                    None,
+                    f"stage {stage} 声明了 {key}={limit}，但 metrics.{metric} "
+                    f"目前是 {verdict.status}：{verdict.reason}",
+                )
+            )
+            continue
+        if float(verdict.value) > float(limit):
+            problems.append(
+                Problem(
+                    "cost-budget-exceeded",
+                    str(path),
+                    None,
+                    f"stage {stage} 的 {key}={limit} 已被突破："
+                    f"metrics.{metric}={verdict.value}（{verdict.source}）",
+                )
+            )
+    return problems, advisories
 
 
 def check(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
@@ -544,6 +713,9 @@ def check(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
                 f"metrics.{name} 不适用：{verdict.reason}",
             )
         )
+    budget_problems, budget_advisories = budget_report(paper_root)
+    problems.extend(budget_problems)
+    advisories.extend(budget_advisories)
     return problems, advisories
 
 
