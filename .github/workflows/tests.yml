@@ -165,6 +165,7 @@ jobs:
             tools/ccfa/figure_spec.py `
             tools/ccfa/talk_gates.py `
             tools/ccfa/talk_deck.py `
+            tools/ccfa/slides_polish.py `
             tools/ccfa/ara_compile.py `
             tools/ccfa/ara_extract.py `
             tools/ccfa/artifact_badge.py `

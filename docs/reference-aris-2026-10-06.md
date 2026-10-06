@@ -221,3 +221,37 @@ Beamer 的 16:9 页只有 16cm 宽。若照抄字号或按比例缩字号，`tal
 会让图高超出内容区，把正文挤出画面。改成 `width+height+keepaspectratio` 双向约束，
 并把图高（按真实像素算）计入 `measure`——那一页的 fill 从 0.23 变成 0.83，现在
 量到的就是实际占位。
+
+## 十、第十二切片：版式润色（读源码后对齐）
+
+读了 `skills/slides-polish/SKILL.md`（28.4KB）。它最值得抄的不是修复清单，而是
+两条纪律：
+
+1. **硬范围规则**：只改版式，不改 claims / 数字 / 引用 / URL / 作者 / 单位 / 结果；
+   不增删或重排 slide；不动图表与公式内容。
+2. **`OUTPUT_VERSIONING`**：原件先快照成 `<stem>_pre_polish.<ext>`，改动只落在
+   `<stem>_polished.<ext>`，**原件永不覆盖**。
+
+它还要求逐页 review 前必须把 PDF 渲染成像素（`pdftoppm`/`mutool`，否则"视觉复核
+没有像素就是低置信度"），状态放在独立目录（`POLISH_STATE.json`、`INSPECT_*.json`、
+`POLISH_CHANGELOG.md`、`traces/slide_NN.json`）。
+
+据此实现 `tools/ccfa/slides_polish.py` + 13 项测试：
+
+| 契约 | 实现 |
+| --- | --- |
+| 原件快照 + 版本化输出 | `main_pre_polish.tex` 已存在就不覆盖；输出自动 `_polished` → `_v2` → `_v3` |
+| 只改版式 | 只做一条机械改写：`\includegraphics[width=...]` 缺高度上限时补 `height=0.6\textheight,keepaspectratio`（就是上一节目视发现的溢出成因） |
+| 需要判断的不越权 | 字号低于投影下限、缺 `\geometry` 钉画布、未关 beamer 导航符号 → 写进 findings，**不改写** |
+| 逐页像素 | PDF 每页用 `pdftoppm`/`mutool`/`magick` 之一渲染成 PNG，并写 `traces/slide_NN.json` |
+| 状态与变更日志 | `.ccfa/slides-polish/<stem>/POLISH_STATE.json` + `POLISH_CHANGELOG.md`（逐行 diff + findings） |
+
+**与 ARIS 的诚实差异**：它的润色是 `gpt-6-astra` 逐页看像素后提出修改建议；本模块
+没有模型那一层，所以把它拆成两半——**能机械证明安全**的自动改，需要判断的只报告。
+`not_implemented: ["pptx"]` 同样写进状态文件。
+
+**"不改内容"是可验证的，不是承诺。** `slides-polish check` 逐行比对快照与输出：
+任何改动必须匹配允许规则，而且**行数不许变**。实测把生成 deck 里的宽高约束手工删掉
+（模拟外部工具产出的 deck）→ `run` 补回约束、快照 `main_pre_polish.tex`、输出
+`main_polished.tex`、渲染 4 页 PNG、changelog 记下那一行的前后 diff；把输出里的
+`Intro` 改成 `Hacked` 后 `check` 报 `slides-polish-unauthorised-change`。

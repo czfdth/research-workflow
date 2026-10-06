@@ -101,6 +101,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/figure_spec.py` | 把声明式 figure spec 确定性地渲染成 SVG：形状感知裁边（矩形/椭圆/菱形）、自环、CJK 宽度按 `east_asian_width` 计、穿过无关节点的边自动绕行；同一份 spec 永远得到同样字节，`check` 报告文字溢出 | `scripts/figure-spec.ps1` |
 | `tools/ccfa/talk_gates.py` | talk/poster 的规范 gate 编排 `preflight → asset → measure → polish`：按声明画布真实排版测量每页填充率（溢出是硬失败）、图件按像素与字节格式核验、默认累积全部问题写一份 `data/talk-gate-report.json`；`verify-final` 按声明画布核对导出 PDF 的页数/尺寸/体积（pdfinfo，缺失时回退 PyMuPDF） | `scripts/talk-gates.ps1` |
 | `tools/ccfa/talk_deck.py` | 从 `data/talk-plan.yaml` 确定性生成 Beamer deck：venue 配色、每页一帧加 `\note{}` 讲者备注、图件按真实像素双向适配、独立 `speaker_notes.md` 与 `SLIDES_STATE.json`；页面尺寸钉到 plan 声明的画布（所以 `measure` 的字号就是实际渲染的字号），含中文时自动切 xelatex+ctex | `scripts/talk-deck.ps1` |
+| `tools/ccfa/slides_polish.py` | 对现有 Beamer deck 做**只改版式、绝不改内容**的 polish：快照原件、输出 `_polished`（再跑是 `_v2`）、把 PDF 每页渲染成 PNG 供人工/模型看像素、写 `POLISH_CHANGELOG.md` 与 `POLISH_STATE.json`；`check` 会拒绝任何不匹配允许规则的行改动或增删行 | `scripts/slides-polish.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
@@ -417,6 +418,22 @@ plan 永远得到同样的字节；`main.tex` 里的 `\geometry{paperwidth=...,p
 图件用 `width+height+keepaspectratio` 双向约束，否则宽画布下图会顶掉正文。
 含中文时自动改用 `xelatex` 并加 `ctex`。PPTX 导出未实现，`SLIDES_STATE.json` 里
 用 `not_implemented: ["pptx"]` 明说。
+
+别人给的或旧工具产出的 deck 也可以过一遍 polish——它**只改版式，不改内容**：
+
+```powershell
+scripts/slides-polish.ps1 run --deck <deck-dir>
+scripts/slides-polish.ps1 check --deck <deck-dir>
+```
+
+原件快照为 `<stem>_pre_polish.tex`（已存在就不覆盖），改动落在
+`<stem>_polished.tex`，再跑一次自动变成 `_v2`。它会修一类可证明安全的问题——
+`\includegraphics[width=...]` 没有高度上限（宽画布下图会顶掉正文），改成
+`width+height+keepaspectratio`；字号低于投影下限、缺 `\geometry` 钉画布、没关
+导航符号则**只报告不改写**，写进 `POLISH_CHANGELOG.md` 的 findings。`check` 会
+逐行核对：任何改动必须匹配允许规则，行数不许变，所以"没改内容"是可验证的而不是
+口头承诺。PDF 每页会用 `pdftoppm`/`mutool`/`magick` 之一渲染成 PNG 存进
+`.ccfa/slides-polish/<stem>/traces/`，让逐页复核能看像素而不是只看文字。
 
 顺序是 `preflight → asset → measure → polish`：静态检查先跑，避免为一个明显坏掉
 的稿子付渲染成本；默认累积全部问题（`--fail-fast` 给 CI 用）；`polish` 默认只警告，

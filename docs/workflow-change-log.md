@@ -1984,3 +1984,30 @@ rewrite historical entries.
   - `tools.tests.test_talk_gates`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T092948Z-d6d8b098f4 - Add a content-preserving slides polish pass
+
+- timestamp: `2026-10-06T09:29:48Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS's slides-polish is the layout-only pass over a finished deck; this repo generated a deck but had no post-generation pass. Read skills/slides-polish/SKILL.md and kept its two load-bearing rules: hard scope (never touch claims, numbers, citations, URLs, authors, affiliations or results; never add, remove or reorder slides; never change figures or equations) and OUTPUT_VERSIONING (snapshot the original, land edits in <stem>_polished, never overwrite). tools/ccfa/slides_polish.py implements the deterministic half: it snapshots to _pre_polish.tex without clobbering an existing snapshot, writes a versioned _polished.tex (then _v2, _v3), renders every PDF page to PNG through pdftoppm/mutool/magick so a review can look at pixels, and writes POLISH_STATE.json, INSPECT_*.json, POLISH_CHANGELOG.md and per-page traces under .ccfa/slides-polish/. It applies exactly one mechanical rewrite - a width-only includegraphics gets height=0.6\textheight,keepaspectratio, which is the overflow the previous slice found by eye - and only reports what needs judgement (font below the projector floor, missing geometry pin, navigation symbols left on) instead of rewriting it; the reference uses a per-page model review for those. The no-content-change claim is checkable rather than asserted: slides-polish check diffs snapshot against output line by line and accepts a change only when it matches an allowed rule and the line count is unchanged. Verified live on a generated deck whose height bound was removed by hand: run fixed the line, snapshotted, versioned the output, rendered 4 pages and logged the before/after diff, and tampering with the output produced slides-polish-unauthorised-change. PPTX is not implemented and is named in the state file.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/slides-polish.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/slides_polish.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_slides_polish.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_slides_polish`
+  - `tools.tests.test_test_impact`
+

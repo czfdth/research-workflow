@@ -44,7 +44,7 @@
 | 性能剖析 | `/system-profile` | 无 | 缺口 |
 | 对抗评审细度 | 8 个专门角色（含零上下文数值复核、双线 kill-argument、作弊模式取证） | cross_review + review_loop + argument_audit，角色较粗 | 细度缺口 |
 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（含形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 已实现确定性 JSON/YAML→SVG（形状感知裁边、自环、CJK 宽度、穿节点自动绕行）；仍无 illustration / mermaid / poster HTML 生成器 | 已对齐核心 |
-| 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 | `talk_deck` 生成 Beamer + `\note` 讲者备注 + 独立 notes + 状态文件，`talk_gates` 提供规范顺序的度量硬门与 PDF 几何核对；仍无 PPTX 导出、slides-polish 与 poster HTML | 接近持平 |
+| 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 | `talk_deck` 生成 Beamer + `\note` + 独立 notes + 状态文件，`talk_gates` 提供规范顺序的度量硬门与 PDF 几何核对，`slides_polish` 提供不改内容、可校验的版式润色（快照+版本化输出+逐页 PNG+changelog）；仍无 PPTX 导出与 poster HTML | 接近持平 |
 | 专利链路 | 9 个 skill 的完整链路 | 无 | 可选缺口 |
 | 领域适配 | communications、robotics、architecture/EDA 三个方向适配器 | 无 | 缺口 |
 | 知识库自动化 | research-wiki 有生命周期 hook 自动 ingest，wiki-enrich 补 TODO | research_wiki 工具存在但**手工**，只有 3 个文件 | 自动化缺口 |
@@ -102,7 +102,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
-| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成器已对齐（`talk_gates` / `talk_deck`）；PPTX、slides-polish、poster HTML 仍缺 |
+| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成器 + 版式润色已对齐（`talk_gates` / `talk_deck` / `slides_polish`）；PPTX 与 poster HTML 仍缺 |
 | 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
 | 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |
@@ -190,6 +190,7 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 | 图件生成（差距 3） | 新增 `tools/ccfa/figure_spec.py` + 31 项测试：JSON/YAML spec → 确定性 SVG（同一份 spec 渲染两次字节完全相同，实测 sha 一致）；形状感知裁边（矩形/椭圆/菱形，边停在边界而不是中心）、自环画成真正的环带箭头、CJK 宽度按 `east_asian_width` 计、直线边会穿过无关节点时自动绕成曲线；`check` 把文字溢出报成 advisory。示例 `docs/examples/figure-spec-example.yaml` 已渲染并目视检查 |
 | 投稿后产出的**度量硬门**（差距 4 的一半，源码级对齐） | 读了 ARIS 的 `skills/paper-poster-html/scripts/run_gates.py`、`poster_check.py`、`_posterly/measure.py`、`_posterly/verify_final.py` 源码后按同架构实现 `tools/ccfa/talk_gates.py` + 37 项测试：固定顺序 `preflight → asset → measure → polish`、单一 `data/talk-gate-report.json`、hard/soft 分级与 `--strict-polish`、默认累积而 `--fail-fast` 可选、`measure` 按 plan 声明的字号真实排版算每页填充率、`verify-final` 必须显式给 `--canvas`/`--from-plan` 再核对 PDF 页数/尺寸/体积。诚实差异：ARIS 的 `measure` 用 headless Chromium 打印仿真量 HTML 的列底 spread，本机没有那条链路，改成对 plan 文本做确定性排版测量；`style` 段未实现（本地没有 design token 体系）。实测：真编译一份 3 页 Beamer 16:9，健康稿 `overall=pass`、`verify-final` 0 problem；把某页加到 25 条要点后 `talk-slide-overflow` 报 fill 2.24（需 6.831in / 可用 3.043in）并 exit 1；`--pages 5` 对 3 页 PDF 报 `talk-pdf-page-count` |
 | 投稿后产出的 **Beamer 生成器**（差距 4 的另一半，源码级对齐） | 读了 ARIS 的 `skills/paper-slides/SKILL.md`（产出契约：beamer→PDF + PPTX、`\note{}` 讲者备注、独立 `speaker_notes.md`、`SLIDES_STATE.json`；venue 配色表；title ≥28pt / body ≥20pt）后实现 `tools/ccfa/talk_deck.py` + 21 项测试：venue 配色、每页一帧 + 标题帧 + 致谢帧、`\note{}`、独立 notes、状态文件（含 `not_implemented: ["pptx"]`）、图件按真实像素双向约束、CJK 自动 xelatex+ctex、同一份 plan 字节一致。关键修正：Beamer 默认 16cm 画布与 plan 声明的 13.33in 不一致，改成用 `\geometry{paperwidth,paperheight}` 钉住画布并直接用声明字号——否则 `measure` 量的字号和实际渲染的字号是两件事。实测：真用 `pdflatex`/`xelatex` 编译 5 帧，`verify-final --from-plan` 0 problem（page size 959.98×540pt = 13.333×7.5in）；目视检查发现宽画布下 `width=0.85\textwidth` 的图会顶掉正文，改成 `width+height+keepaspectratio` 并把图高计入 `measure`（该页 fill 从 0.23 变 0.83）；顺带修掉 `verify-final` 在中文 PDF 上按 GBK 解码 pdfinfo 输出崩溃的 Windows bug |
+| 投稿后产出的 **版式润色**（`slides-polish`，源码级对齐） | 读了 ARIS 的 `skills/slides-polish/SKILL.md`：硬范围规则（不改 claims/数字/引用/URL/作者/结果，不增删改序 slide，不动图表与公式内容）+ `OUTPUT_VERSIONING`（快照原件、输出 `<stem>_polished`）+ 逐页 review 前必须把 PDF 渲染成像素 + 状态目录结构（`POLISH_STATE.json` / `INSPECT_*.json` / `POLISH_CHANGELOG.md` / `traces/`）。据此实现 `tools/ccfa/slides_polish.py` + 13 项测试：快照不覆盖、输出自动 `_polished` → `_v2`、PDF 每页渲染 PNG 并写 per-page trace、确定性只做一条可证明安全的改写（`\includegraphics` 缺高度上限 → 补 `width+height+keepaspectratio`），字号低于投影下限/缺 `\geometry`/未关导航符号**只报告不改写**。关键的诚实差异：ARIS 用 `gpt-6-astra` 逐页看像素提修改建议，本模块没有模型那一层，所以把"安全可机械判定"和"需要判断"分开——前者自动改，后者进 findings。**不改内容这条是可验证的**：`check` 逐行比对快照与输出，任何改动必须匹配允许规则且行数不变，实测把 `Intro` 改成 `Hacked` 会被 `slides-polish-unauthorised-change` 抓到 |
 
 ### 旗舰论文当前状态
 

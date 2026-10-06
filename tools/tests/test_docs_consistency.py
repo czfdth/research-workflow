@@ -25,6 +25,7 @@ CLI_WRAPPERS = {
     "figure_spec": "scripts/figure-spec.ps1",
     "talk_gates": "scripts/talk-gates.ps1",
     "talk_deck": "scripts/talk-deck.ps1",
+    "slides_polish": "scripts/slides-polish.ps1",
     "citation_guard": "scripts/citation-guard.ps1",
     "trace_claims": "scripts/trace-claims.ps1",
     "latex_check": "scripts/latex-check.ps1",
