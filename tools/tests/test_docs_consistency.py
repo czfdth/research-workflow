@@ -28,6 +28,7 @@ CLI_WRAPPERS = {
     "slides_polish": "scripts/slides-polish.ps1",
     "poster_html": "scripts/poster-html.ps1",
     "poster_measure": "scripts/poster-measure.ps1",
+    "poster_style": "scripts/poster-style.ps1",
     "citation_guard": "scripts/citation-guard.ps1",
     "trace_claims": "scripts/trace-claims.ps1",
     "latex_check": "scripts/latex-check.ps1",

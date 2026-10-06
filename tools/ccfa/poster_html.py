@@ -172,6 +172,7 @@ def _root_tokens(tokens: dict, width_in: float) -> str:
     # every gap stays proportional when the canvas changes.
     return "\n".join(
         [
+            "/* ===== DESIGN TOKENS ===== */",
             ":root {",
             f"  --accent: {accent['base']};",
             f"  --accent-deep: {accent['deep']};",
@@ -184,6 +185,11 @@ def _root_tokens(tokens: dict, width_in: float) -> str:
             "  --muted: #555555;",
             "  --card-bg: #FFFFFF;",
             "  --border: #D8D8D8;",
+            # Only families on the reference whitelist; CJK falls back through
+            # the generic `sans-serif` instead of naming a family the gate bans.
+            "  --font-serif: Charter, Georgia, Times New Roman, serif;",
+            "  --font-sans: Inter, Aptos, Helvetica Neue, Arial, sans-serif;",
+            "  --font-mono: Menlo, Consolas, monospace;",
             f"  --u: calc({_num(width_in)}in / 6000);",
             "  --fs-1: calc(150 * var(--u));",
             "  --fs-2: calc(96 * var(--u));",
@@ -195,6 +201,7 @@ def _root_tokens(tokens: dict, width_in: float) -> str:
             "  --fs-8: calc(26 * var(--u));",
             "  --fs-9: calc(22 * var(--u));",
             "}",
+            "/* ===== END DESIGN TOKENS ===== */",
         ]
     )
 
@@ -263,7 +270,7 @@ def render_html(
 html, body {{ margin: 0; padding: 0; background: var(--bg-page); }}
 * {{ box-sizing: border-box; }}
 {_root_tokens(tokens, width_in)}
-body {{ font-family: "Helvetica Neue", Arial, "Noto Sans SC", sans-serif; color: var(--text); }}
+body {{ font-family: var(--font-sans); color: var(--text); }}
 .poster {{
   width: {_num(width_in)}in; height: {_num(height_in)}in;
   padding: calc(40 * var(--u)); display: flex; flex-direction: column;

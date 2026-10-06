@@ -2080,3 +2080,30 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T095938Z-5cbdd3f706 - Add the static style gate for poster HTML
+
+- timestamp: `2026-10-06T09:59:38Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS's paper-poster-html splits its 12 design rules into a source gate (1,2,3,5,6,7,8,9,10,11: pure static analysis, no browser) and a render gate (4 and 12: computed style from Playwright), with 0/1/2 exit codes and warnings never failing the gate. tools/ccfa/poster_style.py implements that source gate for the posters this repository generates, keeping the reference rule numbering, severities, result shape and exit codes: colour literals only inside the design-token block located by its canonical comment pair, no inline style=, component colours via var(--...), font pairing and whitelist read from the token block, font-size only from the --fs-* scale (calc allowed only in a variant-suffix selector), a warning when more than nine --fs tokens are defined, and the radial tint alpha bound. Rules 4 and 12 and the component-library contracts 10/11 are reported as skip with a reason instead of being pretended. poster_html was adjusted so its output passes: it now emits the canonical DESIGN TOKENS comment pair and defines --font-serif/--font-sans/--font-mono from the reference whitelists (CJK falls back through the generic sans-serif rather than naming a family the gate bans). Verified live: a generated NeurIPS poster reports overall=pass with 0 hard failures and the four skipped rules listed on stderr, and tampering tests confirm rule 1 fails on a colour literal outside the token block, rule 2 on an inline style, rule 3 on a component rgb() literal, rule 7 on a non-whitelisted family and rule 8 on a raw font-size.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/poster-style.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/poster_html.py`
+  - `tools/ccfa/poster_style.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_poster_style.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_poster_html`
+  - `tools.tests.test_poster_style`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

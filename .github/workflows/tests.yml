@@ -168,6 +168,7 @@ jobs:
             tools/ccfa/slides_polish.py `
             tools/ccfa/poster_html.py `
             tools/ccfa/poster_measure.py `
+            tools/ccfa/poster_style.py `
             tools/ccfa/ara_compile.py `
             tools/ccfa/ara_extract.py `
             tools/ccfa/artifact_badge.py `
