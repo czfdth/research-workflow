@@ -134,9 +134,14 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 * 超预算与调度器拒绝两条路径都不会写出「看起来成功」的记录。
 
 过程中踩过一个真实坑，值得记下来：用 `ssh-keygen -N '""'`（PowerShell 单引号）会生成
-**带口令 `""` 的私钥**，BatchMode 下无法解锁，表现为服务端已 `Accepted key` 然后
-连接被关闭。这正是 `options` / `identity_file` 字段值得存在的原因——真实集群会
-有各种 ssh 互操作差异。
+**带口令 `""` 的私钥**，客户端在 BatchMode 下无法解锁，表现为服务端日志已经是
+`Accepted key` / `Postponed publickey`，随后连接被关闭——很容易误判成服务端或
+算法不兼容。教训是先用 `ssh-keygen -y -f <key>`（不应提示输入口令）确认私钥可
+无口令使用，再去怀疑协议层。
+
+`identity_file` 与 `options` 两个字段则是被真实连接需求逼出来的：这次实测就用了
+非默认端口、显式私钥、临时 `UserKnownHostsFile` 与 `StrictHostKeyChecking`；真实
+集群通常还要 `ProxyJump`、`IdentityAgent` 之类，所以留了原样透传的 `options`。
 
 ### 本轮新发现的自身缺陷
 
