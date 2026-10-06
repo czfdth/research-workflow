@@ -2053,3 +2053,30 @@ rewrite historical entries.
   - `tools.tests.test_talk_gates`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T095159Z-2c55709e32 - Measure a printed poster's column balance and fill
+
+- timestamp: `2026-10-06T09:51:59Z`
+- status: `complete`
+- author: `codex`
+- reason: The poster slice left one gate unimplemented: ARIS's _posterly/measure.py, the hard gate for column-bottom spread and gap to the footer. Its authoritative route is headless Chromium plus CDP Runtime.evaluate over getBoundingClientRect, and this host has no WebSocket client (websocket, websockets and pychrome all missing), so tools/ccfa/poster_measure.py measures the same contract on the printed PDF with PyMuPDF instead: white filled rectangles are the cards, horizontal overlap groups them into columns, and the lowest text block is the footer. The reference bands are kept in their own units by converting points to CSS-pixel equivalents at 96/72: spread aim below 3px with 5px a hard failure, footer gap aim 30-50px with anything outside 12-80px a hard failure, canvas fill 90-101% advisory. Nine tests verify the arithmetic against synthetic PDFs whose geometry is exact rather than against whatever a render happens to produce. Verified on a real ICLR portrait poster: measure reported spread 16.0px, gap 3178.5px and fill 7.3%, and check exited 1 with two problems and one advisory - the correct verdict, because poster_html generates structurally correct posters and column balance depends on how much content is placed; the reference README says an unfilled scaffold is expected to fail measure. Honest cost of the engine swap: measuring the print omits the DOM-only overflow check (scrollHeight vs clientHeight), so this slice covers column balance, footer gap and fill and nothing else.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/poster-measure.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/poster_measure.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_poster_measure.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_poster_measure`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

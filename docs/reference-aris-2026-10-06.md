@@ -287,3 +287,24 @@ Beamer 的 16:9 页只有 16cm 宽。若照抄字号或按比例缩字号，`tal
 **仍未对齐**：PPTX 导出（本地无 python-pptx）；以及 ARIS 用 headless Chromium
 打印仿真量出来的「列底对齐 / 到页脚间距 / 画布填充 95–101%」那套 HTML 测量 gate——
 本机没有那条链路，所以我只保证**尺寸与结构正确**，不假装已经量过填充率。
+
+## 十二、第十四切片：海报几何测量（换引擎对齐同一契约）
+
+上一节留下的就是 `_posterly/measure.py` 那套「列底落差 / 到页脚间距」硬门。它的权威
+实现要 headless Chromium + CDP 的 `Runtime.evaluate` 读 `getBoundingClientRect`；本机
+**没有 WebSocket 客户端**（`websocket`/`websockets`/`pychrome` 全部缺失），那条路走不通。
+
+于是换引擎、不换契约：`tools/ccfa/poster_measure.py` 用 PyMuPDF 量**印刷出来的 PDF**——
+白色填充矩形就是卡片，按横向重叠聚成列，最低文本块就是页脚。阈值仍用参考的 CSS px
+口径（1pt = 96/72px）：落差目标 <3px、≥5px 硬失败；到页脚目标 30–50px、越界硬失败；
+填充率目标 90–101%、越界 advisory。9 项测试用**几何完全可控的合成 PDF**（精确坐标画
+白矩形 + 指定基线的文本）验证这些数字，而不是拿真渲染结果当断言。
+
+**实测**：对真生成的 ICLR 双栏海报跑 `measure`，得到
+`spread 16.0px / gap 3178.5px / fill 7.3%`，`check` 报 2 problem + 1 advisory，exit 1。
+这个结果是对的——`poster_html` 只生成**结构正确**的海报，列平衡取决于内容量；参考实现
+的 README 也明说「未填满的骨架本来就该 fail measure，那是 gate 在说还没做完，不是 bug」。
+
+**这个换引擎的诚实代价**：量的是打印结果而不是打印前的 DOM，所以看不到浏览器的
+`scrollHeight - clientHeight` 溢出量（参考实现用它做内容裁剪检查）；本切片因此**只**覆盖
+列平衡、页脚间距与填充率三项。

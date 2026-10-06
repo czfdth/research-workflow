@@ -102,7 +102,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
-| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成器 + 版式润色 + poster HTML 生成与打印已对齐（`talk_gates` / `talk_deck` / `slides_polish` / `poster_html`）；PPTX 仍缺 |
+| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成 + 版式润色 + poster HTML 生成/打印/**几何测量**均已对齐（`talk_gates` / `talk_deck` / `slides_polish` / `poster_html` / `poster_measure`）；PPTX 仍缺 |
 | 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
 | 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |

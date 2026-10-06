@@ -103,6 +103,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/talk_deck.py` | 从 `data/talk-plan.yaml` 确定性生成 Beamer deck：venue 配色、每页一帧加 `\note{}` 讲者备注、图件按真实像素双向适配、独立 `speaker_notes.md` 与 `SLIDES_STATE.json`；页面尺寸钉到 plan 声明的画布（所以 `measure` 的字号就是实际渲染的字号），含中文时自动切 xelatex+ctex | `scripts/talk-deck.ps1` |
 | `tools/ccfa/slides_polish.py` | 对现有 Beamer deck 做**只改版式、绝不改内容**的 polish：快照原件、输出 `_polished`（再跑是 `_v2`）、把 PDF 每页渲染成 PNG 供人工/模型看像素、写 `POLISH_CHANGELOG.md` 与 `POLISH_STATE.json`；`check` 会拒绝任何不匹配允许规则的行改动或增删行 | `scripts/slides-polish.ps1` |
 | `tools/ccfa/poster_html.py` | 从 `data/poster-plan.yaml` 生成印刷级 `poster.html`：`@page size` 与容器宽高由同一次计算得出（模板要求两处同步，这里构造上不会漂移）、三种版式（60×36 四栏 / 60×36 主视觉 / 24×36 双栏）、venue token pack 照抄参考实现、布局区带 `data-measure-role`；`pdf` 用 Edge/Chrome 无头打印，`check` 校验尺寸同步与角色齐全 | `scripts/poster-html.ps1` |
+| `tools/ccfa/poster_measure.py` | 量印刷后海报的几何：列底落差、最低卡片到页脚的间距、画布填充率；阈值沿用参考实现的 CSS px 口径（1pt = 96/72px），落差 ≥5px 与页脚间距越界是 problem，落差 3–5px 与填充率越界是 advisory | `scripts/poster-measure.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
@@ -452,6 +453,20 @@ scripts/talk-gates.ps1 verify-final --pdf <paper-root>/poster.pdf --from-html <p
 它们定位区域）。venue 配色直接抄参考的 token pack（generic / neurips / icml / iclr /
 cvpr / acl），未知 venue 回退 generic 并在 stderr 说明。打印用 Edge/Chrome 无头模式，
 浏览器不可用时明确报 `rendered: false`，不会假装打印成功。
+
+打印完还要量一遍几何——海报的「完成度」不是感觉，是三个数：
+
+```powershell
+scripts/poster-measure.ps1 measure --pdf <paper-root>/poster.pdf
+scripts/poster-measure.ps1 check   --pdf <paper-root>/poster.pdf
+```
+
+列底落差（目标 <3px，≥5px 是 problem）、最低卡片到页脚（目标 30–50px，越界是
+problem）、画布填充率（目标 90–101%，越界是 advisory）。阈值沿用参考实现的 CSS px
+口径，量的是**印刷出来的 PDF**（PyMuPDF 读白色卡片矩形与最低文本块），而不是浏览器的
+DOM——本机没有 WebSocket 客户端，走不了 CDP 的 `getBoundingClientRect`。要注意：
+`poster-html` 只负责生成**结构正确**的海报，列平衡取决于内容量；刚生成的稀疏海报会被
+这个 gate 判为 problem，那是在说"还没填完"，不是 bug。
 
 顺序是 `preflight → asset → measure → polish`：静态检查先跑，避免为一个明显坏掉
 的稿子付渲染成本；默认累积全部问题（`--fail-fast` 给 CI 用）；`polish` 默认只警告，

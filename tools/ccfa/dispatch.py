@@ -27,6 +27,7 @@ COMMANDS: dict[str, str] = {
     "talk-deck": "ccfa.talk_deck",
     "slides-polish": "ccfa.slides_polish",
     "poster-html": "ccfa.poster_html",
+    "poster-measure": "ccfa.poster_measure",
     "ara-compile": "ccfa.ara_compile",
     "ara-extract": "ccfa.ara_extract",
     "archive": "ccfa.archive_client",

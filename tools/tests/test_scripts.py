@@ -21,6 +21,7 @@ CCFA_WRAPPERS = {
     "talk_deck": "talk-deck.ps1",
     "slides_polish": "slides-polish.ps1",
     "poster_html": "poster-html.ps1",
+    "poster_measure": "poster-measure.ps1",
     "citation_guard": "citation-guard.ps1",
     "trace_claims": "trace-claims.ps1",
     "latex_check": "latex-check.ps1",
