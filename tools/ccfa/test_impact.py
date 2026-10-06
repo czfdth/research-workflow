@@ -72,6 +72,13 @@ LATEX_ENGINE_TESTS = (
     "tools.tests.test_talk_deck",
 )
 
+# Fixture trees that are consumed by exactly one opt-in test module. The
+# mapping is explicit rather than name-derived: a fixture directory that is
+# shared by several modules must list all of them here, not guess.
+_TOOLS_FIXTURE_TESTS: dict[str, tuple[str, ...]] = {
+    "tools/tests/fixtures/slurm-e2e/": ("tools.tests.test_compute_slurm_e2e",),
+}
+
 
 def requires_latex_engine(selection: Selection) -> bool:
     """True when the selection compiles real documents.
@@ -86,6 +93,11 @@ def requires_latex_engine(selection: Selection) -> bool:
 
 
 _TOOLS_EXACT = {
+    "tools/ccfa/experiment_audit.py": (
+        "tools.tests.test_experiment_audit",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/cost_metrics.py": (
         "tools.tests.test_cost_metrics",
         "tools.tests.test_docs_consistency",
@@ -435,6 +447,13 @@ def _select_tools(path: str) -> tuple[str, ...] | None:
         return None
     if path in _TOOLS_EXACT:
         return _TOOLS_EXACT[path]
+    # Container fixtures are data for one opt-in end-to-end module. Without
+    # this rule a one-line Dockerfile tweak is an "unknown path" and schedules
+    # the whole suite, which is exactly the reaction that makes people stop
+    # touching fixtures.
+    for prefix, tests in _TOOLS_FIXTURE_TESTS.items():
+        if path.startswith(prefix):
+            return tests
     if path.startswith("tools/tests/"):
         if not (REPO_ROOT / path).is_file():
             return None

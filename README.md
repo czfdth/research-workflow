@@ -169,6 +169,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），`kind: slurm` 走 `sbatch --parsable` → `squeue` 轮询 → 退出码回执（预算到期真的 `scancel`，job id 写进 ledger），PBS/Torque 仍只探测；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
 | `tools/ccfa/new_module.py` | 新增模块的一体化脚手架与清单审计：`create` 一次写模块、PowerShell 包装器、测试存根与六份清单（dispatch / wrapper manifest / docs manifest / CI py_compile / test-impact / README），任一锚点缺失即整体拒写；`audit` 只读报告磁盘与六份清单之间的双向漂移 | `scripts/new-module.ps1` |
 | `tools/ccfa/cost_metrics.py` | 把成本与吞吐指标接到真实产物：derive 从 stage 时间戳、run-log 与 compute-ledger 推出 time_to_first_attempt 与 cost_per_attempt，缺证据时 fail closed 而不是给估计值；check 对台账做双向漂移校验，并按 `data/cost-ledger.yaml` 的 `budgets`（`default` + 按 stage 覆盖）报 `cost-budget-exceeded`（problem）与 `cost-budget-unmeasured`（advisory） | `scripts/cost-metrics.ps1` |
+| `tools/ccfa/experiment_audit.py` | 实证论文的实验审计台账：查假 ground truth（自产标签、模型产出却无人工抽检、抽检样本/一致率不足）、分数归一化与选择泄漏（fit_on/selection_on=test）、幽灵结果（无 run／失败 run／build run／产物不在磁盘上）、范围膨胀（limits 为空、种子少于 3 个是 advisory）；`data/experiment-audit.yaml` 存在时接进 readiness（standard 与 high-assurance 都跑，只有 high-assurance 要求必须有），台账形状见 `docs/examples/experiment-audit.example.yaml`，模型侧对应 `adversarial-review --role experiment-audit` | `scripts/experiment-audit.ps1` |
 
 ## 阶段到命令速查
 
@@ -408,9 +409,12 @@ scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20
 
 整条队列也可以放到远端：在清单里写 `backend: lab-gpu`，或用
 `scripts/queue.ps1` 的 `--backend lab-gpu` 覆盖。超时、stall 看门狗、重试与流式
-输出语义不变，run-log 的 `policy.backend` 会记下它跑在哪个后端；远端 GPU 计量
-尚未实现，所以 `gpu_budget_s` 与远端后端同时出现会被拒绝，而不是拿本机
-`nvidia-smi` 冒充远端用量。
+输出语义不变，run-log 的 `policy.backend` 会记下它跑在哪个后端。`gpu_budget_s`
+在远端后端下同样生效：计量器经 ssh 每 5 秒在**对端**跑一次 `nvidia-smi` 采样
+利用率，把忙碌秒数写进 run-log 的 `resource_usage.gpu_seconds`，预算是真的在
+远端机器上累加的；对端没有 `nvidia-smi` 时直接报工具错误，而不是把本机读数
+冒充远端用量（这条路径在脚本化集群上端到端实测，见
+`docs/scheduler-e2e-2026-10-07.md`）。
 
 队列被中断（崩溃、断电、手动 kill）后可用 `--resume` 续跑：状态写在
 `<log-dir>/.queue-state`，只跳过上一轮真正 `complete` 的项，失败的项会重跑。

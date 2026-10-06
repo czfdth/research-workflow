@@ -403,6 +403,63 @@ def _recording_popen(record, process=None):
     return popen
 
 
+class RemoteGpuUtilizationTests(unittest.TestCase):
+    def test_takes_the_busiest_gpu(self):
+        self.assertEqual(compute.parse_gpu_utilization("0\n100\n37\n"), 100)
+
+    def test_blank_lines_and_floats_are_accepted(self):
+        self.assertEqual(compute.parse_gpu_utilization("\n 5\n5.0\n"), 5)
+
+    def test_garbage_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "非数字"):
+            compute.parse_gpu_utilization("N/A\n")
+
+    def test_empty_output_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "未返回"):
+            compute.parse_gpu_utilization("\n\n")
+
+    def test_samples_over_ssh_with_the_backend_identity(self):
+        calls = []
+
+        def fake_run(argv):
+            calls.append(list(argv))
+            return 0, "12\n"
+
+        backend = RemoteBackend(
+            kind="ssh",
+            host="gpu.example",
+            user="alice",
+            port=2222,
+        )
+
+        self.assertEqual(
+            compute.remote_gpu_utilization(backend, run=fake_run),
+            12,
+        )
+        argv = calls[0]
+        self.assertEqual(argv[0], "ssh")
+        self.assertEqual(argv[argv.index("-p") + 1], "2222")
+        self.assertEqual(argv[-2], "alice@gpu.example")
+        self.assertIn("nvidia-smi", argv[-1])
+        self.assertIn("utilization.gpu", argv[-1])
+
+    def test_a_failed_query_is_a_tool_error_not_a_zero(self):
+        backend = RemoteBackend(kind="ssh", host="gpu.example")
+
+        with self.assertRaisesRegex(ValueError, "nvidia-smi 不可用"):
+            compute.remote_gpu_utilization(
+                backend,
+                run=lambda argv: (127, "sh: nvidia-smi: not found"),
+            )
+
+    def test_scheduler_backends_are_refused(self):
+        with self.assertRaisesRegex(ValueError, "kind: ssh"):
+            compute.remote_gpu_utilization(
+                RemoteBackend(kind="slurm", host="cluster.example"),
+                run=lambda argv: (0, "0\n"),
+            )
+
+
 class SshBackendTests(unittest.TestCase):
     def test_ssh_backend_keeps_optional_fields(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,9 +14,10 @@ RUN sed -i "s|dl-cdn.alpinelinux.org|${APK_MIRROR}|g" /etc/apk/repositories \
 COPY bin/sbatch /usr/local/bin/sbatch
 COPY bin/squeue /usr/local/bin/squeue
 COPY bin/scancel /usr/local/bin/scancel
+COPY bin/nvidia-smi /usr/local/bin/nvidia-smi
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /usr/local/bin/sbatch /usr/local/bin/squeue \
-        /usr/local/bin/scancel /entrypoint.sh
+        /usr/local/bin/scancel /usr/local/bin/nvidia-smi /entrypoint.sh
 
 EXPOSE 22
 ENTRYPOINT ["/entrypoint.sh"]

@@ -30,6 +30,7 @@ from ccfa import (
     cross_review,
     experiment_loop,
     experiment_optimizer,
+    experiment_audit,
     final_check,
     formal_check,
     governance_map,
@@ -74,6 +75,7 @@ EVIDENCE_LEDGER_PATHS = {
     "artifact-provenance": Path("data/artifact-provenance.yaml"),
     "exploration-graph": Path("data/exploration-graph.yaml"),
     "cost-ledger": Path("data/cost-ledger.yaml"),
+    "experiment-audit": Path("data/experiment-audit.yaml"),
     "risk-register": Path("data/risk-register.yaml"),
     "experiment-loop": Path("data/experiment-loop.yaml"),
     "proof": Path("data/proof-audit.yaml"),
@@ -117,6 +119,12 @@ PROFILE_REQUIRED_LEDGERS = {
     "high-assurance": tuple(EVIDENCE_LEDGER_PATHS),
 }
 
+# Ledgers that are gated whenever they exist but are only *required* by the
+# high-assurance profile. Experiment audit is the first of these: an empirical
+# paper can opt in from the standard profile, while a SoK simply has no file
+# and therefore no gate to satisfy.
+OPTIONAL_GATED_LEDGERS = ("experiment-audit",)
+
 PENDING_REVIEW_STATUSES = {
     "pending",
     "pending-human-review",
@@ -130,6 +138,7 @@ LEDGER_GATE_NAMES = {
     "citation-support": "argument-audit",
     "figure-support": "argument-audit",
     "cost-ledger": "cost-metrics",
+    "experiment-audit": "experiment-audit",
     "governance": "governance",
     "novelty": "novelty",
     "statistics": "statistics",
@@ -600,6 +609,10 @@ def _gate_specs(
         # so readiness runs the derivation instead of trusting the YAML: a
         # hand-written value the artifacts no longer support fails here.
         "cost-metrics": lambda: cost_metrics.check(paper_root),
+        # Empirical-paper-only gate: it runs when the audit ledger exists and
+        # is required only by the high-assurance profile, so a SoK or a theory
+        # paper never has to invent placeholder experiments.
+        "experiment-audit": lambda: experiment_audit.check(paper_root),
         "governance": lambda: governance.check(paper_root),
         "human-coding": lambda: _human_coding_gate(paper_root),
         "novelty": lambda: novelty.check(paper_root),
@@ -619,7 +632,9 @@ def _gate_specs(
             require_verified=profile == "high-assurance",
         ),
     }
-    for ledger in PROFILE_REQUIRED_LEDGERS[profile]:
+    for ledger in dict.fromkeys(
+        (*PROFILE_REQUIRED_LEDGERS[profile], *OPTIONAL_GATED_LEDGERS)
+    ):
         if not (paper_root / EVIDENCE_LEDGER_PATHS[ledger]).is_file():
             continue
         gate_name = LEDGER_GATE_NAMES.get(ledger)

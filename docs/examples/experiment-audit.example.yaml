@@ -1,0 +1,61 @@
+# Shape of data/experiment-audit.yaml — the ledger behind
+# `ccfa experiment-audit check` and the readiness gate of the same name.
+#
+# Copy it into an empirical paper and replace every value with the truth; the
+# gate reports a problem when a claim cannot be traced to a finished run, a
+# real artifact, or a bounded scope. This file is documentation, not a record:
+# the paper's own ledger is data/experiment-audit.yaml.
+version: 1
+experiments:
+  - id: e-main
+    # Every run that backs anything below. Each id must exist as
+    # experiments/log/<run_id>.json, must not be declared `build`, and must
+    # have finished (status: completed, exit_code: 0). A failed run that
+    # still appears in a table is a phantom result.
+    run_ids:
+      - 20261005T101010-01
+    ground_truth:
+      # dataset | human | model | derived
+      source: dataset
+      # Who produced the labels/answers: a dataset id, an annotator id, or a
+      # model id. If this equals one of evaluation.systems, the scores are
+      # self-certified and the gate fails.
+      producer: ragbench-v2
+      # human | second-model | none. Model-produced ground truth needs at
+      # least 20 human spot checks with agreement >= 0.8; a second model can
+      # only add an advisory, never acquit.
+      verified_by: none
+    evaluation:
+      systems:
+        - target-llm
+      datasets:
+        - ragbench-v2
+      # Fewer than three seeds turns every generalisation sentence into an
+      # advisory: one seed supports one run, not a distribution.
+      seeds: [1, 2, 3]
+    metrics:
+      - name: attack-success-rate
+        # none | per-item | z-score | min-max. Anything but `none` records
+        # where the statistics were fit: `fit_on: test` is leakage.
+        normalization: none
+        fit_on: none
+        # single | best-of-n | threshold. `selection_on: test` means the
+        # reported number was chosen on the test set, which is selection,
+        # not a result.
+        selection: single
+        selection_on: none
+    results:
+      - id: r-asr
+        # Must exist on disk, relative to the paper root.
+        artifact: tables/t1.tex
+        run_ids:
+          - 20261005T101010-01
+        # Optional: claim ids from data/claim-registry.yaml. A typo fails the
+        # gate rather than silently detaching the result from its claim.
+        claims:
+          - c-asr
+    # Required and must say something: an experiment entry that bounds
+    # nothing is claiming unlimited scope.
+    limits: >-
+      English-language, single-hop retrieval QA with a single retriever family;
+      no claim about multilingual, multi-hop, or long-document settings.

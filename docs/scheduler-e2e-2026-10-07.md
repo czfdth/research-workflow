@@ -68,7 +68,8 @@ harness 在 `tools/tests/fixtures/slurm-e2e/`：镜像里跑一个真的 `sshd`�
 - **队列（`ccfa.queue`）不接调度器后端**：队列自带的 stall 看门狗、波次 gate 与
   预算语义都是按"一条 ssh 一个 item"写的，所以它会拒绝 slurm 后端并指向
   `ccfa compute run --backend`。这条限制是故意保留的，不是遗漏。
-- **远端 GPU 计量仍未实现**：`gpu_budget_s` 对远程后端依旧报错拒绝。
+- **远端 GPU 计量**：本文记录那次运行时确实还没实现（`gpu_budget_s` 对远程后端
+  报错拒绝）；同日晚些已补上并在同一个 harness 上实测，见文末「追加」。
 
 ## 复现方式
 
@@ -79,3 +80,27 @@ tools/.venv/Scripts/python.exe -m unittest tools.tests.test_compute_slurm_e2e -v
 
 默认按 `dl-cdn.alpinelinux.org` 构建；网络受限时用
 `CCFA_APK_MIRROR=mirrors.aliyun.com`（或任何可达的 Alpine 镜像）。
+
+## 追加：远端 GPU 计量实测（同日晚些）
+
+`gpu_budget_s` 以前对远程后端直接报错拒绝。现在队列的 GPU 计量器改在**对端**采样：
+每 5 秒经 ssh 跑一次 `nvidia-smi --query-gpu=utilization.gpu`，忙碌秒数累加进
+run-log 的 `resource_usage.gpu_seconds`；对端没有 `nvidia-smi` 时在开跑前就报
+工具错误（fail closed），不会拿本机读数冒充。
+
+同一个 harness 里加了脚本化 `nvidia-smi`（恒返回 100%），实测：
+
+```text
+test_a_slurm_job_round_trips_and_lands_in_the_ledger ... ok
+test_the_budget_kill_cancels_the_job_and_records_the_timeout ... ok
+test_the_queue_meters_remote_gpu_seconds_and_stops_on_budget ... ok
+
+Ran 3 tests in 29.862s — OK
+```
+
+第三条断言的内容：队列对 `kind: ssh` 后端下发两项，第一项 `sleep 8`，GPU 预算
+0.5 秒；被测得的 `gpu_seconds > 0` 且 `gpu_samples >= 1`，第二项状态为
+`skipped-gpu-budget`、队列 `stopped = "gpu-budget"`。
+
+仍未验证：多卡/多进程 GPU 归属（当前按"任意一张卡忙就算忙"取最大值）、
+`nvidia-smi` 不可用时的重试语义、以及真实集群上的 MIG/独占策略。

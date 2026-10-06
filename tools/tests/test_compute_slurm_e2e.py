@@ -1,10 +1,14 @@
-"""Opt-in end-to-end test: submit a Slurm job over SSH to a scripted cluster.
+"""Opt-in end-to-end tests: drive an SSH host with a scripted cluster on it.
 
 The unit tests inject a fake ``run`` callable, which proves the poll loop but
 not the transport. This module builds the image in
 ``tools/tests/fixtures/slurm-e2e`` (a real sshd answering sbatch/squeue/scancel
-with shell scripts) and drives the real `ccfa compute run --backend` path
-against it, including the budget kill.
+with shell scripts, plus a scripted ``nvidia-smi``) and drives two real paths
+against it:
+
+* ``ccfa compute run --backend <slurm>`` — submission, polling, budget kill;
+* ``ccfa.queue`` against a ``kind: ssh`` backend — remote GPU metering, where
+  the meter samples the container's nvidia-smi over ssh.
 
 It is skipped unless ``CCFA_SLURM_E2E=1`` because it needs a Docker daemon and
 OpenSSH, and because it is minutes, not milliseconds.
@@ -22,6 +26,7 @@ import unittest
 from pathlib import Path
 
 from ccfa import compute
+from ccfa import queue
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "slurm-e2e"
 IMAGE = "ccfa-slurm-e2e:test"
@@ -43,7 +48,7 @@ def _docker(*args: str, timeout: float = 600.0) -> subprocess.CompletedProcess:
     os.environ.get("CCFA_SLURM_E2E") == "1",
     "set CCFA_SLURM_E2E=1 to run the container-backed scheduler test",
 )
-class SlurmEndToEndTests(unittest.TestCase):
+class HpcEndToEndTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if shutil.which("docker") is None:
@@ -216,6 +221,70 @@ class SlurmEndToEndTests(unittest.TestCase):
         self.assertTrue(entry["timed_out"])
         self.assertEqual(entry["returncode"], -1)
         self.assertEqual(entry["scheduler"]["state"], "cancelled")
+
+    def _ssh_compute_config(self) -> Path:
+        """A ``kind: ssh`` backend pointing at the same container."""
+
+        path = self.paper_root / "data" / "compute-ssh.yaml"
+        path.write_text(
+            "backends:\n"
+            "  - kind: ssh\n"
+            "    name: box\n"
+            "    host: 127.0.0.1\n"
+            "    user: root\n"
+            f"    port: {self.port}\n"
+            f"    identity_file: {self.key}\n"
+            "    workdir: /work\n"
+            "    options:\n"
+            "      - -o\n"
+            "      - StrictHostKeyChecking=no\n"
+            "      - -o\n"
+            "      - UserKnownHostsFile=/dev/null\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_the_queue_meters_remote_gpu_seconds_and_stops_on_budget(self):
+        config = self._ssh_compute_config()
+        manifest = self.paper_root / "queue.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "queue": [
+                        {
+                            "name": "train",
+                            "command": ["sh", "-c", "sleep 8"],
+                            "timeout_s": 60,
+                        },
+                        {
+                            "name": "second",
+                            "command": ["echo", "second"],
+                            "timeout_s": 60,
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        log_dir = self.paper_root / "experiments" / "log-queue"
+
+        result = queue.run_queue(
+            manifest,
+            log_dir=log_dir,
+            backend="box",
+            compute_config=config,
+            gpu_budget_s=0.5,
+        )
+
+        self.assertEqual(result["stopped"], "gpu-budget")
+        self.assertEqual(result["runs"][1]["status"], "skipped-gpu-budget")
+        record = json.loads(
+            sorted(log_dir.glob("*.json"))[0].read_text(encoding="utf-8")
+        )
+        usage = record["resource_usage"]
+        self.assertGreater(usage["gpu_seconds"], 0)
+        self.assertGreaterEqual(usage["gpu_samples"], 1)
 
 
 if __name__ == "__main__":

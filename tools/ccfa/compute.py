@@ -64,6 +64,9 @@ _SSH_PROBE_COMMAND = (
     "(command -v nvidia-smi >/dev/null 2>&1 && "
     "nvidia-smi -L 2>/dev/null | head -n 8) || true"
 )
+_REMOTE_GPU_QUERY = (
+    "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits"
+)
 
 
 def _now_iso() -> str:
@@ -542,6 +545,54 @@ def probe_remote(
             if line.strip().startswith("GPU ")
         )
     return result
+
+
+def parse_gpu_utilization(output: str) -> int:
+    """Return the busiest GPU's utilization from ``nvidia-smi`` CSV output.
+
+    ``ccfa.queue`` treats an interval as GPU-busy when any visible GPU is
+    busy, so the maximum is the number that matches its local semantics.
+    """
+
+    values: list[int] = []
+    for line in output.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            values.append(int(float(text)))
+        except ValueError as exc:
+            raise ValueError(f"nvidia-smi 返回了非数字利用率: {text!r}") from exc
+    if not values:
+        raise ValueError("nvidia-smi 未返回 GPU 利用率")
+    return max(values)
+
+
+def remote_gpu_utilization(
+    backend: RemoteBackend,
+    *,
+    run: Callable[[Sequence[str]], tuple[int, str]] | None = None,
+) -> int:
+    """Sample GPU utilization on *backend* over SSH.
+
+    ``ccfa.queue``'s GPU meter uses this so a remote run is metered on the
+    machine that owns the GPUs instead of on the laptop that submitted it.
+    Only ``kind: ssh`` is accepted: a scheduler's login node usually has no
+    GPU of its own, and metering the login node would be a quiet lie.
+    """
+
+    if backend.kind != "ssh":
+        raise ValueError(
+            f"GPU 计量只支持 kind: ssh 的后端（{backend.label} 是 {backend.kind}）"
+        )
+    run = run or _default_run
+    code, output = run(_ssh_argv(backend, _REMOTE_GPU_QUERY))
+    if code != 0:
+        raise ValueError(
+            f"远端 nvidia-smi 不可用（{backend.label}）: "
+            f"{output.strip()[:200] or 'ssh 失败'}"
+        )
+    return parse_gpu_utilization(output)
 
 
 @dataclass

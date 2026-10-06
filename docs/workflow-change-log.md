@@ -2677,3 +2677,40 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `tools.tests.test_cross_review (99 tests)`
 
+## WC-20261006T172315Z-47e9584d0e - 补齐最后一个 ARIS 角色落差：experiment-audit 确定性门 + 模型角色；远端 GPU 计量改为在对端采样
+
+- timestamp: `2026-10-06T17:23:15Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS 的 /experiment-audit 之前只有对照记录、没有实现。新增 ccfa.experiment_audit 把四类失败模式做成确定性检查：假 ground truth（被评测系统自产标签、模型产出却无人工抽检、抽检样本/一致率不足）、分数作弊（归一化统计量 fit_on=test、best-of-N/阈值 selection_on=test 或未声明）、幽灵结果（引用不存在的 run、失败 run、build run、产物不在磁盘上）、范围膨胀（limits 为空即 problem、种子少于 3 个为 advisory），claim 绑定错误也报 problem；readiness 在台账存在时即接线（standard 与 high-assurance 都跑，只有 high-assurance 要求必须有），SoK 论文不受影响；模型侧新增 adversarial-review --role experiment-audit（advisory，永不 acquit）。远端 GPU 计量：gpu_budget_s 对远程后端不再直接拒绝，队列的 GPU 计量器改为每 5 秒经 ssh 在对端跑 nvidia-smi 采样并累加 gpu_seconds，对端没有 nvidia-smi 时在开跑前 fail closed，而不是拿本机读数冒充。另外给 test-impact 增加容器 fixture 前缀规则，避免改一行 Dockerfile 就回退全量。
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/examples/experiment-audit.example.yaml`
+  - `docs/scheduler-e2e-2026-10-07.md`
+  - `scripts/experiment-audit.ps1`
+  - `tools/ccfa/adversarial_review.py`
+  - `tools/ccfa/compute.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/experiment_audit.py`
+  - `tools/ccfa/queue.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/fixtures/slurm-e2e/Dockerfile`
+  - `tools/tests/fixtures/slurm-e2e/bin/nvidia-smi`
+  - `tools/tests/test_adversarial_review.py`
+  - `tools/tests/test_compute.py`
+  - `tools/tests/test_compute_slurm_e2e.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_experiment_audit.py`
+  - `tools/tests/test_queue.py`
+  - `tools/tests/test_readiness.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `CCFA_SLURM_E2E=1 CCFA_APK_MIRROR=mirrors.aliyun.com -> tools.tests.test_compute_slurm_e2e: Ran 3 tests in 29.862s, OK（含 queue 远端 GPU 计量：gpu_seconds>0、第二项 skipped-gpu-budget、stopped=gpu-budget）`
+  - `docs/examples/experiment-audit.example.yaml 在带对应 run/产物/claim 的临时论文上 check -> problem_count=0, advisory_count=0`
+  - `scripts/test-impact.ps1 run --suite tools --base origin/master -> Ran 549 tests, OK (skipped=3 = 三个 opt-in E2E)`
+  - `tools.tests.test_experiment_audit (17 tests) + test_adversarial_review + test_readiness + test_compute + test_queue + test_test_impact 等 348 项聚焦批量 OK`
+  - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
+

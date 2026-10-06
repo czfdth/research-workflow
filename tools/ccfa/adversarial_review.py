@@ -1,6 +1,6 @@
 """Adversarial review roles: producers that can never acquit a gate.
 
-Two roles, both borrowed from ARIS's separation of "drive" from "acquit":
+Three roles, all borrowed from ARIS's separation of "drive" from "acquit":
 
 * ``claim-audit`` -- recompute the manuscript's numbers from raw data with the
   author's derivations removed from the input set. The removal is mechanical
@@ -9,6 +9,11 @@ Two roles, both borrowed from ARIS's separation of "drive" from "acquit":
 * ``kill-argument`` -- two independent model calls: one writes the strongest
   rejection memo, one writes the point-by-point defence. They are separate
   subprocesses with separate prompts, so neither can see the other.
+* ``experiment-audit`` -- the model-driven half of ARIS's ``/experiment-audit``:
+  it hunts fake ground truth, normalisation/selection leakage, phantom results
+  and scope inflation. Its deterministic counterpart is
+  ``ccfa.experiment_audit``, which turns the same questions into a gate; this
+  role adds the reading a script cannot do, and stays advisory.
 
 Neither role can clear anything. Findings are written to
 ``reviews/adversarial-review.json`` and ``check`` reports every unresolved
@@ -40,7 +45,7 @@ from ccfa.cross_review import (
 )
 
 ARTIFACT = Path("reviews") / "adversarial-review.json"
-ROLES = ("claim-audit", "kill-argument")
+ROLES = ("claim-audit", "kill-argument", "experiment-audit")
 FINDING_KINDS = ("mismatch", "concern", "unverifiable")
 # Files that carry the author's own reasoning. A claim audit that reads them is
 # no longer context-free, so they are dropped from its input set.
@@ -92,6 +97,23 @@ def build_prompt(
                 "结论(mismatch|unverifiable|concern)、以及你据以重算的文件名与"
                 "该文件中的原文片段。",
                 "重算不出来就写 unverifiable，不要放过，也不要猜。",
+            ]
+        )
+    elif role == "experiment-audit":
+        lines.extend(
+            [
+                "你是实验审计者。只审下面四类失败模式，不审文笔，也不替作者"
+                "评估贡献大小：",
+                "1) 假 ground truth：标签、标准答案或判分器是否由被评测系统"
+                "自己产出，或由某个模型产出却没有任何人工抽检与一致率；",
+                "2) 分数作弊：归一化统计量是否在 test 上拟合，报告值是否由"
+                "best-of-N 或阈值在 test 上挑选出来；",
+                "3) 幽灵结果：表格/图/摘要里的结果是否绑定不存在的 run、失败"
+                "的 run，或根本没有产物文件；",
+                "4) 范围膨胀：结论的适用范围是否超过 seeds、systems、datasets "
+                "实际覆盖的范围（例如单 seed 结果被写成普遍结论）。",
+                "每条 finding 必须写明它属于上面哪一类，并给出文件名与原文"
+                "片段作为 evidence；拿不准就写 unverifiable，不要猜。",
             ]
         )
     else:
@@ -427,7 +449,7 @@ def check(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
                 "adversarial-review-not-configured",
                 str(path),
                 None,
-                "尚未运行对抗评审（claim-audit / kill-argument）",
+                f"尚未运行对抗评审（{' / '.join(ROLES)}）",
             )
         ]
     try:

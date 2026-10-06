@@ -140,6 +140,49 @@ class ReadinessTests(unittest.TestCase):
             else:
                 path.write_text("{}\n", encoding="utf-8")
 
+    def test_an_experiment_audit_ledger_is_gated_when_it_exists(self):
+        data = self.paper_root / "data"
+        data.mkdir(exist_ok=True)
+        (data / "experiment-audit.yaml").write_text(
+            "version: 1\n"
+            "experiments:\n"
+            "  - id: e1\n"
+            "    run_ids: [missing-run]\n"
+            "    ground_truth: {source: dataset, producer: d, verified_by: none}\n"
+            "    evaluation: {systems: [m], datasets: [d], seeds: [1, 2, 3]}\n"
+            "    metrics:\n"
+            "      - {name: asr, normalization: none, fit_on: none, "
+            "selection: single, selection_on: none}\n"
+            "    results: []\n"
+            "    limits: bounded to English single-hop questions\n",
+            encoding="utf-8",
+        )
+
+        report = build_report(self.paper_root, profile="standard")
+
+        gate = next(
+            item
+            for item in report["gate_results"]
+            if item["name"] == "experiment-audit"
+        )
+        self.assertEqual(gate["status"], "problem")
+        self.assertIn(
+            "experiment-audit-run-missing",
+            {item["code"] for item in gate["problems"]},
+        )
+
+    def test_without_the_ledger_no_experiment_audit_gate_runs(self):
+        report = build_report(self.paper_root, profile="standard")
+
+        self.assertNotIn(
+            "experiment-audit",
+            {item["name"] for item in report["gate_results"]},
+        )
+        self.assertNotIn(
+            "experiment-audit",
+            report["evidence"]["missing_required"],
+        )
+
     def test_standard_profile_reports_missing_required_ledgers_and_no_science_claim(self):
         report = build_report(self.paper_root)
 

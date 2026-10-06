@@ -41,6 +41,18 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_readiness", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_a_container_fixture_selects_its_end_to_end_module(self):
+        selection = select_tests(
+            ["tools/tests/fixtures/slurm-e2e/Dockerfile"],
+            suite="tools",
+        )
+
+        self.assertFalse(selection.full)
+        self.assertEqual(
+            selection.tests,
+            ("tools.tests.test_compute_slurm_e2e",),
+        )
+
     def test_review_loop_selects_its_focused_tests(self):
         selection = select_tests(
             ["tools/ccfa/review_loop.py"],

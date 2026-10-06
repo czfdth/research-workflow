@@ -1,0 +1,8 @@
+#!/bin/sh
+# Scripted nvidia-smi: one GPU that is always busy. The remote GPU meter
+# integrates utilization samples, so a constant 100 makes the receipt
+# (gpu_seconds) deterministic instead of machine-dependent.
+case "$*" in
+    *utilization.gpu*) echo 100 ;;
+    *) echo "GPU 0: ccfa-scripted (100% busy)" ;;
+esac

@@ -1527,12 +1527,51 @@ class RemoteBackendQueueTests(QueueTests):
 
         self.assertEqual(runner.calls, [])
 
-    def test_a_remote_backend_rejects_a_local_gpu_budget(self):
+    def test_a_remote_backend_meters_remote_gpu_seconds(self):
         self._write_queue([self._item()], backend="lab")
         self._write_compute(self._ssh_config())
+        meter = FakeGpuMeter([0.6])
 
-        with self.assertRaisesRegex(ValueError, "gpu_budget_s"):
-            self._run(RecordingRunner([0]), gpu_budget_s=60)
+        result = self._run(
+            RecordingRunner([0], log_dir=self.log_dir),
+            gpu_budget_s=10,
+            gpu_meter_factory=lambda: meter,
+        )
+
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertEqual(meter.starts, 1)
+        record = self._records()[0]
+        self.assertEqual(record["resource_usage"]["gpu_seconds"], 0.6)
+
+    def test_the_default_remote_meter_samples_over_ssh(self):
+        self._write_queue([self._item()], backend="lab")
+        self._write_compute(self._ssh_config())
+        sampled: list[str] = []
+
+        def fake_remote_reader(backend):
+            sampled.append(backend.label)
+            return 100
+
+        # The attempt has to outlive at least one sampling interval, otherwise
+        # the meter legitimately reports zero busy seconds.
+        def slow():
+            time.sleep(0.2)
+            return 0
+
+        with mock.patch("ccfa.queue.REMOTE_GPU_SAMPLE_INTERVAL_S", 0.05), mock.patch(
+            "ccfa.compute.remote_gpu_utilization",
+            side_effect=fake_remote_reader,
+        ):
+            result = self._run(
+                RecordingRunner([slow], log_dir=self.log_dir),
+                gpu_budget_s=10,
+            )
+
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertGreaterEqual(len(sampled), 2)
+        self.assertEqual(sampled[0], "lab")
+        record = self._records()[0]
+        self.assertGreater(record["resource_usage"]["gpu_seconds"], 0)
 
     def test_docker_sandbox_and_a_backend_are_mutually_exclusive(self):
         self._write_queue(

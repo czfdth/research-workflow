@@ -27,6 +27,7 @@ deliberately from ``run-log run``, which passes stdio through.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -63,6 +64,10 @@ QUEUE_STATE_VERSION = 1
 SANDBOX_MODES = ("none", "policy", "docker")
 GPU_UTILIZATION_THRESHOLD = 5
 GPU_SAMPLE_INTERVAL_S = 1.0
+# A remote sample is one ssh round trip, so it has to be far cheaper in
+# frequency than the local one; 5s still splits a multi-minute attempt into
+# enough intervals to attribute GPU time instead of guessing.
+REMOTE_GPU_SAMPLE_INTERVAL_S = 5.0
 SANDBOX_ENV_ALLOWLIST = frozenset(
     {
         "PATH",
@@ -1026,12 +1031,6 @@ def run_queue(
             )
     else:
         remote_backend = None
-    if remote_backend is not None and gpu_budget_s is not None:
-        raise ValueError(
-            "远程 backend 暂不支持 gpu_budget_s：本机 nvidia-smi 测不到远端 GPU；"
-            "请用 timeout_s 限制，或在远端实现计量"
-        )
-
     default_runner = runner is None or runner is _default_runner
     if (
         sandbox_mode in ("policy", "docker")
@@ -1045,7 +1044,22 @@ def run_queue(
         )
     run = runner or _default_runner
     now = clock or time.monotonic
-    gpu_meter_factory = gpu_meter_factory or GpuMeter
+    if gpu_meter_factory is None:
+        if remote_backend is None:
+            gpu_meter_factory = GpuMeter
+        else:
+            # Meter the machine that owns the GPUs, not the one that
+            # submitted the job. ``compute.remote_gpu_utilization`` fails
+            # closed when the remote host has no nvidia-smi, so a GPU budget
+            # can never silently degrade into "unmetered".
+            gpu_meter_factory = functools.partial(
+                GpuMeter,
+                reader=functools.partial(
+                    compute.remote_gpu_utilization,
+                    remote_backend,
+                ),
+                interval_s=REMOTE_GPU_SAMPLE_INTERVAL_S,
+            )
 
     def invoke(argv, cwd, timeout_s, *, item, sandbox_env):
         if default_runner:

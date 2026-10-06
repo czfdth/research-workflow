@@ -112,6 +112,40 @@ class AdversarialReviewTests(unittest.TestCase):
             Path("data/matrix.csv"),
         ]
 
+    def test_experiment_audit_prompt_names_the_four_failure_modes(self):
+        prompt = module.build_prompt(
+            "experiment-audit",
+            stage="experiments-running",
+            relative_paths=["manuscript/main.tex"],
+            excluded=[],
+        )
+
+        for marker in ("ground truth", "归一化", "幽灵结果", "范围膨胀"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, prompt)
+
+    def test_experiment_audit_keeps_its_inputs_and_makes_one_call(self):
+        runner, calls = self._runner(
+            [_payload(("concern", "single seed claim", "manuscript/main.tex"))]
+        )
+
+        record = module.run_review(
+            self.paper_root,
+            role="experiment-audit",
+            model="gpt-5.6",
+            stage="experiments-running",
+            paths=self._paths(),
+            runner=runner,
+            codex_config=self.codex_config,
+        )
+
+        self.assertEqual(record["role"], "experiment-audit")
+        self.assertEqual(len(calls), 1)
+        # Unlike claim-audit, this role needs the paper's own reasoning and the
+        # experiment logs, so nothing is stripped from its staging tree.
+        self.assertTrue(calls[0]["excluded_present"])
+        self.assertEqual(record["findings"][0]["kind"], "concern")
+
     def test_claim_audit_excludes_the_authors_derivations(self):
         runner, calls = self._runner(
             [_payload(("mismatch", "43 is wrong", "key"))]
