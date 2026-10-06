@@ -99,7 +99,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 序号 | 差距 | ARIS | 你 |
 | --- | --- | --- | --- |
 | 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | `data/compute.yaml` 存在但显式 `backends: []`；实际算力仍只有本机 + Docker |
-| 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 4 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check` |
+| 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | 只有 `meta_optimize`，无独立特权落地门 |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | 依赖外部 figure skill + `figure_manifest`，无内置确定性渲染器 |
 | 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | `post_submission` / `resubmit_pipeline` / `talk_pipeline` 只有契约，无生成器 |
@@ -107,6 +107,12 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
 | 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |
 | 9 | 外部基准评价 | 无（ARIS 也未做） | `tool_eval` 有 10 例自设计用例，仍属自评 |
+
+差距 2 已收窄：`ccfa.adversarial_review` 把零上下文数值复核（`claim-audit`）与双线
+kill-argument 落成两个只产出、永不开释的角色。`claim-audit` 按机械规则排除作者的推导
+文件并把排除集写入记录，评审进程指向的 staging 目录里不含这些文件；`kill-argument`
+用两次互不可见的独立子进程分别写最强拒稿备忘与逐点辩护。未解决的 finding 一律进入
+readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 
 ### 本轮新发现的自身缺陷
 

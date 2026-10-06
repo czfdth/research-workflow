@@ -1758,3 +1758,14 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T070835Z-c38bbcfaaa - Close the adversarial-review gap row in the ARIS comparison
+
+- timestamp: `2026-10-06T07:08:35Z`
+- status: `complete`
+- author: `codex`
+- reason: The gap table still listed four review roles after this session added ccfa.adversarial_review, so the doc understated the repository's own state. Row 2 now counts six roles and the note records what the two new producers do and that unresolved findings enter the readiness gate.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency`
+
