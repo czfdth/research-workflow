@@ -120,6 +120,8 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 
 建议：在 `cross_review` 的输入里明确告诉评审方"本次评审将取代之前的评审"，或在校验时拒绝引用其他评审记录的 tier 结论。
 
+**该建议已实现**：`cross_review` 现在会报 `review-stale-finding`，拒绝复述只由工作流给出的结论（上一版评审的 tier / verdict 不得搬用）。详见第八节。
+
 ### 仍然存在的非对比类缺点（与 ARIS 无关）
 
 1. 六项人工复核未完成（proof 8 条、citation-support 6 条、figure-support 1 条、cross-review、claim-candidates、research-plans）——这是 `ready=false` 的直接原因。
@@ -131,3 +133,57 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 ### 结论
 
 对比关系没有改变：**ARIS 宽在执行与产出，你深在证据与可验证性**。本轮之后，"多后端评审"这条差距已经关闭，"工具自评"部分关闭；真正剩下的结构差距是**算力接入面**、**对抗评审角色细度**与**自演化落地门**这三条。
+
+## 八、第三轮更新（2026-10-06 修订二）
+
+### 已关闭
+
+| 项 | 证据 |
+| --- | --- |
+| 对抗评审角色细度（差距 2） | 新增 `tools/ccfa/adversarial_review.py`（579 行 + 249 行测试，6 项通过）：`claim-audit` 零上下文数值复核（机械排除作者推导文件并把排除集写入记录，评审进程的 staging 目录不含这些文件）+ `kill-argument` 双线对抗（两次互不可见的独立子进程分别写最强拒稿备忘与逐点辩护），只产出不开释 |
+| 新角色接入完整 | 已进 `dispatch`（`adversarial-review`）、`tests.yml` 编译清单、`readiness` 的 `adversarial-review` gate；未解决的 finding 无法靠不读它消化 |
+| 过期结论混入阻塞清单 | `cross_review` 现在报 `review-stale-finding`：「blocking[3] 'review-advisory-only' 复述了只由工作流给出的结论；本次评审不得搬用上一版评审的 tier/verdict」。即不再静默接受，而是显式标出 |
+| 免费跨族评审来源识别 | 识别独立实验室提供的免费评审模型；已用 OpenRouter 的 `nvidia/nemotron-3-super-120b-a12b:free` 跑通 gate-capable + cross-family 评审 |
+| CI 成本 | MiKTeX 改为仅在受影响测试需要编译文档时安装（fail closed） |
+
+### 旗舰论文当前状态
+
+`readiness` 仍为 `ready=false`，两项阻塞：
+
+```text
+argument-audit: proof-review-not-verified ×8
+cross-review:   review-prompt-drift, review-blocking, review-stale-finding
+```
+
+三点值得注意：
+
+1. `review-prompt-drift` 表示评审指令已变（记录 `209465a9…` vs 当前 `683fe633…`），**必须重跑评审**——这与「本轮加了新 gate、改了评审指令」一致。
+2. `review-stale-finding` 是修复生效的直接证据：上一版 local-qwen 那条 `review-advisory-only` 已被识别为不可搬运的过期结论。
+3. `reviews/adversarial-review.json` **尚未生成**——新角色已建但旗舰论文还没跑过，因此它目前不构成阻塞（gate 只在记录存在时检查）。
+
+### 仍然落后 ARIS 的地方
+
+| 序号 | 差距 | 现状 | 说明 |
+| --- | --- | --- | --- |
+| 1 | 算力接入面 | `data/compute.yaml` 仍为 `backends: []` | 唯一的能力级缺口。ARIS 有本机/SSH/Vast/Modal/启智 + 队列（OOM 重试、wave gating、crash-safe state）+ W&B 训练监控 + `/system-profile` |
+| 2 | 自演化落地门 | 只有 `meta_optimize` | ARIS 是 `/meta-optimize`（只读）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） |
+| 3 | 图件生成 | `svg` / `figure_spec` 命中 0 | ARIS 有 `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度） |
+| 4 | 投稿后产出深度 | 只有 `talk_pipeline.py` | ARIS 有 slides + slides-polish + poster-html（带度量硬门） |
+| 5 | 专利链路 | 无专利模块 | ARIS 有 9 个 skill 的完整链路 |
+| 6 | 领域适配器 | 无 | ARIS 有 communications / robotics / architecture-EDA |
+| 7 | 知识库自动化 | `library/wiki/` 仍 3 个文件 | ARIS 有生命周期 hook 自动 ingest + `/wiki-enrich` |
+| 8 | 外部基准评价 | `tool_eval` 10 例自设计用例 | 双方都没有 MLGym 式外部基准 |
+
+对抗评审这条已从「4 个角色 vs 8 个」收窄为「6 个角色 vs 8 个」。没对齐的两个是 `/experiment-audit`（假 ground truth、分数归一化作弊、幽灵结果、范围膨胀等作弊模式）与 `/integrity-forensics`（46 模式取证）；`/proof-checker` 的 20 类分型部分由 `formal_check` + 9 个形式化引擎覆盖，且你多了一条 ARIS 没有的机器校验证明。
+
+### 与 ARIS 无关的剩余缺点
+
+1. 六项人工复核未完成（proof 8 条、citation-support 6 条、figure-support 1 条、cross-review、claim-candidates、research-plans）。
+2. `governance.yaml` 的 COI、查重、披露联系人仍是 pending（`ccfa.governance` 报 3 个 problem）。
+3. Zenodo / OSF 链路未通，`artifact-badge.yaml` 与 `scientific-acceptance.yaml` 仍未创建。
+4. 安装包缺干净机器验收。
+5. 两个来源的 GitHub 插件与两个 computer-use 插件重复启用。
+
+### 结论
+
+差距 2 已按建议收窄，过期结论问题也已修掉并被 gate 捕获。与 ARIS 相比，结构差距只剩三条：**算力接入面**（唯一能力级缺口）、**自演化落地门**、**图件与投稿后产出深度**。其余（专利、领域适配器、wiki 自动化）属于可选方向。

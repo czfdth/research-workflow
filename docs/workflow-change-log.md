@@ -1787,3 +1787,16 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T072550Z-450459b47d - Record the third round of the ARIS comparison: adversarial-review roles added, stale findings now rejected.
+
+- timestamp: `2026-10-06T07:25:50Z`
+- status: `complete`
+- author: `codex`
+- reason: Since the previous comparison the repo added ccfa.adversarial_review (zero-context claim audit plus two-line kill-argument), made cross_review reject conclusions restated from a superseded review, and recognised free cross-family reviewers; the comparison's adversarial-role row and stale-finding subsection were both out of date.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `tools.tests.test_adversarial_review (6 tests)`
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Also records the flagship paper's current blocking set (review-prompt-drift, review-blocking, review-stale-finding) and that reviews/adversarial-review.json has not been produced yet.
+
