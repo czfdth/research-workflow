@@ -307,3 +307,45 @@ ARIS 的 83 个 skill 覆盖的能力面，本工作流现在在**每一类都�
 **停止对标驱动的开发。** 与 ARIS 的差距已逐条归零，工具模块到 100 个、测试到 2227 项。继续按"对标 → 补缺口"的循环推进会进入自循环：每轮都能找到新的可对比项，但论文的 `ready` 不会因此改变。
 
 现在唯一的进展信号应该是：**`ready` 从 false 变 true，或者 cross-review 的阻塞条目减少**。如果下一轮更新后这两个数字仍未变化，那说明投入放在了错误的地方。
+
+## 十一、2026-10-06 补记：匿名 gate 落地与最后的角色差距
+
+> 本节更新第十节的待办顺序。第十节写于"从零重做对比"之前，其中"补一个匿名 gate"当时还是缺口。
+
+### 匿名 gate 已实现并在真实论文上验证
+
+一次从零重做的对比发现：`checklists/conference.md` 与 `journal.md` 都把"匿名"列为 `submission-check` 的通过条件，但全仓只有 `resubmit_pipeline.py` 处理匿名（那是改投用的），`venue_fixtures` 的 NeurIPS fixture 没有 anonymity 项，`readiness` 与 `final_check` 也都不检查。对 CSF 这类双盲 venue 是实际风险。
+
+现已落地：`tools/ccfa/anonymity.py` + `scripts/anonymity.ps1`，接入 `dispatch` 与 `readiness`。检查覆盖作者块是否匿名化、真实姓名与单位、自引措辞、codename、跨 rebuttal 泄漏、内部链接、残留标记、自身 URL、致谢章节、PDF 元数据与作者字段；配置来自 `data/anonymity.yaml`，缺省即双盲默认。
+
+在旗舰论文上实测：`problem_count=0`，仅 1 条 advisory（"存在致谢章节；双盲下请确认其中没有姓名、基金号或单位"）。**该缺口已关闭。**
+
+### 本轮其他变化
+
+| 项 | 结果 |
+| --- | --- |
+| cross-review 重跑 | 改用 `glm-4.7-flash` / `zhipu`，`review_tier=gate-capable`、`family_judgement=cross-family`、`model_verdict=blocking`、`verdict=blocking`（诚实，无假 pass） |
+| integrity-forensics | 新增 `tools/ccfa/integrity_forensics.py`：ARIS 指向的上游（`wanshuiyin/Anti-Autoresearch`）的 pinned launcher——与 ARIS 自身"薄启动器"的做法一致；论文侧已跑出 `CLEAN_GIVEN_EVIDENCE` |
+| 评审 harness 性能 | 调用时禁用 MCP servers |
+| 规模 | 模块 100 → 102，变更日志 118 → 122，测试 2227 → 2299（约 255 秒） |
+
+### 与 ARIS 相比：只剩一个角色差距
+
+`/experiment-audit`（跨模型检查实验代码与结果，抓假 ground truth、分数归一化作弊、幽灵结果、范围膨胀）目前没有对应实现——代码里 `fake ground truth` / `phantom` / `score normaliz` / `cheat` / `fraud` 命中数均为 0。
+
+对当前这篇 SoK 影响为零（它没有实验）。只有当你开始做实证论文时，这条才值得补；届时它比再加一个通用 gate 更有价值，因为它针对的是一类具体的、难以自查的失败模式。
+
+ARIS 剩下的另一项优势是**skill 语料的生态位**：83 个单文件 `SKILL.md`、可跨 agent 运行、社区可提交。这是形态差异，不是能力缺失。
+
+### 仍未完成的事（与 ARIS 无关）
+
+1. **六项人工复核**：proof 8 条、citation-support 6 条、figure-support 1 条、cross-review、claim-candidates、research-plans。`readiness` 当前 22 个 gate 中 20 个通过，未通过两项即 `argument-audit` 与 `cross-review`，都指向这批人工工作。
+2. **`reviews/adversarial-review.json` 仍未生成**——新角色已建但旗舰论文没跑过，未跑的 gate 等于没有覆盖。
+3. **环境**：`doctor` 2 条 advisory（Docker daemon 不可达、Zotero 不可达）。
+4. **外部链路**：Zenodo / OSF 未通；`artifact-badge.yaml` 与 `scientific-acceptance.yaml` 未创建；安装包缺干净机器验收。
+5. **governance 三处占位**：COI、查重工具、披露联系人。
+6. **插件冗余**：两个来源的 GitHub 插件与两个 computer-use 插件。
+
+### 结论
+
+与 ARIS 的能力对标到此结束：除 `/experiment-audit` 这一个实验侧角色外，其余维度要么已对齐，要么是你的领先项（证明、证据链、复现收据、治理、自测、匿名门）。当前 `ready=false` 完全由人工复核与环境/外部链路造成，工具侧没有剩余阻塞。

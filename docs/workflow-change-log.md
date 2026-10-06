@@ -2336,3 +2336,17 @@ Tests: 34 in tools/tests/test_integrity_forensics.py using a fake git checkout w
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T133244Z-5df31215c9 - Record the anonymity gate as landed and reduce the ARIS comparison to a single remaining role gap.
+
+- timestamp: `2026-10-06T13:32:44Z`
+- status: `complete`
+- author: `codex`
+- reason: A from-scratch comparison found that anonymity was required by the submission checklist but enforced nowhere outside resubmit; the repo has since added ccfa.anonymity, re-ran the cross-family review through zhipu and added a pinned integrity-forensics launcher, so the comparison and its priority list were out of date.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `ccfa.anonymity on the flagship paper (0 problems, 1 advisory)`
+  - `tools.tests.test_docs_consistency (17 tests)`
+  - `tools.unittest discover (2299 tests)`
+- notes: Leaves /experiment-audit as the only unmatched review role and notes it is irrelevant to the current SoK; lists the six human checkpoints, the ungenerated adversarial-review record, the two environment advisories and the external-link gaps as the remaining work.
+
