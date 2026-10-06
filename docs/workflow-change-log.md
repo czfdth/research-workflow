@@ -2802,3 +2802,34 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `python -m unittest tests.test_claim_extract (7 tests, OK)`
 
+## WC-20261006T220958Z-9a9511a63c - Make the paper workbench installable on Windows
+
+- timestamp: `2026-10-06T22:09:58Z`
+- status: `complete`
+- author: `codex`
+- reason: The workbench could only run from a source checkout. It now ships a PyInstaller freeze plus an Inno Setup installer: settings move to %APPDATA% when frozen, the workflow location is configurable and testable from the settings dialog, and a frozen build never falls back to sys.executable (which is the app exe, not an interpreter).
+- files:
+  - `app/README.md`
+  - `app/ccfa-workbench.spec`
+  - `app/ccfa_core/settings.py`
+  - `app/ccfa_core/tools_bridge.py`
+  - `app/ccfa_core/workflow.py`
+  - `app/ccfa_gui/chat_panel.py`
+  - `app/ccfa_gui/main.py`
+  - `app/ccfa_gui/settings_dialog.py`
+  - `app/ccfa_gui/window.py`
+  - `app/ccfa_workbench.py`
+  - `app/installer.iss`
+  - `app/requirements-dev.txt`
+  - `app/requirements.lock`
+  - `app/requirements.txt`
+  - `app/tests/test_settings.py`
+  - `app/tests/test_workflow.py`
+  - `scripts/build-workbench.ps1`
+- tests:
+  - `app suite: python -m unittest discover -s app/tests -t app (205 tests, OK, no PYTHONPATH)`
+  - `ruff check app (pass)`
+  - `scripts/build-workbench.ps1 produced dist/ccfa-workbench-setup-0.1.0.exe`
+  - `silent install exit 0; installed app launches with %APPDATA% settings`
+- notes: Backfill for a batch already on origin/master: the installer landed before this contract existed. PySide6 is pinned to 6.9.1 because 6.11.2 freezes into an exe that dies at import QtWidgets. Not verified here: the interactive project/validate round trip inside the installed GUI.
+
