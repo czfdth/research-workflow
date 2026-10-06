@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from ccfa import (
+    adversarial_review,
     argument_audit,
     artifact_badge,
     artifact_store,
@@ -183,6 +184,18 @@ HUMAN_CHECKPOINT_SPECS = {
         "answer_with": (
             "配置可验证的跨族 provider 后重跑评审，"
             "或完成外部人类评审并写 reviewer、结论与证据"
+        ),
+    },
+    "adversarial-review": {
+        "type": "approve",
+        "stage": "internal-review",
+        "question": (
+            "零上下文数值复核与双线 kill-argument 的每条 finding，"
+            "是否都已逐条核对并写明处置？"
+        ),
+        "answer_with": (
+            "在 reviews/adversarial-review.json 里对每条 finding "
+            "写 resolved 与不少于 20 字的 resolution"
         ),
     },
     "claim-candidates": {
@@ -670,6 +683,10 @@ def _gate_specs(
             ),
             [],
         )
+    if (paper_root / "reviews" / "adversarial-review.json").is_file():
+        specs["adversarial-review"] = lambda: adversarial_review.check(
+            paper_root
+        )
     if (paper_root / "submission" / "repro" / "MANIFEST.json").is_file():
         specs["repro-package"] = lambda: repro_package.verify_bundle(
             paper_root / "submission" / "repro"
@@ -906,6 +923,15 @@ def _human_review_status(
     }
     if review_codes:
         pending.append("cross-review")
+    adversarial_codes = {
+        str(problem.get("code", ""))
+        for result in (gate_results or [])
+        if result.get("name") == "adversarial-review"
+        for problem in result.get("problems", [])
+        if isinstance(problem, dict)
+    }
+    if adversarial_codes:
+        pending.append("adversarial-review")
     candidate_payload = _load_structured(paper_root / CLAIM_CANDIDATES_PATH)
     if (
         isinstance(candidate_payload, dict)

@@ -1731,3 +1731,30 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_cross_review`
 
+## WC-20261006T065448Z-f5734df1b5 - Add zero-context numeric audit and two-line kill-argument roles
+
+- timestamp: `2026-10-06T06:54:48Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS separates 'drive' from 'acquit'; this port adds the two adversarial producers from docs/aris-comparison-2026-10-06.md 5.3. claim-audit recomputes the manuscript's numbers with the author's derivations mechanically removed (the excluded set is recorded and the reviewer is pointed at a staging tree that does not contain them). kill-argument runs two independent subprocesses, one writing the strongest rejection memo and one the point-by-point defence, neither able to see the other's prompt. Both roles write reviews/adversarial-review.json only; an unresolved finding is a blocking problem, a thin resolution is flagged, and an advisory-only reviewer cannot close the record. The gate is registered in readiness so the tool is load-bearing rather than a library.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/adversarial-review.ps1`
+  - `tools/ccfa/adversarial_review.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_adversarial_review.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_adversarial_review`
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

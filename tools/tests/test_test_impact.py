@@ -45,6 +45,19 @@ class SelectTestsTests(unittest.TestCase):
         self.assertIn("tools.tests.test_review_loop", selection.tests)
         self.assertFalse(selection.full)
 
+    def test_adversarial_review_selects_its_focused_tests(self):
+        selection = select_tests(
+            ["tools/ccfa/adversarial_review.py"],
+            suite="tools",
+        )
+
+        self.assertIn(
+            "tools.tests.test_adversarial_review",
+            selection.tests,
+        )
+        self.assertIn("tools.tests.test_docs_consistency", selection.tests)
+        self.assertFalse(selection.full)
+
     def test_experiment_loop_selects_readiness_integration_tests(self):
         selection = select_tests(
             ["tools/ccfa/experiment_loop.py"],

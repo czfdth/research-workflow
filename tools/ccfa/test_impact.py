@@ -181,6 +181,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_evidence_integrity_e2e",
         "tools.tests.test_readiness",
     ),
+    "tools/ccfa/adversarial_review.py": (
+        "tools.tests.test_adversarial_review",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/review_loop.py": (
         "tools.tests.test_docs_consistency",
         "tools.tests.test_review_loop",

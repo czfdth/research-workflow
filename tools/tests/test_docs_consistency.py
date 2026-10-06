@@ -20,6 +20,7 @@ WORKFLOW_GUIDE_PATH = REPO_ROOT / "docs" / "workflow-guide.md"
 CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 
 CLI_WRAPPERS = {
+    "adversarial_review": "scripts/adversarial-review.ps1",
     "citation_guard": "scripts/citation-guard.ps1",
     "trace_claims": "scripts/trace-claims.ps1",
     "latex_check": "scripts/latex-check.ps1",

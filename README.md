@@ -96,6 +96,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵；`run --model` 必填，同族评审即使 override 也不能开释为 pass；记录绑定输入哈希、指令摘要与真实 provider provenance | `scripts/cross-review.ps1` |
 | `tools/ccfa/review_loop.py` | 维护多轮 review loop、reviewer memory、append-only acquittal log，并可注入 fix/review 命令自动驱动轮次 | `scripts/review-loop.ps1` |
 | `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
+| `tools/ccfa/adversarial_review.py` | 两个只产出、永不开释的对抗角色：`claim-audit` 从原始数据重算正文数字（作者的推导按机械规则排除并记录），`kill-argument` 用两条互不可见的独立调用分别写最强拒稿备忘与逐点辩护；未解决的 finding 一律报 problem | `scripts/adversarial-review.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
