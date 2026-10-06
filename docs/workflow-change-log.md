@@ -2778,3 +2778,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `python -m unittest tests.test_cross_review (99 tests, OK)`
 
+## WC-20261006T213728Z-795e4f0841 - Support OpenAI-compatible endpoints in claim-extract
+
+- timestamp: `2026-10-06T21:37:28Z`
+- status: `complete`
+- author: `codex`
+- reason: The user asked for a deepseek (OpenAI-compatible) route and to skip local Ollama models; claim_extract only spoke the Ollama /api/generate API.
+- files:
+  - `tools/ccfa/claim_extract.py`
+  - `tools/tests/test_claim_extract.py`
+- tests:
+  - `python -m unittest tests.test_claim_extract (7 tests, OK)`
+

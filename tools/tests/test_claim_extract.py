@@ -1,6 +1,8 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pymupdf
 import yaml
@@ -91,6 +93,96 @@ class ClaimExtractTests(unittest.TestCase):
 
         self.assertEqual(len(report["claims"]), 1)
         self.assertEqual(report["generator"]["kind"], "heuristic")
+
+    def test_openai_generator_posts_to_chat_completions(self):
+        from ccfa import claim_extract
+
+        class _Response:
+            def __init__(self, payload):
+                self._payload = payload
+
+            def read(self):
+                return self._payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response(
+                json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": json.dumps(
+                                        {
+                                            "claims": [
+                                                {
+                                                    "statement": "X.",
+                                                    "source_quote": "quote",
+                                                    "claim_type": "empirical",
+                                                    "confidence": "high",
+                                                }
+                                            ]
+                                        }
+                                    )
+                                }
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+            )
+
+        with mock.patch.object(
+            claim_extract.urllib.request, "urlopen", fake_urlopen
+        ):
+            payload = claim_extract._default_openai_generator(
+                "prompt",
+                model="fake-model",
+                base_url="http://127.0.0.1:9/v1",
+                timeout=1.0,
+            )
+
+        self.assertEqual(
+            captured["url"], "http://127.0.0.1:9/v1/chat/completions"
+        )
+        self.assertEqual(captured["body"]["model"], "fake-model")
+        self.assertEqual(payload["claims"][0]["statement"], "X.")
+
+    def test_extract_records_openai_api_kind(self):
+        from ccfa import claim_extract
+
+        def generator(prompt, **kwargs):
+            return {
+                "claims": [
+                    {
+                        "statement": "X improves Y.",
+                        "source_quote": "We show that X improves Y by 10 percent",
+                        "claim_type": "empirical",
+                        "confidence": "high",
+                    }
+                ]
+            }
+
+        with mock.patch.object(
+            claim_extract, "_default_openai_generator", generator
+        ):
+            report = extract_candidates(
+                self.paper,
+                ["paper.pdf"],
+                model="fake-model",
+                api="openai",
+            )
+
+        self.assertEqual(report["generator"]["kind"], "openai")
+        self.assertEqual(report["generator"]["api"], "openai")
 
     def test_check_detects_source_drift(self):
         report = extract_candidates(self.paper, ["paper.pdf"])

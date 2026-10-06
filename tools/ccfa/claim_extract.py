@@ -306,6 +306,51 @@ def _default_ollama_generator(
     return payload
 
 
+def _default_openai_generator(
+    prompt: str,
+    *,
+    model: str,
+    base_url: str,
+    timeout: float,
+) -> dict:
+    """Chat-completions generator for OpenAI-compatible endpoints."""
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You return strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "temperature": 0,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+    except (OSError, urllib.error.URLError) as exc:
+        raise ValueError(f"OpenAI 兼容端点请求失败: {exc}") from exc
+    try:
+        outer = json.loads(raw)
+        response_text = outer["choices"][0]["message"]["content"]
+        if not isinstance(response_text, str) or not response_text.strip():
+            raise ValueError(f"empty response; raw={raw[:500]!r}")
+        payload = json.loads(response_text)
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"OpenAI 兼容端点返回了非法 JSON: {exc}; raw={raw[:500]!r}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ValueError("OpenAI 兼容端点返回的 content 必须是 JSON 对象")
+    return payload
+
+
 def _heuristic_payload(chunk: dict) -> dict:
     claims = []
     for sentence in _SENTENCE_SPLIT.split(chunk["text"]):
@@ -423,6 +468,7 @@ def extract_candidates(
     out_path: Path | None = None,
     model: str | None = None,
     ollama_url: str = "http://127.0.0.1:11434",
+    api: str = "ollama",
     timeout: float = 600.0,
     max_chunks: int = 200,
     max_chars: int = 6000,
@@ -452,9 +498,15 @@ def extract_candidates(
     if max_chunks > 0:
         chunks = chunks[:max_chunks]
 
-    generator = generator or (
-        _default_ollama_generator if model else _heuristic_payload
-    )
+    if api not in {"ollama", "openai"}:
+        raise ValueError(f"未知的生成接口: {api!r}")
+    if generator is None:
+        if model and api == "openai":
+            generator = _default_openai_generator
+        elif model:
+            generator = _default_ollama_generator
+        else:
+            generator = _heuristic_payload
     candidates: list[dict] = []
     rejections: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -514,9 +566,10 @@ def extract_candidates(
         "status": "candidates-found" if candidates else "no-candidates",
         "generated_at": _now_iso(),
         "generator": {
-            "kind": "ollama" if model else "heuristic",
+            "kind": api if model else "heuristic",
             "model": model,
             "ollama_url": ollama_url if model else None,
+            "api": api if model else None,
         },
         "sources": [
             {
@@ -729,6 +782,12 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--out", default=str(DEFAULT_OUT))
     extract.add_argument("--model")
     extract.add_argument("--ollama-url", default="http://127.0.0.1:11434")
+    extract.add_argument(
+        "--api",
+        choices=("ollama", "openai"),
+        default="ollama",
+        help="生成接口：ollama (/api/generate) 或 openai 兼容 (/chat/completions)",
+    )
     extract.add_argument("--timeout", type=float, default=600.0)
     extract.add_argument("--max-chunks", type=int, default=200)
     extract.add_argument("--max-chars", type=int, default=6000)
@@ -751,6 +810,7 @@ def main(argv: list[str]) -> int:
                 out_path=Path(args.out),
                 model=args.model,
                 ollama_url=args.ollama_url,
+                api=args.api,
                 timeout=args.timeout,
                 max_chunks=args.max_chunks,
                 max_chars=args.max_chars,
