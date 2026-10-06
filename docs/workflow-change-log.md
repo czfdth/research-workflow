@@ -2145,3 +2145,25 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_automation_e2e`
 
+## WC-20261006T104727Z-2e4b3000f6 - Add the rendered poster style gate for rules 4 and 12
+
+- timestamp: `2026-10-06T10:47:27Z`
+- status: `complete`
+- author: `codex`
+- reason: The reference ARIS style_check.py splits its 12 poster design rules into a source gate (rules 1,2,3,5,6,7,8,9,10,11: pure static analysis, no browser) and a render gate (rules 4 and 12: needs computed style via Playwright), with --no-render keeping the source gate live while printing a notice that two rules were not evaluated, exit codes 0/1/2, and warnings that never fail the gate. This change implements the missing render half in tools/ccfa/poster_style.py. Rules 4 and 12 print-emulate the poster with Playwright at the poster's own @page viewport (W in * 96 CSS px), call page.emulate_media(media='print'), walk every element's computed style through the reference's _RENDER_JS (exempting <img>, [data-color-exempt], [data-source=paper] and QR subtrees), and then evaluate through a pure function: hue clustering with a greedy seed-anchored 18 degree circular sweep plus a wrap-around merge, a 0.10 alpha floor, perceptual chroma = HSL saturation * (1 - |2L-1|) with a 0.10 floor so near-white and near-black tints stay neutral, a hard fail above 2 clusters, a 22 degree tolerance against the --accent/--gold hue centres resolved from the token block or a --tokens JSON, and a 0.08 poster-area warn for dark backgrounds (bg lightness < 0.18 at alpha >= 0.5). Constants and the colorsys.rgb_to_hls (h, l, s) unpack order are transcribed verbatim from the reference. One correction: the reference declares rule 12 and rule 9 as severity 'warn', not hard/soft, so RULE_SEVERITY was fixed to warn for both. Browser resolution avoids a fresh download: the gate tries channel msedge then chrome then the bundled chromium, so an installed Edge on Windows and on the windows-latest CI runner is enough; when no browser is usable the CLI returns exit 2 instead of pretending to pass, and --no-render is the documented way to run the source gate alone. check() keeps render=False as its programmatic default and the CLI defaults to rendering; the JSON report gained a render block recording requested/evaluated/engine/viewport_px/hue_centers. poster_style is the second new dependency (playwright==1.63.0, previously python-pptx) and the lock file was regenerated with hashes; only playwright, greenlet and pyee were added, no existing pin moved. Verified live on a generated ICLR portrait poster at a 2304x3456 px viewport with engine msedge: overall=pass, rule 4 reports '1 hue cluster within the 22 degree palette tolerance', rule 12 reports 'dark area = 0.0% of poster'. Three constructive experiments: adding a third hue family (accent 151 + gold 42 + probe 336) makes rule 4 hard-fail with '3 non-neutral hue clusters'; switching --bg-page to #0B0B0B warns rule 12 while overall stays pass; the same green probe inside a data-color-exempt=logo subtree passes rule 4 and fails once the attribute is removed, proving the exemption is honoured. 35 tests in tools/tests/test_poster_style.py cover the source rules, the pure hue/chroma/cluster maths, the rule 4 and 12 thresholds without a browser, the CLI --no-render and exit-2 paths, and (skipping cleanly when no browser exists) real Playwright renders. Docs updated: docs/reference-aris-2026-10-06.md gained the fifteenth slice (poster style gate) and the sixteenth slice (the earlier PPTX export, which had shipped without documentation), and docs/aris-comparison-2026-10-06.md rows now mark the post-submission depth gap closed.
+- files:
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `tools/ccfa/poster_style.py`
+  - `tools/requirements.lock`
+  - `tools/requirements.txt`
+  - `tools/tests/test_poster_style.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_packaging`
+  - `tools.tests.test_poster_style`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

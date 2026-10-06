@@ -104,7 +104,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/slides_polish.py` | 对现有 Beamer deck 做**只改版式、绝不改内容**的 polish：快照原件、输出 `_polished`（再跑是 `_v2`）、把 PDF 每页渲染成 PNG 供人工/模型看像素、写 `POLISH_CHANGELOG.md` 与 `POLISH_STATE.json`；`check` 会拒绝任何不匹配允许规则的行改动或增删行 | `scripts/slides-polish.ps1` |
 | `tools/ccfa/poster_html.py` | 从 `data/poster-plan.yaml` 生成印刷级 `poster.html`：`@page size` 与容器宽高由同一次计算得出（模板要求两处同步，这里构造上不会漂移）、三种版式（60×36 四栏 / 60×36 主视觉 / 24×36 双栏）、venue token pack 照抄参考实现、布局区带 `data-measure-role`；`pdf` 用 Edge/Chrome 无头打印，`check` 校验尺寸同步与角色齐全 | `scripts/poster-html.ps1` |
 | `tools/ccfa/poster_measure.py` | 量印刷后海报的几何：列底落差、最低卡片到页脚的间距、画布填充率；阈值沿用参考实现的 CSS px 口径（1pt = 96/72px），落差 ≥5px 与页脚间距越界是 problem，落差 3–5px 与填充率越界是 advisory | `scripts/poster-measure.ps1` |
-| `tools/ccfa/poster_style.py` | poster HTML 的静态风格门（参考实现 12 条规则的源码子集）：颜色字面量只能在 token 块内、不许内联 `style=`、组件颜色走 `var(--…)`、字体白名单、`font-size` 只能来自 `--fs-*` 尺度、token 档位数告警；需要 computed style 的 4/12 与组件契约 10/11 明确标为 skip 而不是假装通过 | `scripts/poster-style.ps1` |
+| `tools/ccfa/poster_style.py` | poster HTML 的风格门（参考实现 12 条规则，分两半）：**源码 gate** 查颜色字面量只能在 token 块内、不许内联 `style=`、组件颜色走 `var(--…)`、字体白名单、`font-size` 只能来自 `--fs-*` 尺度、token 档位数告警；**渲染 gate** 用 Playwright 打印仿真取 computed style，量规则 4（非中性色相聚类 ≤2 且落在 `--accent`/`--gold` 容差内，硬失败）与 12（深色面积 >8% 告警）；`--no-render` 只跑源码 gate 并明确提示规则 4/12 未评估，组件契约 10/11 标为 skip 而不是假装通过 | `scripts/poster-style.ps1` |
 | `tools/ccfa/pptx_export.py` | 把 `data/talk-plan.yaml` 导成**可编辑 PPTX**（与 Beamer deck 同一份 plan）：标准 16:9（13.333×7.5in）/ 4:3 画布、`speaker_notes` 写进 PPT notes 字段、venue 主题色、图件按真实像素双向适配；字号按画布比例推导（参考实现用的是 1.6× 经验常数），核心属性钉住时间戳 | `scripts/pptx-export.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
@@ -469,6 +469,27 @@ problem）、画布填充率（目标 90–101%，越界是 advisory）。阈值
 DOM——本机没有 WebSocket 客户端，走不了 CDP 的 `getBoundingClientRect`。要注意：
 `poster-html` 只负责生成**结构正确**的海报，列平衡取决于内容量；刚生成的稀疏海报会被
 这个 gate 判为 problem，那是在说"还没填完"，不是 bug。
+
+海报的**配色**也是硬门，不是审美意见。参考实现把 12 条设计规则拆成两半：源码 gate
+能静态判定的 10 条（颜色字面量只能在 token 块内、不许内联 `style=`、组件颜色必须走
+`var(--…)`、字体白名单、`font-size` 只能来自 `--fs-*` 尺度……），以及必须拿到
+computed style 才能判的两条——规则 4（非中性色相聚类 ≤2 且落在调色板内）和规则 12
+（深色面积 >8%）。
+
+```powershell
+scripts/poster-style.ps1 run --html <paper-root>/poster.html
+scripts/poster-style.ps1 run --html <paper-root>/poster.html --json <paper-root>/style.json
+scripts/poster-style.ps1 run --html <paper-root>/poster.html --no-render
+```
+
+渲染 gate 用 Playwright 以海报自己的 `@page` 尺寸（`W in × 96px`）开视口、`emulate_media(media="print")`
+后遍历每个元素取 computed style：色相按 `cluster_hues` 做 18° 贪心圆环聚类，HSL
+饱和度先按明度折成感知 chroma（所以近白/近黑的暖色不会被当成色相），`<img>`、
+`[data-color-exempt]`、`[data-source="paper"]` 与 QR 块的子树豁免。规则 4 是硬失败，
+规则 12 只是告警——参考源码里 12 的 severity 就是 `warn`，之前的实现把它写成 hard 是
+抄错了。浏览器用已装的 Edge/Chrome（`msedge` → `chrome` → 自带 chromium），所以 CI
+不需要 `playwright install` 下载浏览器；两者都没有时**返回 exit 2 而不是假通过**，
+要只跑源码 gate 就显式加 `--no-render`（会打印"规则 4/12 未评估"）。
 
 顺序是 `preflight → asset → measure → polish`：静态检查先跑，避免为一个明显坏掉
 的稿子付渲染成本；默认累积全部问题（`--fail-fast` 给 CI 用）；`polish` 默认只警告，

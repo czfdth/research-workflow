@@ -44,7 +44,7 @@
 | 性能剖析 | `/system-profile` | 无 | 缺口 |
 | 对抗评审细度 | 8 个专门角色（含零上下文数值复核、双线 kill-argument、作弊模式取证） | cross_review + review_loop + argument_audit，角色较粗 | 细度缺口 |
 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（含形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 已实现确定性 JSON/YAML→SVG（形状感知裁边、自环、CJK 宽度、穿节点自动绕行）；仍无 illustration / mermaid / poster HTML 生成器 | 已对齐核心 |
-| 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 | `talk_deck` 生成 Beamer + `\note` + 独立 notes + 状态文件，`talk_gates` 提供规范顺序的度量硬门与 PDF 几何核对，`slides_polish` 提供不改内容、可校验的版式润色（快照+版本化输出+逐页 PNG+changelog）；仍无 PPTX 导出与 poster HTML | 接近持平 |
+| 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 + 12 条风格门 | `talk_deck` 生成 Beamer + `\note` + 独立 notes + 状态文件，`pptx_export` 导出同源可编辑 PPTX，`talk_gates` 提供规范顺序的度量硬门与 PDF 几何核对，`slides_polish` 提供不改内容、可校验的版式润色，`poster_html`/`poster_measure`/`poster_style` 覆盖海报生成、几何测量与 12 条风格门（源码 10 条 + Playwright 渲染 2 条） | 已对齐 |
 | 专利链路 | 9 个 skill 的完整链路 | 无 | 可选缺口 |
 | 领域适配 | communications、robotics、architecture/EDA 三个方向适配器 | 无 | 缺口 |
 | 知识库自动化 | research-wiki 有生命周期 hook 自动 ingest，wiki-enrich 补 TODO | research_wiki 工具存在但**手工**，只有 3 个文件 | 自动化缺口 |
@@ -102,7 +102,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
-| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成 + 版式润色 + poster HTML 生成/打印/**几何测量**均已对齐（`talk_gates` / `talk_deck` / `slides_polish` / `poster_html` / `poster_measure`）；PPTX 仍缺 |
+| 5 | 投稿后产出深度 | slides（Beamer+PPTX+notes+script）+ slides-polish + poster-html（带度量硬门 + 12 条风格门） | 度量硬门 + Beamer 生成 + PPTX 导出 + 版式润色 + poster HTML 生成/打印/**几何测量**/**风格门**均已对齐（`talk_gates` / `talk_deck` / `pptx_export` / `slides_polish` / `poster_html` / `poster_measure` / `poster_style`） |
 | 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
 | 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |
@@ -192,6 +192,9 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 | 投稿后产出的 **Beamer 生成器**（差距 4 的另一半，源码级对齐） | 读了 ARIS 的 `skills/paper-slides/SKILL.md`（产出契约：beamer→PDF + PPTX、`\note{}` 讲者备注、独立 `speaker_notes.md`、`SLIDES_STATE.json`；venue 配色表；title ≥28pt / body ≥20pt）后实现 `tools/ccfa/talk_deck.py` + 21 项测试：venue 配色、每页一帧 + 标题帧 + 致谢帧、`\note{}`、独立 notes、状态文件（含 `not_implemented: ["pptx"]`）、图件按真实像素双向约束、CJK 自动 xelatex+ctex、同一份 plan 字节一致。关键修正：Beamer 默认 16cm 画布与 plan 声明的 13.33in 不一致，改成用 `\geometry{paperwidth,paperheight}` 钉住画布并直接用声明字号——否则 `measure` 量的字号和实际渲染的字号是两件事。实测：真用 `pdflatex`/`xelatex` 编译 5 帧，`verify-final --from-plan` 0 problem（page size 959.98×540pt = 13.333×7.5in）；目视检查发现宽画布下 `width=0.85\textwidth` 的图会顶掉正文，改成 `width+height+keepaspectratio` 并把图高计入 `measure`（该页 fill 从 0.23 变 0.83）；顺带修掉 `verify-final` 在中文 PDF 上按 GBK 解码 pdfinfo 输出崩溃的 Windows bug |
 | 投稿后产出的 **版式润色**（`slides-polish`，源码级对齐） | 读了 ARIS 的 `skills/slides-polish/SKILL.md`：硬范围规则（不改 claims/数字/引用/URL/作者/结果，不增删改序 slide，不动图表与公式内容）+ `OUTPUT_VERSIONING`（快照原件、输出 `<stem>_polished`）+ 逐页 review 前必须把 PDF 渲染成像素 + 状态目录结构（`POLISH_STATE.json` / `INSPECT_*.json` / `POLISH_CHANGELOG.md` / `traces/`）。据此实现 `tools/ccfa/slides_polish.py` + 13 项测试：快照不覆盖、输出自动 `_polished` → `_v2`、PDF 每页渲染 PNG 并写 per-page trace、确定性只做一条可证明安全的改写（`\includegraphics` 缺高度上限 → 补 `width+height+keepaspectratio`），字号低于投影下限/缺 `\geometry`/未关导航符号**只报告不改写**。关键的诚实差异：ARIS 用 `gpt-6-astra` 逐页看像素提修改建议，本模块没有模型那一层，所以把"安全可机械判定"和"需要判断"分开——前者自动改，后者进 findings。**不改内容这条是可验证的**：`check` 逐行比对快照与输出，任何改动必须匹配允许规则且行数不变，实测把 `Intro` 改成 `Hacked` 会被 `slides-polish-unauthorised-change` 抓到 |
 
+| 投稿后产出的**风格门**（差距 4 的 `style` 段，源码级对齐） | 读了 ARIS 的 `skills/paper-poster-html/scripts/style_check.py` 全文后实现 `tools/ccfa/poster_style.py`：12 条设计规则拆成**源码 gate**（1/2/3/5/6/7/8/9/10/11，纯静态、无需浏览器）与**渲染 gate**（4/12，Playwright 打印仿真取 computed style），`--no-render` 的语义照抄（源码 gate 照常判定并打印"两条规则未评估"），退出码 0/1/2，WARN 永不失败。规则 4 的色相 18° 贪心圆环聚类、`nonneutral_alpha=0.10`、`nonneutral_sat=0.18`、chroma 地板 `sat*0.56`、`dark_area_frac=0.08`、`colorsys.rgb_to_hls` 的 `(h,l,s)` 顺序全部逐字对齐。**纠正一处抄错**：参考源码里规则 12 与 9 的 severity 都是 `warn`，上一轮写成 hard/soft 是错的，已改回。实测真生成的 ICLR 海报 `overall=pass`（规则 4 报 1 个色相聚类、规则 12 报深色面积 0.0%）；三组构造实验分别让规则 4 硬失败、规则 12 告警、以及验证 `data-color-exempt` 子树被豁免 |
+| 可编辑 **PPTX 导出**（差距 4 的 `slides` 另一半，源码级对齐） | 参考的 `paper-slides` 产出 `main.pdf` + `main.pptx`，我们此前只给 PDF 并在状态文件写 `not_implemented: ["pptx"]`。新增 `tools/ccfa/pptx_export.py` + 测试：从同一份 `data/talk-plan.yaml` 生成 16:9（13.333×7.5in）/4:3 画布、`speaker_notes` 写进 PPT notes、venue 主题色、图件真实像素双向适配、字号按画布比例推导，核心属性钉时间戳保证同 plan 同字节；新依赖 `python-pptx==1.0.2` 带哈希进锁文件 |
+
 ### 旗舰论文当前状态
 
 `readiness` 仍为 `ready=false`，两项阻塞：
@@ -214,7 +217,7 @@ cross-review:   review-prompt-drift, review-blocking, review-stale-finding
 | 1 | 算力接入面 | `data/compute.yaml` 仍为 `backends: []` | 唯一的能力级缺口。ARIS 有本机/SSH/Vast/Modal/启智 + 队列（OOM 重试、wave gating、crash-safe state）+ W&B 训练监控 + `/system-profile` |
 | 2 | 自演化落地门 | **已关闭**（见上表） | 残留一条：真模型跨族 jury 还没在本机跑通——`glm-4-flash` 返回的是 `verdict=block` 的 key=value 而不是 JSON（被契约检查拒绝并 exit 2），`glm-4-plus` 与 OpenRouter 免费模型则撞上间歇性的 MCP `Auth required`。quorum 逻辑目前由 27 项单元测试覆盖 |
 | 3 | 图件生成 | **核心已关闭**（见上表） | `figure_spec` 已实现确定性 JSON/YAML→SVG；残留 `illustration` / `mermaid` / `poster HTML` 三类生成器没有对应实现 |
-| 4 | 投稿后产出深度 | **已关闭除 PPTX 外的全部** | 按 `run_gates.py` / `poster_check.py` / `_posterly/measure.py` / `_posterly/verify_final.py` 实现 4 段 gate（缺 `style`，本地无 design token 体系）；按 `paper-slides/SKILL.md` 实现 `talk_deck`；按 `slides-polish/SKILL.md` 实现 `slides_polish`（不改内容可校验）；按 `paper-poster-html` 的模板约束 + `tokens/*.json` + `_posterly/verify_final.py` 的 `--from-html` 机制实现 `poster_html`（`@page` 与容器尺寸构造上同步、Edge 无头打印、按海报自身声明核对 PDF）。仅 PPTX 导出未实现 |
+| 4 | 投稿后产出深度 | **已关闭** | 按 `run_gates.py` / `poster_check.py` / `_posterly/measure.py` / `_posterly/verify_final.py` 实现 4 段 gate；`style` 段由 `poster_style` 补齐（源码 10 条 + Playwright 渲染的规则 4/12，见上表）；按 `paper-slides/SKILL.md` 实现 `talk_deck` + `pptx_export`；按 `slides-polish/SKILL.md` 实现 `slides_polish`（不改内容可校验）；按 `paper-poster-html` 的模板约束 + `tokens/*.json` + `_posterly/verify_final.py` 的 `--from-html` 机制实现 `poster_html`（`@page` 与容器尺寸构造上同步、Edge 无头打印、按海报自身声明核对 PDF） |
 | 5 | 专利链路 | 无专利模块 | ARIS 有 9 个 skill 的完整链路 |
 | 6 | 领域适配器 | 无 | ARIS 有 communications / robotics / architecture-EDA |
 | 7 | 知识库自动化 | `library/wiki/` 仍 3 个文件 | ARIS 有生命周期 hook 自动 ingest + `/wiki-enrich` |

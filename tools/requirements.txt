@@ -16,3 +16,8 @@ cryptography==50.0.2
 # reference skill ships a PPTX alongside the Beamer PDF; without this the
 # workflow can only produce the PDF half.
 python-pptx==1.0.2
+# Computed-style poster gate (`ccfa.poster_style` rules 4 and 12). This is the
+# same engine the reference ARIS paper-poster-html style_check.py uses; the gate
+# drives an already-installed Edge/Chrome channel (BROWSER_CHANNELS), so CI
+# needs no `playwright install` browser download.
+playwright==1.63.0

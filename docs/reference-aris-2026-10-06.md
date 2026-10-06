@@ -308,3 +308,67 @@ Beamer 的 16:9 页只有 16cm 宽。若照抄字号或按比例缩字号，`tal
 **这个换引擎的诚实代价**：量的是打印结果而不是打印前的 DOM，所以看不到浏览器的
 `scrollHeight - clientHeight` 溢出量（参考实现用它做内容裁剪检查）；本切片因此**只**覆盖
 列平衡、页脚间距与填充率三项。
+
+## 十三、第十五切片：海报风格门的两半（读源码后对齐）
+
+读了 `skills/paper-poster-html/scripts/style_check.py` 全文。它把 12 条设计规则拆成
+两个 gate，这个拆法本身就是设计的一半：
+
+* **源码 gate**（1、2、3、5、6、7、8、9、10、11）——纯静态分析，不需要浏览器，
+  所以模板脚手架阶段跑得起。
+* **渲染 gate**（4、12）——必须拿 computed style，所以它 lazy import Playwright、
+  按 `@page` 开视口、`emulate_media(media="print")`，再逐元素读计算颜色。
+
+`--no-render` 的语义也照抄：源码 gate 照常给结论，但**打印通知说明两条规则没被评估**，
+而不是让它们静默消失。退出码 0/1/2，WARN 永不失败。
+
+`tools/ccfa/poster_style.py` 现在也是两半。源码半已经落地（颜色字面量只能在 token
+块内、不许内联 `style=`、组件颜色走 `var(--…)`、字体白名单、`font-size` 只能来自
+`--fs-*` 尺度、token 档位数告警；10/11 因本仓库生成的 poster 不用参考的组件契约而
+标 skip 并写明理由）。本切片补上渲染半，常量逐字照抄参考：
+
+| 常量 | 值 | 用途 |
+| --- | --- | --- |
+| `cluster_radius_deg` | 18.0 | 色相贪心圆环聚类的半径 |
+| `nonneutral_alpha` | 0.10 | 低于此 alpha 的颜色不进色相统计 |
+| `nonneutral_sat` | 0.18 | 中性色判定的饱和度基准 |
+| chroma 地板 | `nonneutral_sat * 0.56 ≈ 0.10` | HSL 饱和度按明度折成感知 chroma |
+| `dark_area_frac` | 0.08 | 深色背景面积占比阈值 |
+
+**一个必须纠正的错误**：参考源码里规则 12 的 severity 是 **`warn`**
+（`RuleResult(12, "warn", "large dark area (kitsch warning)")`），规则 9 也是 `warn`。
+上一轮把 12 写成 `hard`、9 写成 `soft` 是抄错，本切片改回去，并把 9/12 的 severity
+统一成参考的 `warn` 词汇。
+
+另一处照抄容易被忽略的细节是 `colorsys.rgb_to_hls` 返回 **`(h, l, s)`**：先按 H、L、S
+解包再重排，否则饱和度和明度会互换，chroma 判定整条失真。这份实现把 `_hue_of_rgb`
+单独写出来并测了 `#FF0000 → (0, 1.0, 0.5)`，就是为了钉住这个顺序。
+
+**渲染的诚实代价**：规则 12 的深色面积是**按元素矩形累加**的（参考实现如此），所以
+`html` 和 `body` 带同一层深色背景时会算两次，占比可以超过 100%。阈值判定仍然有效，
+但报告会说明这一点，不让 "200%" 看起来像别的 bug。
+
+浏览器方面不引入额外下载：参考用 `p.chromium.launch()`（需要 `playwright install`），
+这里改成 `channel="msedge" → "chrome" → 自带 chromium` 的降级链。Edge 在 Windows 上
+本来就装好，CI 的 `windows-latest` 也自带，所以流水线不需要额外下载浏览器；两者都
+没有时返回 **exit 2**（环境错误），不伪装成通过。
+
+**实测**（`portrait_2col`，视口 2304×3456px，engine `msedge`）：真生成的 ICLR 海报
+→ `overall=pass`，规则 4 报 `1 个色相聚类，全部落在调色板 22° 容差内`，规则 12 报
+`深色面积 = 海报的 0.0%`。三组构造性实验：加第三个色相（accent 151° + gold 42° +
+probe 336°）→ 规则 4 硬失败（`3 个非中性色相聚类`）；把 `--bg-page` 换成 `#0B0B0B`
+→ 规则 12 告警但 `overall` 仍 pass；同一个绿色探针放进 `data-color-exempt="logo"`
+子树 → 规则 4 pass，去掉这个属性就 fail——豁免子树在渲染 gate 里确实被跳过。
+
+## 十四、第十六切片：可编辑 PPTX 导出（读源码后对齐）
+
+参考的 `paper-slides` 产出不止 `main.pdf`：它同时给 `main.pptx`，状态文件里写
+`not_implemented: ["pptx"]` 的正是我们缺的那半边。本轮补上
+`tools/ccfa/pptx_export.py`：从**同一份** `data/talk-plan.yaml` 生成 PPTX（16:9
+13.333×7.5in 或 4:3），`speaker_notes` 写进 PPT 的 notes 字段，venue 主题色与 Beamer
+deck 一致，图件按真实像素双向适配，字号按画布比例推导（参考用的是 1.6× 经验常数），
+核心属性钉住时间戳以保证同一份 plan 出同样字节。
+
+新依赖是 `python-pptx==1.0.2`，锁文件带上哈希；`scripts/pptx-export.ps1` 只是薄包装。
+这个切片同时暴露并修掉了一处文档漂移：`automation/experiment-queue.md` 漏了 `resumed`
+/ `gates` 两个字段，被 `test_automation_e2e` 在运行时抓到。
