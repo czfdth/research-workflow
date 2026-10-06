@@ -2350,3 +2350,15 @@ Tests: 34 in tools/tests/test_integrity_forensics.py using a fake git checkout w
   - `tools.unittest discover (2299 tests)`
 - notes: Leaves /experiment-audit as the only unmatched review role and notes it is irrelevant to the current SoK; lists the six human checkpoints, the ungenerated adversarial-review record, the two environment advisories and the external-link gaps as the remaining work.
 
+## WC-20261006T134243Z-5d12d6e39b - Replace the tooling document with a complete, current inventory of workflow tools and Codex-side plugins.
+
+- timestamp: `2026-10-06T13:42:43Z`
+- status: `complete`
+- author: `codex`
+- reason: The previous revision listed 87 modules and 72 entries and carried an out-of-date gap section; the repo now has 102 modules, 87 entries, an anonymity gate, an integrity-forensics launcher and the full figure/poster/slides/patent surface, so a single accurate inventory was needed.
+- files:
+  - `docs/research-workflow-tooling-and-gaps-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Covers 102 modules, 87 PowerShell entries, 9 MCP servers, 28 plugins, 305 skills, 23 CLI categories, 9 formal engines and the current gate list; doctor reports 0 problems and 0 advisories.
+
