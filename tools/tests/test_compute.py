@@ -28,6 +28,63 @@ NVIDIA_CSV = (
 )
 
 
+class _FakeSlurm:
+    """A scripted scheduler reached through the real ssh argv builder.
+
+    ``run`` answers the same commands a cluster's login node would: the upload
+    pipe, ``sbatch --parsable``, the exit-code probe, ``scancel`` and the
+    stdout fetch. Time is virtual so the budget tests do not sleep.
+    """
+
+    def __init__(
+        self,
+        *,
+        job_id: str = "4242",
+        exit_code: str | None = "0",
+        fail_upload: bool = False,
+        fail_submit: bool = False,
+        finish_after: int = 2,
+        scheduler_forgets: bool = False,
+    ) -> None:
+        self.job_id = job_id
+        self.exit_code = exit_code
+        self.fail_upload = fail_upload
+        self.fail_submit = fail_submit
+        self.finish_after = finish_after
+        self.scheduler_forgets = scheduler_forgets
+        self.calls: list[str] = []
+        self._polls = 0
+        self._time = 0.0
+
+    def run(self, argv):
+        command = argv[-1]
+        self.calls.append(command)
+        if "base64 -d" in command:
+            return (1, "no space left on device") if self.fail_upload else (0, "")
+        if command.startswith("sbatch"):
+            if self.fail_submit:
+                return (1, "sbatch: error: Invalid partition")
+            return (0, f"{self.job_id}\n")
+        if "exit-code" in command:
+            self._polls += 1
+            if self.exit_code is not None and self._polls > self.finish_after:
+                return (0, f"{self.exit_code}\n")
+            return (1, "")
+        if command.startswith("scancel"):
+            return (0, "")
+        if command.startswith("squeue"):
+            return (0, "") if self.scheduler_forgets else (0, "RUNNING\n")
+        if "stdout" in command:
+            return (0, "hello from the cluster\n")
+        return (1, "")
+
+    def sleep(self, seconds):
+        self._time += seconds
+
+    def clock(self):
+        return self._time
+
+
 class ParseNvidiaSmiTests(unittest.TestCase):
     def test_parses_one_line_per_gpu(self):
         gpus = parse_nvidia_smi(NVIDIA_CSV)
@@ -474,15 +531,88 @@ class SshBackendTests(unittest.TestCase):
             argv.index("u@h.example"),
         )
 
-    def test_run_remote_refuses_a_scheduler_backend(self):
-        with self.assertRaises(ValueError) as raised:
-            run_remote(
+    def test_run_remote_submits_a_slurm_backend_and_records_the_job_id(self):
+        cluster = _FakeSlurm()
+
+        attempt = run_remote(
+            RemoteBackend(kind="slurm", host="cluster.example", name="cluster"),
+            ["python", "train.py"],
+            budget_minutes=1,
+            gpus_used=1,
+            runner=cluster.run,
+            sleep=cluster.sleep,
+        )
+
+        self.assertEqual(attempt.returncode, 0)
+        self.assertEqual(attempt.backend, "slurm:cluster.example")
+        self.assertEqual(attempt.scheduler["job_id"], "4242")
+        self.assertEqual(attempt.scheduler["state"], "completed")
+        self.assertEqual(attempt.gpus_used, 1)
+        self.assertTrue(any(call.startswith("sbatch --parsable") for call in cluster.calls))
+        self.assertTrue(any("base64 -d" in call for call in cluster.calls))
+
+    def test_run_scheduler_cancels_the_job_when_the_budget_expires(self):
+        cluster = _FakeSlurm(exit_code=None)
+
+        attempt = compute.run_scheduler(
+            RemoteBackend(kind="slurm", host="cluster.example"),
+            ["sleep", "3600"],
+            budget_minutes=1,
+            poll_seconds=5.0,
+            run=cluster.run,
+            sleep=cluster.sleep,
+            clock=cluster.clock,
+        )
+
+        self.assertTrue(attempt.timed_out)
+        self.assertEqual(attempt.returncode, -1)
+        self.assertEqual(attempt.scheduler["state"], "cancelled")
+        self.assertTrue(
+            any(call.startswith("scancel 4242") for call in cluster.calls)
+        )
+
+    def test_run_scheduler_reports_a_failed_submission(self):
+        cluster = _FakeSlurm(fail_submit=True)
+
+        with self.assertRaisesRegex(ValueError, "sbatch 提交失败"):
+            compute.run_scheduler(
                 RemoteBackend(kind="slurm", host="cluster.example"),
                 ["true"],
                 budget_minutes=1,
+                run=cluster.run,
+                sleep=cluster.sleep,
+                clock=cluster.clock,
             )
 
-        self.assertIn("ssh", str(raised.exception))
+    def test_run_scheduler_stops_when_the_scheduler_no_longer_knows_the_job(self):
+        cluster = _FakeSlurm(exit_code=None, scheduler_forgets=True)
+
+        attempt = compute.run_scheduler(
+            RemoteBackend(kind="slurm", host="cluster.example"),
+            ["python", "train.py"],
+            budget_minutes=30,
+            run=cluster.run,
+            sleep=cluster.sleep,
+            clock=cluster.clock,
+        )
+
+        self.assertEqual(attempt.scheduler["state"], "gone")
+        self.assertEqual(attempt.returncode, -1)
+        self.assertFalse(attempt.timed_out)
+        self.assertTrue(any(call.startswith("squeue") for call in cluster.calls))
+
+    def test_run_scheduler_reports_a_failed_upload(self):
+        cluster = _FakeSlurm(fail_upload=True)
+
+        with self.assertRaisesRegex(ValueError, "上传作业脚本"):
+            compute.run_scheduler(
+                RemoteBackend(kind="slurm", host="cluster.example"),
+                ["true"],
+                budget_minutes=1,
+                run=cluster.run,
+                sleep=cluster.sleep,
+                clock=cluster.clock,
+            )
 
     def test_run_remote_rejects_a_nonpositive_budget(self):
         with self.assertRaises(ValueError):
@@ -508,12 +638,31 @@ class SshBackendTests(unittest.TestCase):
 
         self.assertEqual(argv[-1], "cd /other && python train.py")
 
-    def test_remote_argv_refuses_a_scheduler_backend(self):
+    def test_remote_argv_refuses_a_pbs_backend(self):
         with self.assertRaisesRegex(ValueError, "kind: ssh"):
             compute.remote_argv(
                 RemoteBackend(kind="pbs", host="cluster.example"),
                 ["true"],
             )
+
+    def test_remote_argv_refuses_to_flatten_a_slurm_backend(self):
+        with self.assertRaisesRegex(ValueError, "sbatch"):
+            compute.remote_argv(
+                RemoteBackend(kind="slurm", host="cluster.example"),
+                ["true"],
+            )
+
+    def test_the_job_script_carries_the_workdir_and_the_exit_code(self):
+        script = compute._slurm_job_script(
+            RemoteBackend(kind="slurm", host="h", workdir="/srv/runs"),
+            ["python", "train.py", "--seed", "1"],
+            "ccfa-jobs/job-1",
+        )
+
+        self.assertIn("cd /srv/runs", script)
+        self.assertIn("python train.py --seed 1", script)
+        self.assertIn("> ccfa-jobs/job-1/stdout 2>&1", script)
+        self.assertIn("echo $? > ccfa-jobs/job-1/exit-code", script)
 
     def test_load_backend_file_reads_an_explicit_path(self):
         with tempfile.TemporaryDirectory() as tmp:

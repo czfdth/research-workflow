@@ -1013,10 +1013,16 @@ def run_queue(
                 f"队列 backend {backend_name!r} 不在 {config_path}；"
                 f"可用: {available}"
             )
-        if not remote_backend.executable:
+        # The queue's own runner owns the stall watchdog, wave gates and
+        # budget semantics, and all of those are written against one ssh call
+        # per item. A Slurm backend submits jobs and polls them, so sending it
+        # through here would silently drop those guarantees. `ccfa compute
+        # run --backend <slurm>` is the supported way to submit one job.
+        if remote_backend.kind != "ssh":
             raise ValueError(
                 f"队列 backend {backend_name!r} 的类型 "
-                f"{remote_backend.kind!r} 不能执行：目前只支持 kind: ssh"
+                f"{remote_backend.kind!r} 不能下发：队列只支持 kind: ssh，"
+                "调度器后端请用 `ccfa compute run --backend` 提交单个作业"
             )
     else:
         remote_backend = None

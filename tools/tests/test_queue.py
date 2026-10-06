@@ -1504,7 +1504,7 @@ class RemoteBackendQueueTests(QueueTests):
         with self.assertRaisesRegex(ValueError, "可用: lab"):
             self._run(RecordingRunner([0]))
 
-    def test_a_scheduler_backend_cannot_be_executed(self):
+    def test_a_scheduler_backend_is_refused_with_the_supported_alternative(self):
         self._write_queue([self._item()], backend="cluster")
         self._write_compute(
             "backends:\n"
@@ -1514,7 +1514,7 @@ class RemoteBackendQueueTests(QueueTests):
             "    partition: gpu\n"
         )
 
-        with self.assertRaisesRegex(ValueError, "只支持 kind: ssh"):
+        with self.assertRaisesRegex(ValueError, "compute run --backend"):
             self._run(RecordingRunner([0]))
 
     def test_a_broken_compute_config_is_rejected_before_anything_runs(self):

@@ -2611,3 +2611,28 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `tools.tests.test_new_module + test_github_workflows + test_scripts (211 tests, OK，含续行符修复后的重跑)`
   - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
 
+## WC-20261006T164534Z-de2e3754c6 - Slurm 提交路径打通并端到端实测：sbatch→squeue 轮询→退出码回执→ledger，预算到期真 scancel
+
+- timestamp: `2026-10-06T16:45:34Z`
+- status: `complete`
+- author: `codex`
+- reason: HPC 这一环此前只有一条 SSH 直连路径：slurm 后端只能 probe，run --backend 会拒绝，等于没有端到端可验证的调度器路径。现在 run_scheduler 生成作业脚本（含 workdir 与退出码写入）、经 ssh 上传、用 sbatch --parsable 提交、同时轮询退出码文件与 squeue（作业被调度器弄丢时不再假装还在跑）、预算到期 scancel 并把 job id/状态/输出尾部写进 compute-ledger，正好喂给新接的 cost_metrics。队列保持只接受 kind: ssh 并给出替代命令，因为它的 stall 看门狗与波次 gate 都是按一条 ssh 一个 item 写的。受限于本机网络，镜像构建 apk 走 aliyun 镜像（dl-cdn 不可达）。
+- files:
+  - `README.md`
+  - `docs/scheduler-e2e-2026-10-07.md`
+  - `tools/ccfa/compute.py`
+  - `tools/ccfa/queue.py`
+  - `tools/tests/fixtures/slurm-e2e/Dockerfile`
+  - `tools/tests/fixtures/slurm-e2e/README.md`
+  - `tools/tests/fixtures/slurm-e2e/bin/sbatch`
+  - `tools/tests/fixtures/slurm-e2e/bin/scancel`
+  - `tools/tests/fixtures/slurm-e2e/bin/squeue`
+  - `tools/tests/fixtures/slurm-e2e/entrypoint.sh`
+  - `tools/tests/test_compute.py`
+  - `tools/tests/test_compute_slurm_e2e.py`
+  - `tools/tests/test_queue.py`
+- tests:
+  - `CCFA_SLURM_E2E=1 CCFA_APK_MIRROR=mirrors.aliyun.com -> tools.tests.test_compute_slurm_e2e (2 tests OK, 21.3s): job 1000 completed/returncode 0/stdout_tail=hello-from-slurm；job 1001 state=cancelled/timed_out=true/wall=10.76s`
+  - `tools.tests.test_compute + test_compute_slurm_e2e + test_queue + test_experiment_loop + test_readiness + test_docs_consistency + test_github_workflows (275 tests, OK, 2 skipped = opt-in E2E)`
+  - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
+

@@ -166,7 +166,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 | `tools/ccfa/change_log.py` | 强制记录每次工作流修改；append-only JSONL + 生成 Markdown + fail-closed 覆盖检查 | `scripts/change-log.ps1` |
 | `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
-| `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），Slurm/PBS 目前只探测不提交；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
+| `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），`kind: slurm` 走 `sbatch --parsable` → `squeue` 轮询 → 退出码回执（预算到期真的 `scancel`，job id 写进 ledger），PBS/Torque 仍只探测；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
 | `tools/ccfa/new_module.py` | 新增模块的一体化脚手架与清单审计：`create` 一次写模块、PowerShell 包装器、测试存根与六份清单（dispatch / wrapper manifest / docs manifest / CI py_compile / test-impact / README），任一锚点缺失即整体拒写；`audit` 只读报告磁盘与六份清单之间的双向漂移 | `scripts/new-module.ps1` |
 | `tools/ccfa/cost_metrics.py` | 把成本与吞吐指标接到真实产物：derive 从 stage 时间戳、run-log 与 compute-ledger 推出 time_to_first_attempt 与 cost_per_attempt，缺证据时 fail closed 而不是给估计值；check 对台账做漂移校验 | `scripts/cost-metrics.ps1` |
 
@@ -399,7 +399,11 @@ scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20
 
 `kind: ssh` 支持 `port`、`identity_file`、`workdir` 与额外 `options`（例如
 `StrictHostKeyChecking`、`ProxyJump`），执行受墙钟预算约束，并把 `wall_seconds`
-与 `gpu_minutes` 记进 compute ledger。Slurm/PBS 目前只做可达性探测；对它们用
+与 `gpu_minutes` 记进 compute ledger。`kind: slurm` 提交单个作业并轮询到结束：
+作业脚本经 ssh 上传，`sbatch --parsable` 的 job id、`squeue` 观察到的状态、退出码
+与输出尾部一起写进 ledger；预算到期会 `scancel` 并记 `timed_out: true`。这条路径
+已在脚本化调度器（真 sshd，假 sbatch/squeue/scancel）上端到端实测，见
+`docs/scheduler-e2e-2026-10-07.md`；真实集群与 PBS/Torque 仍未验证，对 PBS 用
 `run --backend` 会被明确拒绝，而不是把"没有提交"当成"提交成功"。
 
 整条队列也可以放到远端：在清单里写 `backend: lab-gpu`，或用

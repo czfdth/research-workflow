@@ -1,0 +1,24 @@
+#!/bin/sh
+# Scripted sbatch: assign an id, start the job script in its own session, and
+# print the id the way `sbatch --parsable` does.
+STATE=/var/ccfa-slurm
+mkdir -p "$STATE"
+
+id=$(cat "$STATE/next" 2>/dev/null || echo 1000)
+echo $((id + 1)) > "$STATE/next"
+
+script=""
+for arg in "$@"; do
+    case "$arg" in
+        -*) ;;
+        *) script="$arg" ;;
+    esac
+done
+if [ -z "$script" ]; then
+    echo "sbatch: error: no job script" >&2
+    exit 1
+fi
+
+setsid sh "$script" >/dev/null 2>&1 &
+echo $! > "$STATE/$id.pid"
+echo "$id"
