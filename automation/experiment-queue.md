@@ -17,7 +17,9 @@ $env:PYTHONPATH = "$ROOT/tools"
 
 - `runs`：每个队列项的运行结果数组。
 - `runs[].name`、`runs[].attempts`、`runs[].status`。
-- `stopped`：null、`budget` 或 `retries`。
+- `stopped`：null、`budget`、`gpu-budget`、`retries`、`gate` 或 `wave-failed`。
+- `resumed`：本次是否真的续跑（`--resume` 跳过了已 `complete` 的项时为 true）。
+- `gates`：每个 wave 的 gate 结果数组（`wave`、`command`、`exit_code`、`passed`、`duration_s`）。
 - run-log 中每次 attempt 的 `status`、`exit_code`。
 
 ## 通知规则

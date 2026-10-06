@@ -2107,3 +2107,41 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T101129Z-41807c94df - Export the talk plan as an editable PPTX
+
+- timestamp: `2026-10-06T10:11:29Z`
+- status: `complete`
+- author: `codex`
+- reason: The reference paper-slides contract ships both halves of a deck: a Beamer PDF and an editable PPTX with the speaker notes moved into the PowerPoint notes field, at the standard 16:9 (13.333x7.5in) or 4:3 (10x7.5in) canvas. talk_deck produced the PDF half; this adds tools/ccfa/pptx_export.py so the editable half comes from the same data/talk-plan.yaml and cannot disagree about which slides exist or what the notes say. It maps a Beamer-sized plan onto the standard canvas for its aspect, derives the point sizes from the canvas ratio instead of guessing (the reference uses a flat 1.6x hint; the achieved ratio is reported), writes speaker_notes into the PPT notes field, applies the venue accent colour, and sizes pictures by both width and the vertical room left after the title and bullets - the first live render showed a width-only picture running off the slide, which is the same failure mode the Beamer template had. This adds python-pptx 1.0.2 to tools/requirements.txt and regenerates tools/requirements.lock with the documented uv pip compile command. Verified live: the four-slide deck (title + two content + closing) converted through LibreOffice to a PDF measured at 959.981x540pt = 13.333x7.5in with verify-final reporting zero problems, and the rendered slide was inspected after the picture fix. Determinism caveat recorded in the module: core properties are pinned so core.xml is stable, but zip member timestamps come from the filesystem, so the PPTX is semantically rather than byte-by-byte reproducible.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/pptx-export.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/pptx_export.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/requirements.lock`
+  - `tools/requirements.txt`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_pptx_export.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_pptx_export`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+
+## WC-20261006T101930Z-9178d12181 - Document the queue's resumed and gates output fields
+
+- timestamp: `2026-10-06T10:19:30Z`
+- status: `complete`
+- author: `codex`
+- reason: The full tool suite (which only runs when the lockfile changes) caught a latent doc/code drift from the earlier queue work: automation/experiment-queue.md promises the fields an automation may read, and test_automation_e2e compares that promise against a real run_queue result. Adding wave gating and resume added resumed and gates to the output and gate/wave-failed/gpu-budget to stopped, but the field list was never updated, so the documented set no longer matched the produced set. The list now names both new keys and the full set of stop reasons.
+- files:
+  - `automation/experiment-queue.md`
+- tests:
+  - `tools.tests.test_automation_e2e`
+

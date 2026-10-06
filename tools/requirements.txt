@@ -12,3 +12,7 @@ cvc5==1.3.1
 # only stdlib hashing; this dependency exists so the encrypted path is exercised
 # by tests instead of silently skipping on machines that lack it.
 cryptography==50.0.2
+# Editable PPTX export for the conference deck (`ccfa.pptx_export`). The
+# reference skill ships a PPTX alongside the Beamer PDF; without this the
+# workflow can only produce the PDF half.
+python-pptx==1.0.2

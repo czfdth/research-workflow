@@ -23,6 +23,7 @@ CCFA_WRAPPERS = {
     "poster_html": "poster-html.ps1",
     "poster_measure": "poster-measure.ps1",
     "poster_style": "poster-style.ps1",
+    "pptx_export": "pptx-export.ps1",
     "citation_guard": "citation-guard.ps1",
     "trace_claims": "trace-claims.ps1",
     "latex_check": "latex-check.ps1",

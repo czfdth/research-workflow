@@ -105,6 +105,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/poster_html.py` | 从 `data/poster-plan.yaml` 生成印刷级 `poster.html`：`@page size` 与容器宽高由同一次计算得出（模板要求两处同步，这里构造上不会漂移）、三种版式（60×36 四栏 / 60×36 主视觉 / 24×36 双栏）、venue token pack 照抄参考实现、布局区带 `data-measure-role`；`pdf` 用 Edge/Chrome 无头打印，`check` 校验尺寸同步与角色齐全 | `scripts/poster-html.ps1` |
 | `tools/ccfa/poster_measure.py` | 量印刷后海报的几何：列底落差、最低卡片到页脚的间距、画布填充率；阈值沿用参考实现的 CSS px 口径（1pt = 96/72px），落差 ≥5px 与页脚间距越界是 problem，落差 3–5px 与填充率越界是 advisory | `scripts/poster-measure.ps1` |
 | `tools/ccfa/poster_style.py` | poster HTML 的静态风格门（参考实现 12 条规则的源码子集）：颜色字面量只能在 token 块内、不许内联 `style=`、组件颜色走 `var(--…)`、字体白名单、`font-size` 只能来自 `--fs-*` 尺度、token 档位数告警；需要 computed style 的 4/12 与组件契约 10/11 明确标为 skip 而不是假装通过 | `scripts/poster-style.ps1` |
+| `tools/ccfa/pptx_export.py` | 把 `data/talk-plan.yaml` 导成**可编辑 PPTX**（与 Beamer deck 同一份 plan）：标准 16:9（13.333×7.5in）/ 4:3 画布、`speaker_notes` 写进 PPT notes 字段、venue 主题色、图件按真实像素双向适配；字号按画布比例推导（参考实现用的是 1.6× 经验常数），核心属性钉住时间戳 | `scripts/pptx-export.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
