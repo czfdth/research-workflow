@@ -6,22 +6,33 @@ commands and reading five outputs. This composes the same probes - the full
 readiness gate set, the platform preflight, git/CI and the submission
 countdown - into one Markdown page.
 
-It is read-only: without ``--out`` it prints and writes nothing, and it never
-touches the paper's tracked files.
+Without ``--out`` it prints and writes nothing. With ``--out`` it writes the
+snapshot and also appends one metrics sample (attempt economics plus the
+blocking count) to ``data/metrics-history.jsonl``, which is what turns single
+readings into a trend; ``--no-record`` suppresses that append. The append is
+deliberately tied to a deliberate write: reading the state still changes
+nothing.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
 
+import yaml
+
 from ccfa import doctor as doctor_module
 from ccfa import readiness as readiness_module
 from ccfa.cli import save_text_atomically, tool_error
 from ccfa.verifiers import FORMAL_ENGINES
+
+COST_LEDGER = Path("data") / "cost-ledger.yaml"
+METRICS_HISTORY = Path("data") / "metrics-history.jsonl"
+TREND_LIMIT = 10
 
 
 def discover_paper(repo_root: Path) -> Path:
@@ -81,6 +92,115 @@ def _countdown(deadline: dict) -> str:
     return f"还有 {days_left} 天（{raw}）"
 
 
+def _load_cost_ledger(paper_root: Path) -> dict:
+    path = Path(paper_root) / COST_LEDGER
+    if not path.is_file():
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _metric_value(payload: dict, name: str) -> float | None:
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    item = metrics.get(name)
+    if not isinstance(item, dict) or item.get("status") != "recorded":
+        return None
+    value = item.get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def collect_sample(report: dict, *, today: date) -> dict:
+    """One trend point: attempt economics plus how much is still blocking."""
+
+    payload = _load_cost_ledger(Path(report["paper_root"]))
+    return {
+        "date": today.isoformat(),
+        "ready": bool(report.get("ready")),
+        "blocking": len(report.get("blocking") or []),
+        "time_to_first_attempt": _metric_value(
+            payload,
+            "time_to_first_attempt",
+        ),
+        "cost_per_attempt": _metric_value(payload, "cost_per_attempt"),
+    }
+
+
+def read_history(paper_root: Path) -> list[dict]:
+    """Read the append-only sample file, skipping malformed lines."""
+
+    path = Path(paper_root) / METRICS_HISTORY
+    if not path.is_file():
+        return []
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    samples: list[dict] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            samples.append(item)
+    return samples
+
+
+def append_sample(paper_root: Path, sample: dict) -> Path:
+    path = Path(paper_root) / METRICS_HISTORY
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(sample, ensure_ascii=False, sort_keys=True) + "\n"
+        )
+    return path
+
+
+def render_trend(
+    samples: list[dict],
+    *,
+    limit: int = TREND_LIMIT,
+) -> list[str]:
+    if not samples:
+        return [
+            "- 还没有历史采样。带 `--out` 生成快照时会追加一条到 "
+            f"`{METRICS_HISTORY.as_posix()}`。"
+        ]
+    recent = samples[-limit:]
+    lines = [
+        "| date | ready | blocking | time_to_first_attempt | cost_per_attempt |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for item in recent:
+        ttf = item.get("time_to_first_attempt")
+        cpa = item.get("cost_per_attempt")
+        lines.append(
+            f"| {item.get('date')} | {str(bool(item.get('ready'))).lower()} "
+            f"| {item.get('blocking')} "
+            f"| {ttf if ttf is not None else '—'} "
+            f"| {cpa if cpa is not None else '—'} |"
+        )
+    first, last = recent[0], recent[-1]
+    start, end = first.get("blocking"), last.get("blocking")
+    if isinstance(start, int) and isinstance(end, int):
+        lines.extend(
+            [
+                "",
+                f"- 近 {len(recent)} 次采样里阻塞数 {start} → {end}（{end - start:+d}）。",
+            ]
+        )
+    return lines
+
+
 def render_snapshot(
     report: dict,
     env_problems,
@@ -88,6 +208,7 @@ def render_snapshot(
     env_statuses,
     *,
     today: date,
+    history: list[dict] | None = None,
 ) -> str:
     """Render one Markdown page from the readiness report plus the preflight."""
 
@@ -189,6 +310,15 @@ def render_snapshot(
     lines.extend(
         [
             "",
+            "## 度量趋势",
+            "",
+        ]
+    )
+    lines.extend(render_trend(list(history or [])))
+
+    lines.extend(
+        [
+            "",
             "## Git 与 CI",
             "",
             f"- present: `{git.get('present')}`",
@@ -222,6 +352,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--skip-services", action="store_true")
     parser.add_argument("--skip-verifiers", action="store_true")
     parser.add_argument(
+        "--no-record",
+        action="store_true",
+        help=(
+            "配合 --out 使用：只写快照，不追加度量采样。"
+            "CI 的临时 checkout 用这个，因为那里的追加不会被保留"
+        ),
+    )
+    parser.add_argument(
         "--codex-config",
         default=None,
         help="Codex config.toml 路径，用于发现 provider 服务",
@@ -250,12 +388,19 @@ def main(argv: list[str]) -> int:
             skip_verifiers=args.skip_verifiers,
             codex_config=args.codex_config,
         )
+        if args.out and not args.no_record:
+            recorded = append_sample(
+                paper_root,
+                collect_sample(report, today=today),
+            )
+            print(f"metric sample appended: {recorded}", file=sys.stderr)
         text = render_snapshot(
             report,
             env_problems,
             env_advisories,
             env_statuses,
             today=today,
+            history=read_history(paper_root),
         )
         if args.out:
             out = Path(args.out)

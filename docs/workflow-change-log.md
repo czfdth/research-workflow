@@ -1619,3 +1619,17 @@ rewrite historical entries.
   - `tools.tests.test_research_ledgers`
   - `tools.tests.test_statistics`
 
+## WC-20261006T051037Z-ff81b58303 - Turn the one-page snapshot into a metrics trend
+
+- timestamp: `2026-10-06T05:10:37Z`
+- status: `complete`
+- author: `codex`
+- reason: The attempt metrics were recorded and enforced but only ever shown as one reading. e2e_check now appends one sample (attempt economics plus the blocking count) to data/metrics-history.jsonl whenever a snapshot is deliberately written with --out, and renders the recent samples with the blocking delta; --no-record keeps a one-off snapshot from touching history, and the paper CI passes it because its checkout is throwaway.
+- files:
+  - `tools/ccfa/e2e_check.py`
+  - `tools/tests/test_e2e_check.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_e2e_check`
+  - `tools.tests.test_github_workflows`
+
