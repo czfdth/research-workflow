@@ -139,6 +139,7 @@ class QueueTests(unittest.TestCase):
         sandbox=None,
         backend=None,
         compute_config=None,
+        resume=False,
         allow_sandbox_downgrade=False,
         allow_injected_runner=False,
     ):
@@ -153,6 +154,7 @@ class QueueTests(unittest.TestCase):
             sandbox=sandbox,
             backend=backend,
             compute_config=compute_config,
+            resume=resume,
             allow_sandbox_downgrade=allow_sandbox_downgrade,
             allow_injected_runner=allow_injected_runner,
         )
@@ -331,6 +333,7 @@ class TestRunQueue(QueueTests):
             {
                 "runs": [{"name": "run-1", "attempts": 1, "status": "complete"}],
                 "stopped": None,
+                "resumed": False,
             },
         )
         self.assertEqual(self._records()[0]["status"], "completed")
@@ -484,7 +487,10 @@ class TestRunQueue(QueueTests):
     def test_empty_queue_is_clean(self):
         self._write_queue([])
         result = self._run(RecordingRunner([]))
-        self.assertEqual(result, {"runs": [], "stopped": None})
+        self.assertEqual(
+            result,
+            {"runs": [], "stopped": None, "resumed": False},
+        )
 
     def test_negative_budget_is_rejected(self):
         self._write_queue([self._item()])
@@ -1574,6 +1580,124 @@ class RemoteBackendQueueTests(QueueTests):
             run.call_args.kwargs["compute_config"],
             "data/compute.yaml",
         )
+
+
+class QueueResumeTests(QueueTests):
+    def _state(self):
+        return self.log_dir / ".queue-state"
+
+    def _state_runs(self):
+        return json.loads(self._state().read_text(encoding="utf-8"))["runs"]
+
+    def test_state_is_written_and_is_not_a_run_log_record(self):
+        self._write_queue([self._item()])
+
+        self._run(RecordingRunner([0]))
+
+        self.assertTrue(self._state().is_file())
+        # run_log.check_runs globs *.json in the same directory, so the state
+        # must not use that extension.
+        records = self._records()
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["status"], "completed")
+
+    def test_a_crash_keeps_the_items_that_already_finished(self):
+        self._write_queue(
+            [self._item(name="first"), self._item(name="second")]
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            self._run(RecordingRunner([0, RuntimeError("boom")]))
+
+        self.assertEqual(
+            self._state_runs(),
+            [{"name": "first", "attempts": 1, "status": "complete"}],
+        )
+
+    def test_resume_skips_completed_items_and_reruns_the_rest(self):
+        self._write_queue(
+            [self._item(name="first"), self._item(name="second")]
+        )
+        with self.assertRaises(RuntimeError):
+            self._run(RecordingRunner([0, RuntimeError("boom")]))
+
+        runner = RecordingRunner([0])
+        result = self._run(runner, resume=True)
+
+        self.assertTrue(result["resumed"])
+        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(
+            [entry["name"] for entry in result["runs"]],
+            ["first", "second"],
+        )
+        self.assertEqual(
+            [entry["status"] for entry in result["runs"]],
+            ["complete", "complete"],
+        )
+
+    def test_a_failed_item_is_rerun_on_resume(self):
+        self._write_queue([self._item(name="flaky")])
+        self._run(RecordingRunner([1]))
+
+        runner = RecordingRunner([0])
+        result = self._run(runner, resume=True)
+
+        self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(result["runs"][0]["status"], "complete")
+
+    def test_resume_refuses_a_changed_manifest(self):
+        self._write_queue([self._item(name="one")])
+        self._run(RecordingRunner([0]))
+        self._write_queue([self._item(name="one"), self._item(name="two")])
+
+        with self.assertRaisesRegex(ValueError, "不能安全续跑"):
+            self._run(RecordingRunner([0]), resume=True)
+
+    def test_resume_without_prior_state_runs_normally(self):
+        self._write_queue([self._item()])
+        runner = RecordingRunner([0])
+
+        result = self._run(runner, resume=True)
+
+        self.assertFalse(result["resumed"])
+        self.assertEqual(len(runner.calls), 1)
+
+    def test_a_corrupt_state_file_fails_closed_on_resume(self):
+        self._write_queue([self._item()])
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self._state().write_text("{not json", encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "续跑状态不可读"):
+            self._run(RecordingRunner([0]), resume=True)
+
+    def test_a_plain_restart_ignores_prior_state(self):
+        self._write_queue([self._item(name="one")])
+        self._run(RecordingRunner([0]))
+
+        runner = RecordingRunner([0])
+        result = self._run(runner)
+
+        self.assertFalse(result["resumed"])
+        self.assertEqual(len(runner.calls), 1)
+
+    def test_cli_passes_resume_through(self):
+        self._write_queue([self._item()])
+        argv = [
+            "queue",
+            "run",
+            "--queue",
+            str(self.queue_path),
+            "--log-dir",
+            str(self.log_dir),
+            "--resume",
+        ]
+
+        with mock.patch("ccfa.queue.run_queue", return_value={"runs": []}) as run:
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                code = main(argv)
+
+        self.assertEqual(code, 0)
+        self.assertTrue(run.call_args.kwargs["resume"])
 
 
 if __name__ == "__main__":

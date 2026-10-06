@@ -27,6 +27,7 @@ deliberately from ``run-log run``, which passes stdio through.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -51,10 +52,14 @@ except ImportError:  # pragma: no cover - POSIX
     msvcrt = None
 
 from ccfa import compute
-from ccfa.cli import tool_error
+from ccfa.cli import save_text_atomically, tool_error
 from ccfa.run_log import log_metrics, log_resource_usage, run_command
 
 QUEUE_VERSION = 1
+# Deliberately not ``.json``: run_log.check_runs globs ``*.json`` in the same
+# directory, and a state file with that extension would be read as a run record.
+QUEUE_STATE_NAME = ".queue-state"
+QUEUE_STATE_VERSION = 1
 SANDBOX_MODES = ("none", "policy", "docker")
 GPU_UTILIZATION_THRESHOLD = 5
 GPU_SAMPLE_INTERVAL_S = 1.0
@@ -266,6 +271,73 @@ def load_queue(path: Path) -> list[dict]:
     """Load and normalize a queue manifest."""
     items, _options = _load_queue_document(path)
     return items
+
+
+def queue_digest(items: list[dict], options: dict) -> str:
+    """Bind a resume state to the exact work it describes.
+
+    Resuming against an edited manifest would silently skip, or silently
+    re-run, the wrong items, so the digest is checked before anything runs.
+    """
+
+    payload = json.dumps(
+        {"items": items, "options": options},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def state_path(log_dir: Path) -> Path:
+    return Path(log_dir) / QUEUE_STATE_NAME
+
+
+def _load_queue_state(path: Path) -> dict | None:
+    """Read resume state, failing closed on anything unexpected."""
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"队列续跑状态不可读 {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"队列续跑状态顶层必须是对象: {path}")
+    if payload.get("schema_version") != QUEUE_STATE_VERSION:
+        raise ValueError(
+            f"队列续跑状态 schema_version 必须是 {QUEUE_STATE_VERSION}: "
+            f"{payload.get('schema_version')!r}"
+        )
+    digest = payload.get("queue_digest")
+    if not isinstance(digest, str) or not digest:
+        raise ValueError(f"队列续跑状态缺少 queue_digest: {path}")
+    runs = payload.get("runs")
+    if not isinstance(runs, list) or not all(
+        isinstance(entry, dict) for entry in runs
+    ):
+        raise ValueError(f"队列续跑状态 runs 必须是对象列表: {path}")
+    return payload
+
+
+def _write_queue_state(
+    path: Path,
+    *,
+    digest: str,
+    runs: list[dict],
+    stopped: str | None,
+) -> None:
+    payload = {
+        "schema_version": QUEUE_STATE_VERSION,
+        "queue_digest": digest,
+        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "runs": runs,
+        "stopped": stopped,
+    }
+    save_text_atomically(
+        path,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        description="队列续跑状态",
+    )
 
 
 class QueueLock:
@@ -731,6 +803,7 @@ def run_queue(
     sandbox: str | None = None,
     backend: str | None = None,
     compute_config: Path | str | None = None,
+    resume: bool = False,
     allow_sandbox_downgrade: bool = False,
     allow_injected_runner: bool = False,
 ) -> dict:
@@ -750,6 +823,14 @@ def run_queue(
     manifest that declares ``docker`` requires ``allow_sandbox_downgrade``.
     Injected runners are a test seam: policy and Docker modes reject them
     unless ``allow_injected_runner`` is set explicitly.
+
+    ``resume=True`` skips items whose last recorded outcome in
+    ``<log-dir>/.queue-state`` is ``complete``, so a killed orchestrator does
+    not redo finished work. The state is bound to a digest of the normalized
+    items and queue options, so resuming against an edited manifest is a hard
+    error instead of silently skipping the wrong thing. Only ``complete``
+    counts: a failed item is retried. The wall-clock budget restarts on each
+    invocation.
     """
     queue_path = Path(queue_path)
     queue_root = queue_path.parent
@@ -757,6 +838,24 @@ def run_queue(
     if budget_s is not None and budget_s < 0:
         raise ValueError("budget_s 必须是非负数")
     items, options = _load_queue_document(queue_path)
+    digest = queue_digest(items, options)
+    resume_state_path = state_path(log_dir)
+    prior_runs: list[dict] = []
+    if resume:
+        state = _load_queue_state(resume_state_path)
+        if state is not None:
+            if state["queue_digest"] != digest:
+                raise ValueError(
+                    "队列清单或队列选项已变化，不能安全续跑："
+                    f"{resume_state_path} 属于另一版清单；"
+                    "请换一个 --log-dir，或去掉 --resume 从头重跑"
+                )
+            prior_runs = list(state["runs"])
+    done = {
+        index
+        for index, entry in enumerate(prior_runs)
+        if entry.get("status") == "complete"
+    }
     sandbox_mode = options["sandbox"] if sandbox is None else sandbox
     if sandbox_mode not in SANDBOX_MODES:
         raise ValueError(
@@ -866,10 +965,26 @@ def run_queue(
         gpu_total = 0.0
         runs: list[dict] = []
         stopped: str | None = None
+
+        def record_result(entry: dict) -> None:
+            # Persist after every recorded outcome so a crash keeps the items
+            # that already finished. The run-log record is written first, so
+            # "complete" in the state always has its evidence on disk.
+            runs.append(entry)
+            _write_queue_state(
+                resume_state_path,
+                digest=digest,
+                runs=runs,
+                stopped=stopped,
+            )
+
         for index, item in enumerate(items):
+            if index in done:
+                runs.append(dict(prior_runs[index]))
+                continue
             if gpu_budget_s is not None and gpu_total >= gpu_budget_s:
                 for skipped in items[index:]:
-                    runs.append(
+                    record_result(
                         {
                             "name": skipped["name"],
                             "attempts": 0,
@@ -880,7 +995,7 @@ def run_queue(
                 break
             if budget_s is not None and now() - started >= budget_s:
                 for skipped in items[index:]:
-                    runs.append(
+                    record_result(
                         {
                             "name": skipped["name"],
                             "attempts": 0,
@@ -1055,7 +1170,7 @@ def run_queue(
                     stopped = "retries"
                 break
 
-            runs.append(
+            record_result(
                 {
                     "name": item["name"],
                     "attempts": attempts,
@@ -1064,7 +1179,7 @@ def run_queue(
             )
             if gpu_exhausted and index + 1 < len(items):
                 for skipped in items[index + 1 :]:
-                    runs.append(
+                    record_result(
                         {
                             "name": skipped["name"],
                             "attempts": 0,
@@ -1076,7 +1191,14 @@ def run_queue(
             if stopped == "retries":
                 break
 
-        return {"runs": runs, "stopped": stopped}
+        # Final write also covers an empty queue and the terminal `stopped`.
+        _write_queue_state(
+            resume_state_path,
+            digest=digest,
+            runs=runs,
+            stopped=stopped,
+        )
+        return {"runs": runs, "stopped": stopped, "resumed": bool(done)}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1109,6 +1231,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="compute 配置路径；默认 <队列根>/data/compute.yaml",
     )
     run.add_argument(
+        "--resume",
+        action="store_true",
+        help="跳过上一轮已 complete 的队列项；清单变化会拒绝续跑",
+    )
+    run.add_argument(
         "--allow-sandbox-downgrade",
         action="store_true",
         help="显式允许 CLI 覆盖清单里的 docker 沙箱；默认拒绝",
@@ -1127,6 +1254,7 @@ def main(argv: list[str]) -> int:
             sandbox=args.sandbox,
             backend=args.backend,
             compute_config=args.compute_config,
+            resume=args.resume,
             allow_sandbox_downgrade=args.allow_sandbox_downgrade,
         )
     except (OSError, ValueError) as exc:

@@ -104,7 +104,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/governance_map.py` | 校验 risk→control→evidence status→residual gap，以及 machine-readable data flows 和明文凭据 | `scripts/governance-map.ps1` |
 | `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
-| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试、stall 看门狗与失败停止规则；`backend` 可指向 `data/compute.yaml` 的 `kind: ssh` 后端，让整条队列在远端执行（超时/重试/流式输出照旧；远端 GPU 计量未支持，会拒绝 `gpu_budget_s`） | `scripts/queue.ps1` |
+| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试、stall 看门狗与失败停止规则；`backend` 可指向 `data/compute.yaml` 的 `kind: ssh` 后端，让整条队列在远端执行；`--resume` 依据 `<log-dir>/.queue-state` 跳过已 complete 的项，清单变化即拒绝续跑（远端 GPU 计量未支持，会拒绝 `gpu_budget_s`） | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 | `tools/ccfa/stages.py` | stage/gate 状态机的唯一来源；CLI 把整表以 JSON 输出，供工作台等外部消费者读取而不必 import `ccfa` | `scripts/stages.ps1` |
@@ -365,6 +365,11 @@ scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20
 输出语义不变，run-log 的 `policy.backend` 会记下它跑在哪个后端；远端 GPU 计量
 尚未实现，所以 `gpu_budget_s` 与远端后端同时出现会被拒绝，而不是拿本机
 `nvidia-smi` 冒充远端用量。
+
+队列被中断（崩溃、断电、手动 kill）后可用 `--resume` 续跑：状态写在
+`<log-dir>/.queue-state`，只跳过上一轮真正 `complete` 的项，失败的项会重跑。
+状态与清单的规范化摘要绑定，改过清单再续跑会直接报错退出 2，而不是悄悄跳过
+或重跑错的东西。不加 `--resume` 时仍然从头重跑。
 
 ## 跑测试
 

@@ -1844,3 +1844,18 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
   - `tools.tests.test_queue`
 
+## WC-20261006T081236Z-99184b2624 - Make the experiment queue resumable after a crash
+
+- timestamp: `2026-10-06T08:12:36Z`
+- status: `complete`
+- author: `codex`
+- reason: The queue re-ran every item from the top after an interruption, so a long multi-item sweep lost all finished work. run_queue now persists progress to <log-dir>/.queue-state after each recorded outcome (atomically, and only after the run-log record exists) and --resume skips items whose last status is complete; failed or skipped items still run. The state is bound to a digest of the normalized items plus queue options, so resuming against an edited manifest is a hard exit 2 instead of silently skipping or re-running the wrong work. The file deliberately has no .json extension because run_log.check_runs globs *.json in the same directory and would try to parse it as a run record. Default behaviour without --resume is unchanged (fresh run, state overwritten). Verified live: killed the queue process during item 2, state kept only item 1 complete, --resume then ran items 2 and 3 and the remote marker file held ONE/TWO/THREE exactly once, and an edited manifest was refused with exit 2.
+- files:
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `tools/ccfa/queue.py`
+  - `tools/tests/test_queue.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_queue`
+
