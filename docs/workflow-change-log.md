@@ -2636,3 +2636,14 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `tools.tests.test_compute + test_compute_slurm_e2e + test_queue + test_experiment_loop + test_readiness + test_docs_consistency + test_github_workflows (275 tests, OK, 2 skipped = opt-in E2E)`
   - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
 
+## WC-20261006T170037Z-ede812d71a - 在 P2 对比报告里记录三项升级的完成状态与仍然未证明的部分
+
+- timestamp: `2026-10-06T17:00:37Z`
+- status: `complete`
+- author: `codex`
+- reason: 报告里的第 10/11/12 条正是本轮做的三件事：成本吞吐闭环、HPC 端到端路径、pip 化与模块脚手架。逐条写清已完成什么、证据在哪、以及仍未验证的部分（真实集群、PBS、queue 只接 ssh、旗舰论文两条指标为 not-applicable 的原因），避免报告停留在旧的缺口清单上。
+- files:
+  - `docs/research-workflow-full-test-and-oss-comparison-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (README/文档路径一致性，随 472 项批量通过)`
+

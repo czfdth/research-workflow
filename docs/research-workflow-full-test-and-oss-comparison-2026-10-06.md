@@ -343,8 +343,25 @@ uvx pip-audit@2.10.1 -r app/requirements.lock --disable-pip --progress-spinner o
 ### P2：中期能力建设
 
 10. 成本吞吐闭环：把 `time_to_first_attempt`、`cost_per_attempt` 从占位值接到真实 provider 用量与 run-log，按阶段设预算告警。
+    **已接通（2026-10-07）**：新增 `ccfa.cost_metrics`，`derive` 从 `ccfa.yaml` 的
+    grounded 时间戳（或计划里的 `Frozen at:` 行）、`experiments/log` 的非 build
+    运行与 `compute-ledger` + `data/compute.yaml` 的 `pricing` 反推两个指标，
+    推不出来就写 `not-applicable` 并点名缺哪个文件，`check` 对台账做双向漂移校验；
+    `readiness` 的 cost-ledger 门现在真的跑这个推导，`ccfa.state` 之后的阶段迁移
+    写完整 ISO-8601 时间戳。注意：旗舰论文当前两条都是 `not-applicable`——它以
+    日期而非时刻冻结计划，且是一篇没有非 build 运行的 SoK；这不是占位值，而是
+    有据可查的"不适用"。
 11. 远程算力：`queue` 已支持 SSH/SLURM/PBS 后端，但缺一条经过验证的端到端 HPC 路径；补一份可复现实验与故障排查手册。
+    **已有一条验证过的路径（2026-10-07）**：`kind: slurm` 现在真的走
+    `sbatch --parsable` → `squeue`/退出码轮询 → `scancel` 预算击杀，job id 与状态
+    写进 compute-ledger；实测记录与"这次没证明什么"见
+    `docs/scheduler-e2e-2026-10-07.md`。仍未验证：真实集群与 PBS/Torque；
+    `ccfa.queue` 依旧只接 `kind: ssh`（它的 stall 看门狗与波次 gate 按单条 ssh 写的）。
 12. 分发工程：考虑把核心 gate 拆成可 pip 安装的 `ccfa-gates`，用插件 entry point 扩展；为"新增一个 CLI 模块"提供脚手架生成器，自动更新 wrapper、测试清单、CI py_compile、README、dispatch、test_impact 六处触点。
+    **已完成（2026-10-07）**：`pyproject.toml` 增加 `smt/crypto/deck/poster/all`
+    extras，干净 venv 里 `uv pip install .` 后 `ccfa <gate>` 可直接跑；
+    `ccfa new-module create` 一次写模块、wrapper、测试存根与六份清单（任一锚点缺失
+    整体拒写），`audit` 只读报告双向漂移，`cost_metrics` 就是它的第一个产物。
 13. 快照可读性：e2e 趋势表标注采样时间；当历史采样与当前快照阻塞数不同时，明确显示"历史 vs 当前"，避免读者误判。
 
 ## 8. 选型参考
