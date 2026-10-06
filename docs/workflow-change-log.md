@@ -2755,3 +2755,14 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `tools.tests.test_argument_audit (36 tests, OK；含 9 项新扫描测试)`
   - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
 
+## WC-20261006T193709Z-4aaedc5ece - cross-review prompt now states the human-review criterion boundary
+
+- timestamp: `2026-10-06T19:37:09Z`
+- status: `complete`
+- author: `codex`
+- reason: The independent review twice inferred standards the workflow does not impose (independent third-party signers, completed human dual coding). The prompt now states the judged boundary: the human signer may be the single author (only model signers are rejected), and dual coding is a declared future-work item, not a review_cleared criterion.
+- files:
+  - `tools/ccfa/cross_review.py`
+- tests:
+  - `tools.tests.test_cross_review (99 tests)`
+
