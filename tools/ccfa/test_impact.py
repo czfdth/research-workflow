@@ -86,6 +86,12 @@ def requires_latex_engine(selection: Selection) -> bool:
 
 
 _TOOLS_EXACT = {
+    "tools/ccfa/new_module.py": (
+        "tools.tests.test_new_module",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+        "tools.tests.test_github_workflows",
+    ),
     "tools/ccfa/experiment_loop.py": (
         "tools.tests.test_docs_consistency",
         "tools.tests.test_experiment_loop",

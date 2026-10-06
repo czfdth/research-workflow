@@ -2547,3 +2547,37 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T161832Z-cf1444e5b0 - 新增 new-module 脚手架把六份模块清单一次接好，并把工作流发布为可安装的 Python 包（含 gate 家族 extras）
+
+- timestamp: `2026-10-06T16:18:32Z`
+- status: `complete`
+- author: `codex`
+- reason: 新增一个 tools/ccfa 模块要同时改 dispatch、两份测试清单、CI py_compile、test_impact 与 README，手工分步落地正是让 CI 变红的那类排序错误；脚手架先算全部改动再落盘，audit 提供只读双向漂移报告。同时工作流此前只能靠仓库内 venv 运行，pyproject.toml 只声明四个基础依赖，Z3/cvc5、cryptography、python-pptx、playwright 这些 gate 依赖没有 extras，也没有验证过 pip 安装后的 console script 能跑真实 gate。
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `pyproject.toml`
+  - `scripts/new-module.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/new_module.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_new_module.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `ccfa new-module audit --root . -> problem_count=0`
+  - `tools.tests.test_new_module (12 tests, OK)`
+  - `tools.tests.test_scripts + test_docs_consistency + test_github_workflows + test_test_impact + test_dispatch (277 tests, OK)`
+  - `干净 venv + uv pip install . -> ccfa --version / ccfa list / ccfa new-module audit --root <repo> problem_count=0; Provides-Extra=[smt,crypto,deck,poster,all]`
+
+## WC-20261006T161858Z-7e3d2769db - gitignore 掉 pip install . 落下的 *.egg-info 目录
+
+- timestamp: `2026-10-06T16:18:58Z`
+- status: `complete`
+- author: `codex`
+- reason: 在仓库里就地 pip install . 会让 setuptools 在 tools/ 下写 ccfa_research_workflow.egg-info，change-log check 会把它当成未记账的工作流改动；这是构建产物，不是源码，忽略后不再需要人工清理。
+- files:
+  - `.gitignore`
+- tests:
+  - `scripts/change-log.ps1 check --base origin/master -> problem_count=0`
+

@@ -38,3 +38,6 @@ __pycache__/
 # scripts/build-workbench.ps1.
 /build/
 /dist/
+# setuptools metadata left behind by an in-place `pip install .` of the
+# workflow package; the wheel itself is what matters, not this scratch dir.
+*.egg-info/

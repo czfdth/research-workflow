@@ -167,6 +167,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/change_log.py` | 强制记录每次工作流修改；append-only JSONL + 生成 Markdown + fail-closed 覆盖检查 | `scripts/change-log.ps1` |
 | `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
 | `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），Slurm/PBS 目前只探测不提交；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
+| `tools/ccfa/new_module.py` | 新增模块的一体化脚手架与清单审计：`create` 一次写模块、PowerShell 包装器、测试存根与六份清单（dispatch / wrapper manifest / docs manifest / CI py_compile / test-impact / README），任一锚点缺失即整体拒写；`audit` 只读报告磁盘与六份清单之间的双向漂移 | `scripts/new-module.ps1` |
 
 ## 阶段到命令速查
 
@@ -359,6 +360,20 @@ python -m venv tools/.venv
 $env:PYTHONPATH = (Resolve-Path tools).Path
 & tools/.venv/Scripts/python.exe -m unittest discover -s tools/tests -t tools -v
 ```
+
+同一批命令也可以当作普通 Python 包装进任意 venv（不需要 PowerShell，也不需要 `PYTHONPATH`）：
+
+```powershell
+uv pip install .                              # 推荐
+pip install .                                 # 等价，但依赖下载走 PyPI 直连
+pip install ".[smt,crypto,deck,poster]"       # 可选 gate 家族，all 一次装齐
+ccfa list                                     # 控制台入口
+ccfa new-module audit --root <仓库根>          # 装好就能跑真实 gate
+```
+
+可选依赖按 gate 家族拆分：`smt`（Z3 + cvc5 双引擎形式化检查）、`crypto`（skillpack 加密打包）、`deck`（PPTX 导出）、`poster`（海报渲染门），`all` 一次装齐。基础安装只带四个所有确定性检查都要用的依赖。
+
+本机实测（2026-10-07）：干净 venv + `uv pip install .` 11 秒装完；`ccfa --version`、`ccfa list`、`ccfa new-module audit --root <仓库根>`（`problem_count=0`）全部通过，`Provides-Extra` 为 `smt/crypto/deck/poster/all`。同一台机器上普通 `pip install .` 会卡在 PyMuPDF（19.8 MB）的下载上，两者功能一致，只是取包速度不同。
 
 交付格式、排版、数据版本与 notebook 依赖不是 Python 包，用便携版安装器一次补齐（下载走可达镜像，解包到 `%LOCALAPPDATA%\codex-tools`，不改系统目录）：
 

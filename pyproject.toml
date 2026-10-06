@@ -14,6 +14,22 @@ dependencies = [
     "PyMuPDF>=1.24",
 ]
 
+# The base install carries only what every deterministic check needs. The
+# heavier gates are optional so `pip install ccfa-research-workflow` stays
+# small; each extra is named after the gate family that imports it:
+#   smt     -> ccfa.formal_check / ccfa.verifiers (Z3 + cvc5 agreement)
+#   crypto  -> ccfa.skillpack --encrypt (AES-256-GCM)
+#   deck    -> ccfa.pptx_export (editable conference deck)
+#   poster  -> ccfa.poster_style render gate (computed styles)
+[project.optional-dependencies]
+smt = ["z3-solver>=5.1", "cvc5>=1.3"]
+crypto = ["cryptography>=50"]
+deck = ["python-pptx>=1.0"]
+poster = ["playwright>=1.63"]
+all = [
+    "ccfa-research-workflow[smt,crypto,deck,poster]",
+]
+
 [project.scripts]
 ccfa = "ccfa.dispatch:run"
 
