@@ -81,6 +81,11 @@ MAX_TITLE_CHARS = 60
 MIN_NOTES_CHARS = 20
 MEASURE_WARN_FILL = 0.9
 PDF_DIM_TOLERANCE_IN = 0.05
+PAGE_SIZE_RE = re.compile(
+    r"@page\s*\{[^}]*?size:\s*([\d.]+)\s*(in|cm|mm)\s+([\d.]+)\s*(in|cm|mm)",
+    re.IGNORECASE,
+)
+PAGE_UNITS = {"in": 1.0, "cm": 1 / 2.54, "mm": 1 / 25.4}
 # A figure is checked by what it *is*, not by how many bytes it happens to
 # compress to: a flat-colour PNG is legitimately tiny, and a 4096-byte text file
 # is not a figure at all.
@@ -672,6 +677,29 @@ def canvas_from_plan(paper_root: Path) -> tuple[float, float, list[dict]]:
     return fmt["width_in"], fmt["height_in"], findings
 
 
+def canvas_from_html(path: Path) -> tuple[float, float]:
+    """Read the expected canvas from the source's own ``@page`` rule.
+
+    This is the reference skill's anti-drift mechanism: the PDF is checked
+    against the size the document declares, not against a default that could be
+    wrong by itself.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"无法读取 {path}: {exc}") from exc
+    match = PAGE_SIZE_RE.search(text)
+    if match is None:
+        raise ValueError(
+            f"{path} 里没有 `@page {{ size: <W><unit> <H><unit> }}`；"
+            "请改用 --canvas 显式给尺寸"
+        )
+    width = float(match.group(1)) * PAGE_UNITS[match.group(2).lower()]
+    height = float(match.group(3)) * PAGE_UNITS[match.group(4).lower()]
+    return width, height
+
+
 class PdfInfoMissing(ValueError):
     """``pdfinfo`` is not installed; the caller may use the library fallback."""
 
@@ -858,6 +886,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--pdf", required=True)
     verify.add_argument("--canvas", default=None, help="如 13.333x7.5in")
     verify.add_argument("--from-plan", default=None, metavar="PAPER_ROOT")
+    verify.add_argument(
+        "--from-html",
+        default=None,
+        metavar="HTML",
+        help="从 HTML 的 @page size 读取期望画布，避免默认值猜错",
+    )
     verify.add_argument("--pages", type=int, required=True)
     verify.add_argument("--max-size-mb", type=float, default=40.0)
     verify.add_argument("--dim-tol-in", type=float, default=PDF_DIM_TOLERANCE_IN)
@@ -888,14 +922,25 @@ def main(argv: list[str]) -> int:
                 )
             )
             return 1 if report["hard_failures"] else 0
-        if args.canvas and args.from_plan:
-            return tool_error("--canvas 与 --from-plan 互斥，只能给一个")
-        if not args.canvas and not args.from_plan:
+        given = [
+            name
+            for name, value in (
+                ("--canvas", args.canvas),
+                ("--from-plan", args.from_plan),
+                ("--from-html", args.from_html),
+            )
+            if value
+        ]
+        if len(given) > 1:
+            return tool_error(f"{' 与 '.join(given)} 互斥，只能给一个")
+        if not given:
             return tool_error(
-                "verify-final 需要 --canvas 或 --from-plan，"
+                "verify-final 需要 --canvas、--from-plan 或 --from-html，"
                 "以免默认画布悄悄判断错误"
             )
-        if args.from_plan:
+        if args.from_html:
+            expected = canvas_from_html(Path(args.from_html))
+        elif args.from_plan:
             width, height, format_findings = canvas_from_plan(
                 Path(args.from_plan)
             )

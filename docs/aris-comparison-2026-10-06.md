@@ -102,7 +102,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
-| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成器 + 版式润色已对齐（`talk_gates` / `talk_deck` / `slides_polish`）；PPTX 与 poster HTML 仍缺 |
+| 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | 度量硬门 + Beamer 生成器 + 版式润色 + poster HTML 生成与打印已对齐（`talk_gates` / `talk_deck` / `slides_polish` / `poster_html`）；PPTX 仍缺 |
 | 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
 | 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |
@@ -214,7 +214,7 @@ cross-review:   review-prompt-drift, review-blocking, review-stale-finding
 | 1 | 算力接入面 | `data/compute.yaml` 仍为 `backends: []` | 唯一的能力级缺口。ARIS 有本机/SSH/Vast/Modal/启智 + 队列（OOM 重试、wave gating、crash-safe state）+ W&B 训练监控 + `/system-profile` |
 | 2 | 自演化落地门 | **已关闭**（见上表） | 残留一条：真模型跨族 jury 还没在本机跑通——`glm-4-flash` 返回的是 `verdict=block` 的 key=value 而不是 JSON（被契约检查拒绝并 exit 2），`glm-4-plus` 与 OpenRouter 免费模型则撞上间歇性的 MCP `Auth required`。quorum 逻辑目前由 27 项单元测试覆盖 |
 | 3 | 图件生成 | **核心已关闭**（见上表） | `figure_spec` 已实现确定性 JSON/YAML→SVG；残留 `illustration` / `mermaid` / `poster HTML` 三类生成器没有对应实现 |
-| 4 | 投稿后产出深度 | **度量硬门与 Beamer 生成器已关闭**（见上表） | 先按 `run_gates.py` / `poster_check.py` / `_posterly/measure.py` / `_posterly/verify_final.py` 源码实现了 4 段 gate（缺 `style`，本地没有 design token 体系）；再按 `paper-slides/SKILL.md` 的产出契约实现了 `talk_deck`（venue 配色、每页一帧、`\note`、独立 notes、状态文件、CJK→xelatex+ctex）。仍缺 PPTX、slides-polish、poster HTML |
+| 4 | 投稿后产出深度 | **已关闭除 PPTX 外的全部** | 按 `run_gates.py` / `poster_check.py` / `_posterly/measure.py` / `_posterly/verify_final.py` 实现 4 段 gate（缺 `style`，本地无 design token 体系）；按 `paper-slides/SKILL.md` 实现 `talk_deck`；按 `slides-polish/SKILL.md` 实现 `slides_polish`（不改内容可校验）；按 `paper-poster-html` 的模板约束 + `tokens/*.json` + `_posterly/verify_final.py` 的 `--from-html` 机制实现 `poster_html`（`@page` 与容器尺寸构造上同步、Edge 无头打印、按海报自身声明核对 PDF）。仅 PPTX 导出未实现 |
 | 5 | 专利链路 | 无专利模块 | ARIS 有 9 个 skill 的完整链路 |
 | 6 | 领域适配器 | 无 | ARIS 有 communications / robotics / architecture-EDA |
 | 7 | 知识库自动化 | `library/wiki/` 仍 3 个文件 | ARIS 有生命周期 hook 自动 ingest + `/wiki-enrich` |

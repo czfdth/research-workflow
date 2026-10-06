@@ -556,6 +556,34 @@ class CanvasTests(unittest.TestCase):
                     module._parse_canvas(value)
 
 
+class CanvasFromHtmlTests(unittest.TestCase):
+    def test_reads_inches_centimetres_and_millimetres(self):
+        cases = (
+            ("@page { size: 60in 36in; }", (60.0, 36.0)),
+            ("@page { size: 24in 36in; margin: 0; }", (24.0, 36.0)),
+            ("@page { size: 100cm 50cm; }", (100 / 2.54, 50 / 2.54)),
+            ("@page { size: 254mm 127mm; }", (10.0, 5.0)),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for text, expected in cases:
+                with self.subTest(text=text):
+                    path = Path(tmp) / "poster.html"
+                    path.write_text(text, encoding="utf-8")
+
+                    width, height = module.canvas_from_html(path)
+
+                    self.assertAlmostEqual(width, expected[0], places=3)
+                    self.assertAlmostEqual(height, expected[1], places=3)
+
+    def test_a_missing_page_rule_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "poster.html"
+            path.write_text("<html></html>", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "@page"):
+                module.canvas_from_html(path)
+
+
 class TalkGatesCliTests(unittest.TestCase):
     def test_verify_final_requires_a_declared_canvas(self):
         code = module.main(

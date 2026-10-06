@@ -2023,3 +2023,33 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_slides_polish`
 
+## WC-20261006T094347Z-fcd32880db - Generate and verify a print-ready HTML poster
+
+- timestamp: `2026-10-06T09:43:47Z`
+- status: `complete`
+- author: `codex`
+- reason: The last structural gap in the post-submission column was the poster. Read ARIS's paper-poster-html sources: templates/README.md, the three scaffold canvases, the six templates/tokens/*.json packs, and the _posterly/verify_final.py --from-html mechanism. The template README is explicit that the @page size and the poster container width/height must stay in sync and that every layout-critical element must keep its data-measure-role, because the measurement gate finds regions through those attributes. tools/ccfa/poster_html.py generates that HTML from data/poster-plan.yaml so the two sizes come from one computation and cannot drift; it ships the six token packs verbatim, supports the three documented layouts, marks poster/column/footer regions, and check re-derives the two sizes and requires all three roles. talk_gates verify-final gained --from-html: it parses the poster's own @page rule and checks the PDF against it, which is the reference's anti-drift rule (no default canvas that could be wrong by itself). The pdf subcommand prints through Edge/Chrome headless and reports rendered=false when no browser can print instead of pretending. Verified live on a Chinese ICML four-column poster: build produced 60x36in HTML with the figure copied, check was clean, Edge printed it, and verify-final --from-html measured the PDF at 4320x2592pt = 60x36in, exactly the declared canvas; the rendered PNG was inspected. Still not implemented: PPTX export, and the headless-Chromium column-alignment/fill measurement this host has no chain for.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/poster-html.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/poster_html.py`
+  - `tools/ccfa/talk_gates.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_poster_html.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_talk_gates.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_poster_html`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_talk_gates`
+  - `tools.tests.test_test_impact`
+

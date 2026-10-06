@@ -255,3 +255,35 @@ Beamer 的 16:9 页只有 16cm 宽。若照抄字号或按比例缩字号，`tal
 （模拟外部工具产出的 deck）→ `run` 补回约束、快照 `main_pre_polish.tex`、输出
 `main_polished.tex`、渲染 4 页 PNG、changelog 记下那一行的前后 diff；把输出里的
 `Intro` 改成 `Hacked` 后 `check` 报 `slides-polish-unauthorised-change`。
+
+## 十一、第十三切片：HTML 海报（读源码后对齐）
+
+读了 `skills/paper-poster-html/`：`templates/README.md`、三种模板的 `@page` 与
+`data-measure-role` 约定、`templates/tokens/*.json` 六个 token pack，以及
+`_posterly/verify_final.py` 的 `--from-html` 机制。
+
+模板 README 里最要紧的一句话是：
+
+> TWO places that must stay in sync -- the `@page { size: ... }` rule and the
+> poster container's width/height.
+
+以及：每个布局关键元素必须带 `data-measure-role`，**不许删**，因为测量 gate 靠它定位。
+
+据此实现 `tools/ccfa/poster_html.py` + 16 项测试：
+
+| 契约 | 实现 |
+| --- | --- |
+| 两个尺寸必须同步 | 由**同一次计算**同时生成 `@page { size: W H }` 与 `.poster { width/height }`，构造上不可能漂移；`check` 仍复算并拒绝不一致 |
+| 三种版式 | `landscape_4col`(60×36)、`landscape_hero`(60×36)、`portrait_2col`(24×36)，尺寸与栏数照抄 README 表 |
+| `data-measure-role` | `poster` / `column` / `footer` 齐备；`check` 缺一即 problem |
+| venue token pack | 六个 pack（generic/neurips/icml/iclr/cvpr/acl）逐值照抄；未知 venue 回退 generic 并报告 |
+| `--from-html` 反漂移 | `talk_gates verify-final --from-html` 解析海报自己的 `@page`，用它核对 PDF，而不是默认值 |
+
+**实测**：一份中文 ICML 四栏海报 → `build`（60×36in + token pack + 图件）→
+`check` 0 problem → `pdf`（Edge 无头打印）→ `verify-final --from-html` 得到
+**4320×2592pt = 60×36in**，与海报自己的 `@page` 完全一致；PDF 转 PNG 目视检查，
+标题、强调色、四栏卡片与页脚都正常。
+
+**仍未对齐**：PPTX 导出（本地无 python-pptx）；以及 ARIS 用 headless Chromium
+打印仿真量出来的「列底对齐 / 到页脚间距 / 画布填充 95–101%」那套 HTML 测量 gate——
+本机没有那条链路，所以我只保证**尺寸与结构正确**，不假装已经量过填充率。
