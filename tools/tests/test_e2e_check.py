@@ -5,13 +5,10 @@ readings into a trend: reading the attempt metrics out of the cost ledger,
 appending one sample per deliberate write, and rendering the delta.
 """
 
-import json
 import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
-
-import yaml
 
 from ccfa import e2e_check
 
