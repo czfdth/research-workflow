@@ -404,7 +404,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     probe = sub.add_parser("probe", help="探测本机 CPU/内存/GPU/Docker 与远程后端")
     probe.add_argument("--paper-root", default=".")
-    sub.add_parser("check", help="以 problem/advisory 形式报告算力缺口")
+    check_parser = sub.add_parser(
+        "check",
+        help="以 problem/advisory 形式报告算力缺口",
+    )
+    check_parser.add_argument("--paper-root", default=".")
 
     plan_parser = sub.add_parser("plan", help="判断某预算能否被某个后端承接")
     plan_parser.add_argument("--paper-root", default=".")
@@ -433,7 +437,7 @@ def main(argv: list[str]) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             return 0
         if args.command == "check":
-            problems, advisories = check_environment(Path("."))
+            problems, advisories = check_environment(Path(args.paper_root))
             return emit(problems, advisories)
         if args.command == "plan":
             payload = plan(

@@ -1597,3 +1597,25 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_test_impact`
 
+## WC-20261006T045538Z-15d834961a - Require a zero-skill baseline and per-attempt economics
+
+- timestamp: `2026-10-06T04:55:38Z`
+- status: `complete`
+- author: `codex`
+- reason: Two measurement gaps: nothing forced a paper to say what a zero-skill method would score, and nothing recorded how long the first attempt took or what an attempt cost. statistics-plan now requires a null_baseline per claim (recorded value+source, or not-applicable+reason) and the cost ledger requires time_to_first_attempt and cost_per_attempt. Also fixed compute check hardcoding Path('.') so it accepts --paper-root, and corrected the archive_client docstring: zenodo.org resolves again and the API answered HTTP 200 on 2026-10-06.
+- files:
+  - `tools/ccfa/archive_client.py`
+  - `tools/ccfa/compute.py`
+  - `tools/ccfa/research_ledgers.py`
+  - `tools/ccfa/stats_plan.py`
+  - `tools/tests/test_compute.py`
+  - `tools/tests/test_research_ledgers.py`
+  - `tools/tests/test_statistics.py`
+- tests:
+  - `tools.tests.test_archive_client`
+  - `tools.tests.test_compute`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_research_ledgers`
+  - `tools.tests.test_statistics`
+

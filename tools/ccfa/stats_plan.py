@@ -33,7 +33,10 @@ CLAIM_FIELDS = (
     "seeds",
     "stopping_rule",
     "missing_data",
+    "null_baseline",
 )
+NULL_BASELINE_STATUSES = {"recorded", "not-applicable"}
+NULL_BASELINE_FIELDS = ("name", "value", "source")
 NO_CORRECTION = {"", "none", "no", "无", "未校正"}
 NOT_APPLICABLE = {"n/a", "na", "not-applicable", "not_applicable", "不适用"}
 DESCRIPTIVE = {"descriptive", "descriptive-sok", "description"}
@@ -54,6 +57,91 @@ def _analysis_type(value: object, default: str = "inferential") -> str:
     if not isinstance(value, str) or not value.strip():
         return "invalid"
     return value.strip().casefold()
+
+
+def _check_null_baseline(
+    path: Path,
+    claim_id: str,
+    baseline: object,
+) -> list:
+    """A claim must state what a zero-skill method would score.
+
+    A method's own number cannot separate "this method found something" from
+    "this task is easy", so the baseline is required: either a recorded value
+    with the source that produced it, or an explicit not-applicable + reason.
+    """
+    if not isinstance(baseline, dict):
+        return [
+            problem(
+                "statistics-invalid",
+                path,
+                None,
+                f"{claim_id}: null_baseline 必须是映射",
+            )
+        ]
+    status = baseline.get("status")
+    if status not in NULL_BASELINE_STATUSES:
+        return [
+            problem(
+                "statistics-invalid",
+                path,
+                None,
+                f"{claim_id}: null_baseline.status 必须是 recorded "
+                "或 not-applicable",
+            )
+        ]
+    if status == "not-applicable":
+        if not is_nonempty_str(baseline.get("reason")):
+            return [
+                problem(
+                    "statistics-null-baseline-reason-missing",
+                    path,
+                    None,
+                    f"{claim_id}: null_baseline=not-applicable 需要非空 reason",
+                )
+            ]
+        return []
+
+    missing = missing_fields(baseline, NULL_BASELINE_FIELDS)
+    if missing:
+        return [
+            problem(
+                "statistics-null-baseline-incomplete",
+                path,
+                None,
+                f"{claim_id}: null_baseline 缺少字段: {', '.join(missing)}",
+            )
+        ]
+    problems = []
+    for field in ("name", "source"):
+        if not is_nonempty_str(baseline.get(field)):
+            problems.append(
+                problem(
+                    "statistics-null-baseline-incomplete",
+                    path,
+                    None,
+                    f"{claim_id}: null_baseline.{field} 必须是非空字符串",
+                )
+            )
+    value = baseline.get("value")
+    try:
+        value_ok = (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float))
+            and math.isfinite(value)
+        )
+    except OverflowError:
+        value_ok = False
+    if not value_ok:
+        problems.append(
+            problem(
+                "statistics-null-baseline-incomplete",
+                path,
+                None,
+                f"{claim_id}: null_baseline.value 必须是有限数值",
+            )
+        )
+    return problems
 
 
 def _check_claim(
@@ -187,6 +275,9 @@ def _check_claim(
                 "或分析类型为 descriptive 时写 not-applicable",
             )
         )
+    problems.extend(
+        _check_null_baseline(path, str(claim_id), claim.get("null_baseline"))
+    )
     return problems
 
 

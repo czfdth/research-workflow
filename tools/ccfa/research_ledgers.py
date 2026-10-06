@@ -76,6 +76,14 @@ DEPENDENCY_AUTHORITIES = {"advisory", "verified"}
 EXPLORATION_FIELDS = ("id", "kind", "summary", "claim_ids", "run_ids")
 EXPLORATION_KINDS = {"pivot", "dead-end", "rejected", "active"}
 COST_ENTRY_FIELDS = ("kind", "amount", "unit")
+# Attempt economics. A ledger that cannot say how long the first attempt took,
+# or what one attempt costs, cannot show the harness turned thinking into
+# attempts instead of into more auditing.
+COST_METRIC_FIELDS = {
+    "time_to_first_attempt": ("value", "unit", "source"),
+    "cost_per_attempt": ("value", "currency", "source"),
+}
+COST_METRIC_STATUSES = {"recorded", "not-applicable"}
 RISK_FIELDS = (
     "id",
     "description",
@@ -1141,6 +1149,98 @@ def _exploration_graph(
     return problems
 
 
+def _cost_metrics(path: Path, payload: dict) -> list[Problem]:
+    problems: list[Problem] = []
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        return [
+            problem(
+                "cost-ledger-metrics-missing",
+                path,
+                None,
+                "cost ledger 需要 metrics："
+                "time_to_first_attempt 与 cost_per_attempt",
+            )
+        ]
+    for name, fields in COST_METRIC_FIELDS.items():
+        item = metrics.get(name)
+        if not isinstance(item, dict):
+            problems.append(
+                problem(
+                    "cost-ledger-metrics-missing",
+                    path,
+                    None,
+                    f"metrics.{name} 必须是映射",
+                )
+            )
+            continue
+        status = item.get("status")
+        if status not in COST_METRIC_STATUSES:
+            problems.append(
+                problem(
+                    "cost-ledger-metrics-invalid",
+                    path,
+                    None,
+                    f"metrics.{name}.status 必须是 recorded 或 not-applicable",
+                )
+            )
+            continue
+        if status == "not-applicable":
+            if not is_nonempty_str(item.get("reason")):
+                problems.append(
+                    problem(
+                        "cost-ledger-metrics-reason-missing",
+                        path,
+                        None,
+                        f"metrics.{name}=not-applicable 需要非空 reason",
+                    )
+                )
+            continue
+        missing = missing_fields(item, fields)
+        if missing:
+            problems.append(
+                problem(
+                    "cost-ledger-metrics-invalid",
+                    path,
+                    None,
+                    f"metrics.{name} 缺少字段: {', '.join(missing)}",
+                )
+            )
+            continue
+        value = item.get("value")
+        try:
+            value_ok = (
+                not isinstance(value, bool)
+                and isinstance(value, (int, float))
+                and math.isfinite(value)
+                and value >= 0
+            )
+        except OverflowError:
+            value_ok = False
+        if not value_ok:
+            problems.append(
+                problem(
+                    "cost-ledger-metrics-invalid",
+                    path,
+                    None,
+                    f"metrics.{name}.value 必须是有限非负数",
+                )
+            )
+        for field in fields:
+            if field == "value":
+                continue
+            if not is_nonempty_str(item.get(field)):
+                problems.append(
+                    problem(
+                        "cost-ledger-metrics-invalid",
+                        path,
+                        None,
+                        f"metrics.{name}.{field} 必须是非空字符串",
+                    )
+                )
+    return problems
+
+
 def _cost_ledger(paper_root: Path, payload: dict) -> list[Problem]:
     path = paper_root / COST_LEDGER
     entries = payload.get("entries")
@@ -1170,6 +1270,7 @@ def _cost_ledger(paper_root: Path, payload: dict) -> list[Problem]:
             or amount < 0
         ):
             problems.append(problem("cost-ledger-invalid-amount", path, None, f"entries[{index}].amount 必须是有限非负数"))
+    problems.extend(_cost_metrics(path, payload))
     return problems
 
 

@@ -1,12 +1,15 @@
 """Thin, evidence-returning client for long-term research archives.
 
-This host reaches ``github.com`` but its resolver answers ``zenodo.org`` with
-``0.0.0.0`` and ``::`` (a DNS sinkhole, not a hosts-file entry), so a plain
-``urllib`` call to Zenodo never leaves the machine. :func:`resolve_host`
-therefore falls back to DNS-over-HTTPS, and every request is issued against
-the resolved address while keeping the original ``Host`` and TLS SNI. That is
-a transport workaround, not a security boundary: the TLS certificate still
-has to match, so a poisoned answer cannot silently redirect the request.
+This host historically answered ``zenodo.org`` with ``0.0.0.0`` and ``::`` (a
+DNS sinkhole, not a hosts-file entry), so a plain ``urllib`` call never left
+the machine. Re-checked 2026-10-06: the host now resolves normally and
+``GET https://zenodo.org/api/records?size=1`` returns HTTP 200, so the
+workaround is no longer load-bearing. It is kept because :func:`resolve_host`
+falls back to DNS-over-HTTPS and issues every request against a resolved
+address while keeping the original ``Host`` and TLS SNI, which survives a
+sinkhole reappearing. That is a transport workaround, not a security
+boundary: the TLS certificate still has to match, so a poisoned answer cannot
+silently redirect the request.
 
 The Zenodo flow follows the InvenioRDM API that Zenodo switched to in late
 2024: create a draft record, upload file bytes into the record's bucket,

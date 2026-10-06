@@ -18,6 +18,11 @@ claims:
     seeds: [0, 1, 2]
     stopping_rule: fixed horizon
     missing_data: complete case
+    null_baseline:
+      status: recorded
+      name: majority-class coder
+      value: 0.5
+      source: tables/null-baseline.json
 """
 
 DESCRIPTIVE = """\
@@ -35,6 +40,11 @@ claims:
     seeds: not-applicable
     stopping_rule: frozen corpus
     missing_data: explicit unknown coding; no imputation
+    null_baseline:
+      status: recorded
+      name: majority-class coder over the coded columns
+      value: 0.501661
+      source: tables/null-baseline.json
 """
 
 
@@ -144,6 +154,77 @@ class StatisticsTests(unittest.TestCase):
         )
         problems, _advisories = check(self.root)
         self.assertIn("statistics-invalid", self._codes(problems))
+
+    def _write_without_null_baseline(self):
+        text = "\n".join(
+            line
+            for line in VALID.splitlines()
+            if not line.startswith("    null_baseline:")
+            and not line.startswith("      status: recorded")
+            and not line.startswith("      name:")
+            and not line.startswith("      value:")
+            and not line.startswith("      source:")
+        )
+        self.path.write_text(text + "\n", encoding="utf-8")
+
+    def test_missing_null_baseline_is_a_problem(self):
+        self._write_without_null_baseline()
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn("statistics-invalid", self._codes(problems))
+        self.assertTrue(
+            any("null_baseline" in item.message for item in problems),
+            [item.message for item in problems],
+        )
+
+    def test_not_applicable_null_baseline_needs_a_reason(self):
+        self.path.write_text(
+            VALID.replace(
+                "    null_baseline:\n"
+                "      status: recorded\n"
+                "      name: majority-class coder\n"
+                "      value: 0.5\n"
+                "      source: tables/null-baseline.json\n",
+                "    null_baseline:\n"
+                "      status: not-applicable\n",
+            ),
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn(
+            "statistics-null-baseline-reason-missing",
+            self._codes(problems),
+        )
+
+    def test_recorded_null_baseline_needs_a_real_value(self):
+        self.path.write_text(
+            VALID.replace("      value: 0.5", '      value: "very high"'),
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn(
+            "statistics-null-baseline-incomplete",
+            self._codes(problems),
+        )
+
+    def test_huge_null_baseline_value_is_a_problem_not_a_crash(self):
+        huge = "1" + "0" * 400
+        self.path.write_text(
+            VALID.replace("      value: 0.5", f"      value: {huge}"),
+            encoding="utf-8",
+        )
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn(
+            "statistics-null-baseline-incomplete",
+            self._codes(problems),
+        )
 
 
 if __name__ == "__main__":

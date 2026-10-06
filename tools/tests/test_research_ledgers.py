@@ -156,6 +156,20 @@ class ResearchLedgerTests(unittest.TestCase):
                         "unit": "gpu-hours",
                     }
                 ],
+                "metrics": {
+                    "time_to_first_attempt": {
+                        "status": "recorded",
+                        "value": 12.0,
+                        "unit": "minutes",
+                        "source": "experiments/log/run-1.json",
+                    },
+                    "cost_per_attempt": {
+                        "status": "recorded",
+                        "value": 0.0,
+                        "currency": "USD",
+                        "source": "experiments/log/compute-ledger.jsonl",
+                    },
+                },
             },
         )
         self._write(
@@ -770,6 +784,69 @@ class ResearchLedgerTests(unittest.TestCase):
         problems, _advisories = check(self.root)
 
         self.assertIn("cost-ledger-invalid-amount", self._codes(problems))
+
+    def _cost_ledger(self) -> dict:
+        return yaml.safe_load(
+            (self.root / "data" / "cost-ledger.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def test_cost_ledger_needs_attempt_metrics(self):
+        ledger = self._cost_ledger()
+        del ledger["metrics"]
+        self._write("data/cost-ledger.yaml", ledger)
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn("cost-ledger-metrics-missing", self._codes(problems))
+
+    def test_not_applicable_metric_needs_a_reason(self):
+        ledger = self._cost_ledger()
+        ledger["metrics"]["time_to_first_attempt"] = {
+            "status": "not-applicable",
+        }
+        self._write("data/cost-ledger.yaml", ledger)
+
+        problems, _advisories = check(self.root)
+
+        self.assertIn(
+            "cost-ledger-metrics-reason-missing",
+            self._codes(problems),
+        )
+
+    def test_not_applicable_metric_with_a_reason_passes(self):
+        ledger = self._cost_ledger()
+        ledger["metrics"]["time_to_first_attempt"] = {
+            "status": "not-applicable",
+            "reason": "plan freeze was recorded with a date only",
+        }
+        self._write("data/cost-ledger.yaml", ledger)
+
+        problems, _advisories = check(self.root)
+
+        self.assertNotIn("cost-ledger-metrics-invalid", self._codes(problems))
+        self.assertNotIn(
+            "cost-ledger-metrics-reason-missing",
+            self._codes(problems),
+        )
+
+    def test_recorded_metric_needs_a_real_value_and_source(self):
+        for mutate in (
+            lambda item: item.update({"value": -1.0}),
+            lambda item: item.update({"source": ""}),
+        ):
+            with self.subTest(mutate=mutate):
+                ledger = self._cost_ledger()
+                mutate(ledger["metrics"]["cost_per_attempt"])
+                self._write("data/cost-ledger.yaml", ledger)
+
+                problems, _advisories = check(self.root)
+
+                self.assertIn(
+                    "cost-ledger-metrics-invalid",
+                    self._codes(problems),
+                )
 
     def test_risk_placeholder_mitigation_is_rejected(self):
         register = yaml.safe_load(

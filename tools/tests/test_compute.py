@@ -281,5 +281,26 @@ class CheckEnvironmentTests(unittest.TestCase):
         self.assertIn("compute-remote-unconfigured", codes)
 
 
+class ComputeCliTests(unittest.TestCase):
+    def test_check_accepts_a_paper_root(self):
+        # `compute check` used to hardcode Path("."), so from the repository
+        # root it inspected the wrong directory.
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.object(
+                compute,
+                "check_environment",
+                return_value=([], []),
+            ) as probe:
+                code = compute.main(
+                    ["compute", "check", "--paper-root", str(root)]
+                )
+
+        self.assertEqual(code, 0)
+        probe.assert_called_once_with(root)
+
+
 if __name__ == "__main__":
     unittest.main()
