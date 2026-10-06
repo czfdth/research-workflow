@@ -99,6 +99,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/adversarial_review.py` | 两个只产出、永不开释的对抗角色：`claim-audit` 从原始数据重算正文数字（作者的推导按机械规则排除并记录），`kill-argument` 用两条互不可见的独立调用分别写最强拒稿备忘与逐点辩护；未解决的 finding 一律报 problem | `scripts/adversarial-review.ps1` |
 | `tools/ccfa/meta_apply.py` | 工作流自改动的唯一落地口：`stage` 把候选改动写进 `ccfa-workfiles/meta-apply/`，`review` 用跨族 jury 审 staged diff，`apply` 只有在哈希未漂移、≥2 个 gate-capable 通过、覆盖 ≥2 个模型族且含跨族评审时才落地，并先写字节级备份再记 append-only ledger；默认只允许改文档语料，改代码需 `--allow-code` | `scripts/meta-apply.ps1` |
 | `tools/ccfa/figure_spec.py` | 把声明式 figure spec 确定性地渲染成 SVG：形状感知裁边（矩形/椭圆/菱形）、自环、CJK 宽度按 `east_asian_width` 计、穿过无关节点的边自动绕行；同一份 spec 永远得到同样字节，`check` 报告文字溢出 | `scripts/figure-spec.ps1` |
+| `tools/ccfa/talk_gates.py` | talk/poster 的规范 gate 编排 `preflight → asset → measure → polish`：按声明画布真实排版测量每页填充率（溢出是硬失败）、图件按像素与字节格式核验、默认累积全部问题写一份 `data/talk-gate-report.json`；`verify-final` 按声明画布核对导出 PDF 的页数/尺寸/体积（pdfinfo，缺失时回退 PyMuPDF） | `scripts/talk-gates.ps1` |
 | `tools/ccfa/human_coding.py` | 计算两名人类编码者的一致率、Cohen's kappa 与置信区间 | `scripts/human-coding.ps1` |
 | `tools/ccfa/novelty.py` | 检查检索范围、最近邻工作与逐 claim 差异，阻断未支撑的新颖性表述 | `scripts/novelty.ps1` |
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
@@ -397,6 +398,19 @@ scripts/figure-spec.ps1 render --spec docs/examples/figure-spec-example.yaml --o
 自环画成真正的环、中文标签按 `east_asian_width` 计宽；另外，直线边如果会穿过
 一个无关节点，会自动绕成曲线。已知限制：不做全局边路由与标签避让，密集图仍可能
 标签重叠——先用 `check` 看溢出提示，或把节点坐标显式写进 spec。
+
+讲稿和海报用同一套 gate 编排：`data/talk-plan.yaml` 里的 `format` 声明导出 PDF
+的真实页面尺寸与字号，`measure` 就按这套字号真实排版算每页填充率，不是凭感觉。
+
+```powershell
+scripts/talk-gates.ps1 run --paper-root <paper-root> --deck talk.tex
+scripts/talk-gates.ps1 verify-final --pdf talk.pdf --from-plan <paper-root> --pages 3
+```
+
+顺序是 `preflight → asset → measure → polish`：静态检查先跑，避免为一个明显坏掉
+的稿子付渲染成本；默认累积全部问题（`--fail-fast` 给 CI 用）；`polish` 默认只警告，
+`--strict-polish` 才升级成硬失败。`verify-final` 必须显式给 `--canvas` 或
+`--from-plan`，没有默认画布——默认值猜错比报错更糟。
 
 ## 跑测试
 

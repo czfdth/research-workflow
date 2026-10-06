@@ -17,6 +17,7 @@ CCFA_WRAPPERS = {
     "adversarial_review": "adversarial-review.ps1",
     "meta_apply": "meta-apply.ps1",
     "figure_spec": "figure-spec.ps1",
+    "talk_gates": "talk-gates.ps1",
     "citation_guard": "citation-guard.ps1",
     "trace_claims": "trace-claims.ps1",
     "latex_check": "latex-check.ps1",

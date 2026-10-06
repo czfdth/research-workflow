@@ -23,6 +23,7 @@ CLI_WRAPPERS = {
     "adversarial_review": "scripts/adversarial-review.ps1",
     "meta_apply": "scripts/meta-apply.ps1",
     "figure_spec": "scripts/figure-spec.ps1",
+    "talk_gates": "scripts/talk-gates.ps1",
     "citation_guard": "scripts/citation-guard.ps1",
     "trace_claims": "scripts/trace-claims.ps1",
     "latex_check": "scripts/latex-check.ps1",

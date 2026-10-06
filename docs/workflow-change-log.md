@@ -1927,3 +1927,30 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T085614Z-ae69b56ed7 - Add the measured talk/poster gate orchestrator
+
+- timestamp: `2026-10-06T08:56:14Z`
+- status: `complete`
+- author: `codex`
+- reason: The ARIS comparison listed post-submission output depth as a gap: this repo had a talk plan contract but nothing that measured the deck. Read the reference source directly (skills/paper-poster-html/scripts/run_gates.py, poster_check.py, _posterly/measure.py, _posterly/verify_final.py at commit 3b19a22) and rebuilt its architecture in tools/ccfa/talk_gates.py: a fixed canonical order preflight -> asset -> measure -> polish, per-gate hard/soft severity with polish soft and --strict-polish promoting it, accumulate-by-default with --fail-fast opt-in for CI, one data/talk-gate-report.json, and exit 0/1/2 for pass/hard-failure/usage-error. measure renders each slide's text into the canvas typography declared by the plan (CJK-aware width from figure_spec) and reports a fill ratio; overflow is a hard failure. verify-final mirrors the reference contract: page count, page size within 0.05in (with rotated-page swap) and file size, and it refuses to run without an explicit --canvas or --from-plan because a guessed default is worse than an error. Deliberate deviations are recorded in the report and the docs: the reference measures its own HTML templates in headless Chromium, which this repo has no equivalent of, and its style gate checks a shipped design-token system we do not have, so style is not implemented and is named in not_implemented_gates. The asset gate checks what a figure is rather than how many bytes it has - a live run flagged a legitimate 370-byte flat-colour PNG, so it now reads the real pixel dimensions from the PNG/JPEG/GIF header and skips pixel checks for SVG/PDF. Verified live by compiling a 3-page Beamer 16:9 deck with pdflatex: healthy deck overall=pass and verify-final 0 problems, a 25-bullet slide fails with fill 2.24 (needs 6.831in of 3.043in), and --pages 5 against a 3-page PDF reports talk-pdf-page-count.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/talk-gates.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/talk_gates.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_talk_gates.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_talk_gates`
+  - `tools.tests.test_test_impact`
+

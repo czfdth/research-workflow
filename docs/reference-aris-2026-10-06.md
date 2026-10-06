@@ -145,3 +145,42 @@ Markdown 头部同步显示，便于一眼看出「这次到底有没有跑审�
    让「人在什么输入上签的字」可复算。
 4. 给「证据存在」加最小体积门槛（对应 Modex 的 `_min_size_for`）：
    现在 `evidence.items[].present` 只看文件在不在，空壳文件要靠各自的 gate 兜。
+
+## 八、第十切片：投稿后产出的度量硬门（读源码后对齐）
+
+参考快照：`wanshuiyin/Auto-claude-code-research-in-sleep`，本地克隆
+`%TEMP%\aris-src`，commit `3b19a22`。本切片只读了与本轮相关的文件：
+
+| 读到的文件 | 读到的设计 | 我们的对应实现 |
+| --- | --- | --- |
+| `skills/paper-poster-html/scripts/run_gates.py` | 五段固定顺序 `preflight → style → asset → measure → polish`；单一 `GATE_REPORT.json`；每段声明 hard/soft（`polish` 默认软，`--strict-polish` 转硬）；默认累积全部问题，`--fail-fast` 是 CI 用的可选项；exit 0/1/2 分别表示通过/硬失败/用法或环境错误 | `tools/ccfa/talk_gates.py` 的 `CANONICAL_ORDER` / `GATE_SEVERITY` / `run_gates`：同样四段顺序、同一份报告、同样的分级与两种模式、同样的退出码语义（`style` 未实现，理由见下） |
+| `skills/paper-poster-html/scripts/poster_check.py` | 子命令划分：`measure` / `preflight` / `polish` / `verify-final`；逻辑放在 `_posterly` 包里，CLI 只做 argparse 分发 | 我们保留两个入口：`run`（四段编排）与 `verify-final`（PDF 核对），逻辑全在模块里而不是脚本里 |
+| `skills/paper-poster-html/scripts/_posterly/measure.py` | 「唯一决定列是否对齐的硬门」；打印仿真下读 `[data-measure-role]` 几何；输出两个数（列底 spread 与到页脚的 gap）；空列 / 缺页脚 / MathJax 失败一律硬失败 | 采纳「测量出数而不是凭感觉」与「测量失败就是硬失败」；**不采纳** headless Chromium 那条链路（见下） |
+| `skills/paper-poster-html/scripts/_posterly/verify_final.py` | 用 `pdfinfo` 核对页数 / 页尺寸（±0.05in，含旋转交换）/ 文件体积；期望画布必须显式给 `--canvas` 或 `--from-html`，**没有默认值**，因为默认猜错比报错更糟 | `verify-final` 同样强制 `--canvas` 或 `--from-plan`；同样三项检查、同样 ±0.05in 容差与旋转交换；引擎优先 `pdfinfo`，缺失时回退 PyMuPDF（仓库已依赖，避免把环境缺口变成稿子失败） |
+
+**为什么不用 headless Chromium 量 spread。** ARIS 量的是它自己那套 HTML
+模板的相对几何：卡片列底对齐、卡片到页脚的间距。我们的产物是 Beamer/LaTeX 与
+`data/talk-plan.yaml`，没有那套模板，也不该为了对齐一个数而引入浏览器依赖。
+因此 `measure` 改成对 plan 的文本做确定性排版测量：读 `format` 里声明的画布
+尺寸与字号，用 `figure_spec.text_width`（CJK 感知）算折行与所需高度，对每个
+slide 输出 `fill`。两者的共同点正是这套 gate 的价值所在——**给出一个数，并让
+它成为硬失败**，而不是「看起来还行」。
+
+**为什么缺 `style`。** ARIS 的 `style_check.py` / `asset_check.py` 是对着它自己
+随附的 design token（`templates/tokens/*.json`）做校验。我们本地没有等价体系，
+硬造一套 token 只会是脚手架，所以这一轮不写，并在报告里用
+`not_implemented_gates: ["style"]` 明说，而不是假装五段都齐了。
+
+**实测**：真用 `pdflatex` 编译一份 3 页 Beamer（`aspectratio=169`，页尺寸
+453.543×255.118pt）作为被测对象。健康稿 `run` 得 `overall=pass`、
+`verify-final --from-plan --pages 3` 0 problem；把一页加到 25 条要点后
+`talk-slide-overflow` 报 `fill 2.24`（需 6.831in / 可用 3.043in）并 exit 1；
+`--pages 5` 对 3 页 PDF 报 `talk-pdf-page-count`。
+
+过程中还修掉一个自己写出来的假阳性：`asset` 一开始用「文件 < 1024 字节就当空图」
+判断，结果把一张只有 370 字节、但完全合法的纯色 PNG 判成空图。改成读图片头拿真实
+像素（PNG IHDR / JPEG SOF / GIF 逻辑屏），只对「字节不是已知图片格式」「像素边
+小于 64」「真·空文件」报硬失败，矢量图（SVG/PDF）跳过像素检查。
+
+**仍未对齐**：`slides` / `slides-polish` / `poster-html` 的**生成器**（Beamer/PPTX
+模板、逐页视觉打磨、HTML 海报模板）没有实现，本轮补的是它们的测量与验收那半。

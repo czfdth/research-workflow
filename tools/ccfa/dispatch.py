@@ -23,6 +23,7 @@ COMMANDS: dict[str, str] = {
     "adversarial-review": "ccfa.adversarial_review",
     "meta-apply": "ccfa.meta_apply",
     "figure-spec": "ccfa.figure_spec",
+    "talk-gates": "ccfa.talk_gates",
     "ara-compile": "ccfa.ara_compile",
     "ara-extract": "ccfa.ara_extract",
     "archive": "ccfa.archive_client",
