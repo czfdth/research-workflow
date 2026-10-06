@@ -589,6 +589,15 @@ def _write_records(
     )
 
 
+# Review harness calls read the manuscript through the read-only sandbox, not
+# through MCP, but `codex exec` still stands up every configured MCP server and
+# waits out its handshake/auth retries before it calls the model. Measured on
+# this machine with 14 servers configured: a one-word reply took 205s with them
+# enabled and 17s with `mcp_servers={}`, so every review paid ~3 minutes of
+# startup tax per harness invocation. Reviews therefore run with MCP off.
+HARNESS_MCP_OFF = ("-c", "mcp_servers={}")
+
+
 def _resolve_codex_executable() -> str:
     """Locate the Codex CLI, including installs missing from the PATH.
 
@@ -814,6 +823,7 @@ def run_review(
     argv = [
         _resolve_codex_executable(),
         "exec",
+        *HARNESS_MCP_OFF,
         *(["-c", f"model_provider={provider}"] if provider else []),
         *(
             ["-c", f"model_reasoning_effort={reasoning_effort}"]

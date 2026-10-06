@@ -141,6 +141,23 @@ class AdversarialReviewTests(unittest.TestCase):
         self.assertTrue(calls[0]["kept_present"])
         self.assertFalse(calls[0]["excluded_present"])
 
+    def test_the_harness_runs_with_mcp_servers_disabled(self):
+        runner, calls = self._runner([_payload(("mismatch", "43", "key"))])
+
+        module.run_review(
+            self.paper_root,
+            role="claim-audit",
+            model="gpt-5.6",
+            stage="internal-review",
+            paths=self._paths(),
+            runner=runner,
+            codex_config=self.codex_config,
+        )
+
+        # The reviewer reads files through the read-only sandbox; leaving the
+        # configured MCP servers on costs their handshake retries on every call.
+        self.assertIn("mcp_servers={}", calls[0]["argv"])
+
     def test_kill_argument_runs_two_independent_lines(self):
         runner, calls = self._runner(
             [

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from ccfa.cli import Problem, emit, save_text_atomically, tool_error
 from ccfa.cross_review import (
+    HARNESS_MCP_OFF,
     _default_runner,
     _family_judgement,
     _input_hashes,
@@ -216,6 +217,7 @@ def _call(
     argv = [
         _resolve_codex_executable(),
         "exec",
+        *HARNESS_MCP_OFF,
         *(["-c", f"model_provider={provider}"] if provider else []),
         *(
             ["-c", f"model_reasoning_effort={reasoning_effort}"]

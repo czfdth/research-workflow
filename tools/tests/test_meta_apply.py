@@ -239,6 +239,9 @@ class MetaApplyTests(unittest.TestCase):
         self.assertEqual(plan["reviews"][1]["provider"], "alt")
         self.assertNotIn("model_provider=alt", calls[0]["argv"])
         self.assertIn("model_provider=alt", calls[1]["argv"])
+        # The jury reads the staged diff through the sandbox, so the MCP
+        # servers are switched off rather than costing their handshake retries.
+        self.assertIn("mcp_servers={}", calls[0]["argv"])
 
     def test_review_rejects_output_that_breaks_the_contract(self):
         # Observed in a real run: the reviewer answered in a key=value format

@@ -2259,3 +2259,25 @@ Tests: 26 new in tools/tests/test_anonymity.py (config defaults and validation, 
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T130059Z-dff4722a73 - Run review harness calls with MCP servers disabled
+
+- timestamp: `2026-10-06T13:00:59Z`
+- status: `complete`
+- author: `codex`
+- reason: Review harness invocations were paying a large fixed startup tax that had nothing to do with the review itself. `codex exec` stands up every MCP server in the user config before it calls the model, and several of the 14 configured servers fail their handshake or need auth (notion, linear, canva, sentry, a local 127.0.0.1:8080 endpoint), each with retries. Measured on this machine with a one-word prompt against the zhipu provider: 205.2 seconds with MCP enabled, 16.6 seconds with `-c mcp_servers={}` — a 12x difference, and the ~30.5k tokens of harness overhead is paid either way. The review roles only read files through the read-only sandbox, so MCP is not needed for a verdict.
+
+Added HARNESS_MCP_OFF = ("-c", "mcp_servers={}") in tools/ccfa/cross_review.py and applied it to all three harness argv builders (cross_review.run, adversarial_review.run_review, meta_apply.review), so cross-model reviews, the adversarial roles and the meta-apply jury all start in seconds instead of minutes. The flag is inserted right after `exec`, before the provider/effort overrides, so a caller-supplied provider still wins.
+
+Tests: a new assertion in test_cross_review.test_argv_has_exact_required_flags_and_stdin_prompt, a new test in test_adversarial_review (test_the_harness_runs_with_mcp_servers_disabled) and a new assertion in test_meta_apply.test_review_resolves_a_provider_per_model, each pinning `mcp_servers={}` in the captured argv. 133 tests in the three modules pass; ruff clean.
+- files:
+  - `tools/ccfa/adversarial_review.py`
+  - `tools/ccfa/cross_review.py`
+  - `tools/ccfa/meta_apply.py`
+  - `tools/tests/test_adversarial_review.py`
+  - `tools/tests/test_cross_review.py`
+  - `tools/tests/test_meta_apply.py`
+- tests:
+  - `tools.tests.test_adversarial_review`
+  - `tools.tests.test_cross_review`
+  - `tools.tests.test_meta_apply`
+

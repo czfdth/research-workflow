@@ -233,6 +233,10 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("--output-schema", argv)
         self.assertIn("-o", argv)
         self.assertEqual(argv[-1], "-")
+        # MCP servers are disabled for harness calls: with 14 configured, the
+        # handshake/auth retries cost ~3 minutes before the model is even
+        # called (measured: 205s enabled vs 17s disabled).
+        self.assertIn("mcp_servers={}", argv)
         self.assertIn("禁止修改任何文件", runner.calls[0]["prompt"])
 
     def test_review_schema_is_strict(self):
