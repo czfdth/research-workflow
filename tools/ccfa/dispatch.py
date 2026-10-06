@@ -103,6 +103,7 @@ COMMANDS: dict[str, str] = {
     "venue-fixtures": "ccfa.venue_fixtures",
     "verifiers": "ccfa.verifiers",
     "watch": "ccfa.watch",
+    "worklist": "ccfa.worklist",
     "worktree-audit": "ccfa.worktree_audit",
 }
 

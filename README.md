@@ -122,6 +122,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv/交付格式/排版/数据版本/算力），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/e2e_check.py` | 一条命令给出单篇论文的现状快照：完整 gate 表、阻塞、人工待办、环境健康、git/CI 与投稿倒计时；只读，缺省只打印不写文件 | `scripts/e2e-check.ps1` |
+| `tools/ccfa/worklist.py` | **人工待办的有序清单（只读视图，不新增 gate）**：把 `readiness` 的待办项、对应 packet、要写入的台账、以及该台账校验器要求的字段（即"什么算完成"）合成一份按阻塞优先级排序的清单；`--next` 只打印第一条 | `scripts/worklist.ps1` |
 | `tools/ccfa/tool_eval.py` | 给工作流自己的 gate 做度量：往临时夹具里注入已知缺陷，记录各 gate 的检出率与误报率；另带 **外部基准 harness**（`--benchmark spec.yaml`）：按 spec 跑别人的任务、读度量、比阈值，任务跑不起来记 `unavailable` 并从分母剔除；只测量、不改写任何 gate，跑完退出 0 | `scripts/tool-eval.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
@@ -606,6 +607,20 @@ scripts/anonymity.ps1 --paper-root <paper-root>
 硬失败（problem）覆盖五类真实触发点：`\author{...}` 不是匿名写法、配置里声明的真实姓名/单位出现在正文、`our previous work` / `我们之前的工作` 这类自指措辞、作者自有 URL、以及 PDF 的 Author/Subject/Keywords 等元数据里带身份信息。judgement call 留成 advisory，避免逼人做假陈述：**致谢章节**默认只提醒（CSF 这类会议要求把 AI 使用写进致谢，禁掉它就是错的；venue 真禁止时在 config 里写 `acknowledgements: forbidden` 升级为 problem），**未列出的代码托管 URL** 也只提醒（第三方 artifact 链接是合法的，作者自有的写进 `self_urls` 才升级）。
 
 数据来自 `data/anonymity.yaml`（可选）：`blind`、`authors`、`affiliations`、`self_urls`、`allow`、`acknowledgements`。没有这个文件时按"双盲 + 无已知姓名"跑通用检查。`readiness` 从 `internal-review` 阶段起把 `anonymity` 作为正式 gate 执行（`minimal` profile 除外）。
+
+## 人工待办清单
+
+`readiness` 说得出"什么没过"，`e2e_check` 说得出"有 6 项待人工复核"，但都不说"下一步做哪一条、读哪个文件、填成什么样才算完"。这份清单就是补上这一环——**它是一个视图，不是 gate**：不校验任何东西，不改变任何 verdict。
+
+```powershell
+scripts/worklist.ps1 --paper-root <paper-root>          # 有序清单（Markdown）
+scripts/worklist.ps1 --paper-root <paper-root> --next   # 只打印第一条
+scripts/worklist.ps1 --paper-root <paper-root> --json --out worklist.json
+```
+
+排序是**数据驱动**的：`readiness` 的 blocking 列表点了名的先来，组内按 gate 报告里 problem 出现的顺序（也就是流程自己"先发现了什么"），其余按 stage 顺序。每条给出五件事：要判断什么、先读哪个 packet、写进哪个台账、完成判据（**逐字取自该台账校验器真正要求的字段**，例如 proof 复核需要 `id/reviewer/reviewed_at/method/status`，`status=verified` 时还必须写 `audited_inputs` 且 reviewer 必须是人类姓名）、以及谁负责校验。`--next` 适合脚本化：跑一条，做完再跑下一条。
+
+它不会把任何条目判成"完成"——机器只核对台账字段是否齐备，签字仍然只能是人。
 
 ## 跑测试
 

@@ -214,6 +214,7 @@ jobs:
             tools/ccfa/test_impact.py `
             tools/ccfa/tool_eval.py `
             tools/ccfa/venue_fixtures.py `
+            tools/ccfa/worklist.py `
             tools/ccfa/verifiers.py `
             tools/ccfa/worktree_audit.py `
             tools/ccfa/dispatch.py `

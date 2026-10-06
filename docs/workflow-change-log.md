@@ -2362,3 +2362,35 @@ Tests: 34 in tools/tests/test_integrity_forensics.py using a fake git checkout w
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Covers 102 modules, 87 PowerShell entries, 9 MCP servers, 28 plugins, 305 skills, 23 CLI categories, 9 formal engines and the current gate list; doctor reports 0 problems and 0 advisories.
 
+## WC-20261006T140551Z-5dfba14c9b - Add an ordered human worklist assembled from existing records
+
+- timestamp: `2026-10-06T14:05:51Z`
+- status: `complete`
+- author: `codex`
+- reason: The workflow could say what had failed (readiness) and how many human checkpoints were outstanding (e2e_check), but not what to do next, where, or what finished looks like. That glue was spread across readiness's blocking list, e2e_check's checkpoint table, the ledger checkers (which define a complete entry) and ccfa-workfiles/human-review/ (the packets), so each round began with reading twenty outputs and working out the order by hand.
+
+New tools/ccfa/worklist.py + scripts/worklist.ps1 is a read-only view that assembles those four sources into one ordered list. Deliberately a view and not a gate: it adds no check, changes no verdict, and never marks anything done - readiness still decides ready, and the ledgers still decide whether an entry is valid. For each pending checkpoint it reports the question to judge, the packet files to read first, the ledger to write into, the fields its own checker requires (quoted from argument_audit/cross_review/adversarial_review/claim_extract/autoresearch/human_coding, not invented), and which module validates it.
+
+Ordering is data-driven rather than editorial: checkpoints named by readiness's blocking list lead, and inside that group by the position of their problem in the gate reports (the workflow's own statement of what it found first); the rest follow in stage order. Packet matching requires every token of a checkpoint id to appear in the filename, because matching any single token pulled figure-support-packet.md into the citation task. Progress lines are read from the existing *-coverage advisories (so 'proof' picks up proof-audit-coverage). Checkpoints without a ledger fall back to their artifact (cross-review -> reviews/cross-review.json). --next prints only the first item for scripting.
+
+Live on the flagship paper it now prints, in order: proof, citation-support, figure-support, cross-review (all marked blocking), then claim-candidates and research-plans - 6 items, 4 of them directly implicated by the current blocking list, with proof carrying '人工证明复核 0/8'.
+
+Wiring moves together: dispatch command, PowerShell wrapper, CCFA_WRAPPERS, CLI_WRAPPERS, the py_compile list in .github/workflows/tests.yml, the test_impact mapping and README. Tests: 16 in tools/tests/test_worklist.py (packet token matching incl. the support/ figure cross-match regression, problem-rank derivation, blocking-first ordering, implicated marking, progress lookup, artifact fallback, criteria carrying their checker, markdown never claiming completion, and the CLI's json/next/out paths), plus the docs-consistency, scripts, dispatch, test-impact and github-workflows suites.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/worklist.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/ccfa/worklist.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_worklist.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+  - `tools.tests.test_worklist`
+
