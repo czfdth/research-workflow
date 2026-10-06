@@ -280,6 +280,16 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/quickstart.py": (
+        "tools.tests.test_quickstart",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
+    "tools/ccfa/mcp_gates.py": (
+        "tools.tests.test_mcp_gates",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/patent.py": (
         "tools.tests.test_patent",
         "tools.tests.test_docs_consistency",

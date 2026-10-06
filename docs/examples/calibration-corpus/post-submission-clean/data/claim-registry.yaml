@@ -1,0 +1,4 @@
+version: 1
+claims:
+  - id: C1
+    statement: demo

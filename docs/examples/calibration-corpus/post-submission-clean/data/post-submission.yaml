@@ -1,0 +1,12 @@
+version: 1
+rebuttal:
+  status: complete
+  response_ledger: reviews/revision-ledger.md
+  new_evidence_run_ids: [RUN1]
+  commitments:
+    - adding the missing ablation table
+resubmit:
+  status: not-applicable
+  reason: conference
+talk:
+  status: not-started

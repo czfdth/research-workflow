@@ -18,6 +18,8 @@ CCFA_WRAPPERS = {
     "anonymity": "anonymity.ps1",
     "integrity_forensics": "integrity-forensics.ps1",
     "worklist": "worklist.ps1",
+    "quickstart": "quickstart.ps1",
+    "mcp_gates": "mcp-gates.ps1",
     "meta_apply": "meta-apply.ps1",
     "figure_spec": "figure-spec.ps1",
     "talk_gates": "talk-gates.ps1",

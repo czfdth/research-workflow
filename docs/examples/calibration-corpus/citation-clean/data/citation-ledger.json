@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "entries": {
+    "alpha": {
+      "doi": "10.1000/alpha",
+      "status": "verified",
+      "verified_at": "2026-01-01T00:00:00Z",
+      "source": "crossref",
+      "evidence": {
+        "body_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "retrieved_at": "2026-01-01T00:00:00Z",
+        "matched_title": "Alpha",
+        "source": "crossref"
+      }
+    }
+  }
+}

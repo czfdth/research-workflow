@@ -1,0 +1,13 @@
+version: 1
+alpha: 0.05
+multiple_comparison: holm-bonferroni
+claims:
+  - id: claim:matrix
+    endpoint: descriptive counts in the coded matrix
+    test: deterministic recount; no hypothesis test is claimed
+    effect_size: 0.5
+    target_power: 0.8
+    sample_size: 43
+    seeds: [0]
+    stopping_rule: frozen corpus
+    missing_data: explicit unknown coding

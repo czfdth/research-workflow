@@ -1,0 +1,7 @@
+version: 1
+currency: USD
+paper: demo
+entries:
+  - kind: gpu
+    amount: 0
+    unit: hours

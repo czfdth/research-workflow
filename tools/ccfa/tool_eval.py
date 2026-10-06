@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -752,6 +753,220 @@ def render_benchmark_markdown(summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# External corpus calibration: TPR / FPR with a stated sample size.
+#
+# The injected cases above measure whether a gate still catches the defect its
+# own author planted. They cannot produce a false-positive or false-negative
+# rate an outsider would recognise, because the author chose both the defects
+# and the clean controls. This runs the same gates over a *labelled corpus*
+# that lives outside the harness:
+#
+#   <corpus>/corpus.yaml      id / gate / label / source / note per case
+#   <corpus>/<id>/...         the fixture files for that case
+#
+# It reports TPR (defective cases the gate rejected), FPR (clean cases it
+# rejected), the counts behind each rate, and a Wilson 95% interval — because a
+# rate over six cases is not a rate, and printing one without n invites exactly
+# the over-reading this repository keeps trying to avoid. Exit 0 on a completed
+# run whatever the numbers say: this is a measurement, not a gate.
+# ---------------------------------------------------------------------------
+
+CORPUS_VERSION = 1
+CORPUS_MANIFEST = "corpus.yaml"
+DEFECTIVE = "defective"
+CLEAN_LABEL = "clean"
+
+
+def gate_registry() -> dict[str, object]:
+    """Gate name -> ``f(root) -> True when the gate rejects``.
+
+    These are the same functions the shipped cases use, so a corpus measures
+    the gates that actually run, not a parallel implementation.
+    """
+    return {
+        "stats-plan": _stats_rejects,
+        "cost-ledger": _cost_rejects,
+        "citation-guard": _citation_rejects,
+        "post-submission": _post_submission_rejects,
+    }
+
+
+def load_corpus(path: Path) -> list[dict]:
+    """Read ``corpus.yaml`` and validate every case before running anything."""
+    path = Path(path)
+    manifest = path / CORPUS_MANIFEST if path.is_dir() else path
+    root = manifest.parent
+    if not manifest.is_file():
+        raise ValueError(f"找不到语料清单: {manifest}")
+    try:
+        payload = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"无法解析 {manifest}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{manifest} 顶层必须是映射")
+    cases = payload.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(f"{manifest} 需要非空 cases 列表")
+    registry = gate_registry()
+    seen: set[str] = set()
+    loaded: list[dict] = []
+    for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            raise ValueError(f"cases[{index}] 必须是映射")
+        for field in ("id", "gate", "label", "source"):
+            if not case.get(field):
+                raise ValueError(f"cases[{index}] 缺少 {field}")
+        case_id = str(case["id"])
+        if case_id in seen:
+            raise ValueError(f"case id 重复: {case_id!r}")
+        seen.add(case_id)
+        if case["label"] not in (DEFECTIVE, CLEAN_LABEL):
+            raise ValueError(
+                f"{case_id}: label 必须是 {DEFECTIVE} 或 {CLEAN_LABEL}"
+            )
+        if str(case["gate"]) not in registry:
+            raise ValueError(
+                f"{case_id}: 未知 gate {case['gate']!r}，"
+                f"可用 {' / '.join(sorted(registry))}"
+            )
+        case_root = root / case_id
+        if not case_root.is_dir():
+            raise ValueError(f"{case_id}: 找不到用例目录 {case_root}")
+        loaded.append(
+            {
+                "id": case_id,
+                "gate": str(case["gate"]),
+                "label": case["label"],
+                "source": str(case["source"]),
+                "note": str(case.get("note", "")),
+                "root": case_root,
+            }
+        )
+    return loaded
+
+
+def _wilson(successes: int, total: int, z: float = 1.959963985) -> list[float] | None:
+    """Wilson score interval — honest for tiny n, unlike normal approximation."""
+    if total <= 0:
+        return None
+    phat = successes / total
+    denominator = 1 + z * z / total
+    centre = (phat + z * z / (2 * total)) / denominator
+    spread = (
+        z
+        * math.sqrt(phat * (1 - phat) / total + z * z / (4 * total * total))
+        / denominator
+    )
+    return [round(max(0.0, centre - spread), 3), round(min(1.0, centre + spread), 3)]
+
+
+def run_corpus(cases: list[dict]) -> list[dict]:
+    """Run each labelled case through its gate; never raise for one failure."""
+    registry = gate_registry()
+    results: list[dict] = []
+    for case in cases:
+        try:
+            rejected = bool(registry[case["gate"]](case["root"]))
+            outcome = "rejected" if rejected else "accepted"
+            detail = "gate rejected the fixture" if rejected else "gate accepted the fixture"
+        except Exception as exc:  # noqa: BLE001 - graded, never raised
+            outcome = ERROR
+            detail = f"{type(exc).__name__}: {exc}"
+        results.append(
+            {
+                "id": case["id"],
+                "gate": case["gate"],
+                "label": case["label"],
+                "source": case["source"],
+                "note": case["note"],
+                "outcome": outcome,
+                "detail": detail,
+            }
+        )
+    return results
+
+
+def summarise_corpus(results: list[dict]) -> dict:
+    """TPR/FPR per gate and overall, each with its counts and interval."""
+
+    def bucket(rows: list[dict]) -> dict:
+        degraded = [r for r in rows if r["label"] == DEFECTIVE]
+        clean = [r for r in rows if r["label"] == CLEAN_LABEL]
+        errors = sum(1 for r in rows if r["outcome"] == ERROR)
+        # A case the harness could not run is neither a detection nor a clean
+        # pass, so it is excluded from both denominators and reported up top.
+        scored_defective = [r for r in degraded if r["outcome"] != ERROR]
+        scored_clean = [r for r in clean if r["outcome"] != ERROR]
+        caught = sum(1 for r in scored_defective if r["outcome"] == "rejected")
+        false_alarms = sum(1 for r in scored_clean if r["outcome"] == "rejected")
+        return {
+            "cases": len(rows),
+            "errors": errors,
+            "defective": len(degraded),
+            "clean": len(clean),
+            "caught": caught,
+            "missed": len(scored_defective) - caught,
+            "false_alarms": false_alarms,
+            "tpr": _rate(caught, len(scored_defective)),
+            "tpr_ci95": _wilson(caught, len(scored_defective)),
+            "fpr": _rate(false_alarms, len(scored_clean)),
+            "fpr_ci95": _wilson(false_alarms, len(scored_clean)),
+        }
+
+    gates = {}
+    for name in sorted({row["gate"] for row in results}):
+        gates[name] = bucket([row for row in results if row["gate"] == name])
+    return {
+        "version": CORPUS_VERSION,
+        "generated_at": _now_iso(),
+        "totals": bucket(results),
+        "gates": gates,
+        "results": results,
+    }
+
+
+def render_corpus_markdown(summary: dict) -> str:
+    totals = summary["totals"]
+    lines = [
+        "# 外部语料校准：TPR / FPR",
+        "",
+        f"- 生成时间: `{summary['generated_at']}`",
+        f"- 用例: {totals['cases']}（defective {totals['defective']} / "
+        f"clean {totals['clean']} / error {totals['errors']}）",
+        f"- TPR: {totals['tpr']}  95% CI {totals['tpr_ci95']}",
+        f"- FPR: {totals['fpr']}  95% CI {totals['fpr_ci95']}",
+        "",
+        "区间用 Wilson 分数区间（对极小 n 也成立）。**n 很小时这个数字不能当作"
+        "门禁的真实性能**——它只说明这份语料上的表现，样本量写在每一行里。",
+        "",
+        "| gate | cases | defective | caught | missed | TPR | 95% CI | clean | false alarms | FPR | 95% CI |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for name, item in summary["gates"].items():
+        lines.append(
+            f"| `{name}` | {item['cases']} | {item['defective']} | {item['caught']} "
+            f"| {item['missed']} | {item['tpr']} | {item['tpr_ci95']} "
+            f"| {item['clean']} | {item['false_alarms']} | {item['fpr']} "
+            f"| {item['fpr_ci95']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## 用例",
+            "",
+            "| id | gate | label | source | outcome |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for item in summary["results"]:
+        lines.append(
+            f"| `{item['id']}` | `{item['gate']}` | {item['label']} "
+            f"| {item['source']} | {item['outcome']} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="测量工作流自身的 gate 是否能抓住注入的缺陷（只测量）",
@@ -775,11 +990,49 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="只列出外部任务，不执行",
     )
+    parser.add_argument(
+        "--corpus",
+        default=None,
+        help=(
+            # argparse 用 % 做帮助文本格式化，所以百分号要写成 %%
+            "对带标签的外部语料跑门禁，输出 TPR/FPR 与 Wilson 95%% 区间"
+            "（目录里要有 corpus.yaml）"
+        ),
+    )
     return parser
 
 
 def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
+    if args.corpus:
+        try:
+            cases = load_corpus(Path(args.corpus))
+            summary = summarise_corpus(run_corpus(cases))
+            if args.out:
+                save_text_atomically(
+                    Path(args.out),
+                    render_corpus_markdown(summary),
+                    description="外部语料校准报告",
+                )
+            if args.json:
+                save_text_atomically(
+                    Path(args.json),
+                    json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True)
+                    + "\n",
+                    description="外部语料校准 JSON",
+                )
+        except (OSError, ValueError) as exc:
+            return tool_error(str(exc))
+        totals = summary["totals"]
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        print(
+            f"tool-eval corpus: {totals['cases']} cases, "
+            f"TPR {totals['tpr']} {totals['tpr_ci95']}, "
+            f"FPR {totals['fpr']} {totals['fpr_ci95']}",
+            file=sys.stderr,
+        )
+        # Measurement, not a gate: a completed calibration exits 0.
+        return 0
     if args.benchmark:
         try:
             spec_path = Path(args.benchmark)

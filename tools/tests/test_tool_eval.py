@@ -12,6 +12,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import yaml
@@ -445,6 +446,191 @@ class BenchmarkCliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             payload = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(payload["totals"]["pass"], 1)
+
+
+class CorpusTests(unittest.TestCase):
+    """The labelled-corpus calibration mode."""
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.root = Path(self._temporary.name)
+
+    def _corpus(self, cases: list[dict]) -> Path:
+        (self.root / "corpus.yaml").write_text(
+            yaml.safe_dump({"version": 1, "cases": cases}, sort_keys=False),
+            encoding="utf-8",
+        )
+        for case in cases:
+            (self.root / str(case["id"])).mkdir(exist_ok=True)
+        return self.root
+
+    def _case(self, case_id, gate, label, **extra):
+        payload = {
+            "id": case_id,
+            "gate": gate,
+            "label": label,
+            "source": "test",
+        }
+        payload.update(extra)
+        return payload
+
+    def _row(self, row_id, label, outcome, gate="g"):
+        return {
+            "id": row_id,
+            "gate": gate,
+            "label": label,
+            "outcome": outcome,
+            "source": "t",
+            "note": "",
+        }
+
+    def test_a_missing_manifest_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "找不到语料清单"):
+            tool_eval.load_corpus(self.root / "nope")
+
+    def test_an_empty_case_list_is_an_error(self):
+        path = self._corpus([])
+
+        with self.assertRaisesRegex(ValueError, "非空 cases"):
+            tool_eval.load_corpus(path)
+
+    def test_a_missing_field_is_an_error(self):
+        path = self._corpus([{"id": "a", "gate": "stats-plan", "label": "clean"}])
+
+        with self.assertRaisesRegex(ValueError, "缺少 source"):
+            tool_eval.load_corpus(path)
+
+    def test_an_unknown_gate_is_an_error(self):
+        path = self._corpus([self._case("a", "made-up", "clean")])
+
+        with self.assertRaisesRegex(ValueError, "未知 gate"):
+            tool_eval.load_corpus(path)
+
+    def test_an_unknown_label_is_an_error(self):
+        path = self._corpus([self._case("a", "stats-plan", "maybe")])
+
+        with self.assertRaisesRegex(ValueError, "label 必须是"):
+            tool_eval.load_corpus(path)
+
+    def test_a_missing_case_directory_is_an_error(self):
+        path = self._corpus([self._case("a", "stats-plan", "clean")])
+        (path / "a").rmdir()
+
+        with self.assertRaisesRegex(ValueError, "找不到用例目录"):
+            tool_eval.load_corpus(path)
+
+    def test_a_valid_corpus_loads_with_its_root(self):
+        path = self._corpus([self._case("a", "stats-plan", "clean")])
+
+        cases = tool_eval.load_corpus(path)
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0]["root"], path / "a")
+
+    def test_tpr_rewards_a_gate_that_rejects_defective_cases(self):
+        summary = tool_eval.summarise_corpus(
+            [
+                self._row("d1", tool_eval.DEFECTIVE, "rejected"),
+                self._row("c1", tool_eval.CLEAN_LABEL, "accepted"),
+            ]
+        )
+
+        self.assertEqual(summary["totals"]["tpr"], 1.0)
+        self.assertEqual(summary["totals"]["fpr"], 0.0)
+
+    def test_a_missed_defect_lowers_tpr(self):
+        summary = tool_eval.summarise_corpus(
+            [self._row("d1", tool_eval.DEFECTIVE, "accepted")]
+        )
+
+        self.assertEqual(summary["totals"]["tpr"], 0.0)
+        self.assertEqual(summary["totals"]["missed"], 1)
+
+    def test_an_error_is_excluded_from_both_denominators(self):
+        summary = tool_eval.summarise_corpus(
+            [
+                self._row("d1", tool_eval.DEFECTIVE, tool_eval.ERROR),
+                self._row("d2", tool_eval.DEFECTIVE, "rejected"),
+            ]
+        )
+
+        self.assertEqual(summary["totals"]["errors"], 1)
+        # One scored defect, and it was caught: the error neither helps nor hurts.
+        self.assertEqual(summary["totals"]["tpr"], 1.0)
+        self.assertEqual(summary["totals"]["missed"], 0)
+
+    def test_the_interval_widens_as_the_sample_shrinks(self):
+        small = tool_eval._wilson(1, 1)
+        large = tool_eval._wilson(50, 50)
+
+        self.assertIsNotNone(small)
+        self.assertIsNotNone(large)
+        # Wilson(1,1) = [0.21, 1.0] versus Wilson(50,50) = [0.93, 1.0]: the
+        # tiny sample is wider, which is the point of reporting the interval.
+        self.assertGreater(small[1] - small[0], large[1] - large[0])
+
+    def test_the_interval_is_none_without_scored_cases(self):
+        self.assertIsNone(tool_eval._wilson(0, 0))
+
+    def test_run_corpus_grades_a_raising_gate_as_an_error(self):
+        def boom(_root):
+            raise RuntimeError("x")
+
+        with mock.patch.object(
+            tool_eval, "gate_registry", return_value={"boom": boom}
+        ):
+            results = tool_eval.run_corpus(
+                [
+                    {
+                        "id": "a",
+                        "gate": "boom",
+                        "label": "clean",
+                        "source": "t",
+                        "note": "",
+                        "root": self.root,
+                    }
+                ]
+            )
+
+        self.assertEqual(results[0]["outcome"], tool_eval.ERROR)
+
+    def test_the_markdown_report_states_the_sample_size(self):
+        summary = tool_eval.summarise_corpus(
+            [self._row("d1", tool_eval.DEFECTIVE, "rejected")]
+        )
+
+        text = tool_eval.render_corpus_markdown(summary)
+
+        self.assertIn("Wilson", text)
+        self.assertIn("样本量", text)
+        self.assertIn("`d1`", text)
+
+    def test_the_cli_runs_the_shipped_seed_corpus(self):
+        shipped = (
+            Path(__file__).resolve().parents[2]
+            / "docs"
+            / "examples"
+            / "calibration-corpus"
+        )
+        self.assertTrue((shipped / "corpus.yaml").is_file())
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            code = tool_eval.main(["tool-eval", "--corpus", str(shipped)])
+
+        self.assertEqual(code, 0)
+
+    def test_the_cli_rejects_a_broken_corpus_with_exit_two(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            code = tool_eval.main(
+                ["tool-eval", "--corpus", str(self.root / "nope")]
+            )
+
+        self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":

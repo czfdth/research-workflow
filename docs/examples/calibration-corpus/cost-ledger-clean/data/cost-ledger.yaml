@@ -1,0 +1,18 @@
+version: 1
+currency: USD
+paper: demo
+entries:
+  - kind: gpu
+    amount: 0
+    unit: hours
+metrics:
+  time_to_first_attempt:
+    status: recorded
+    value: 4.5
+    unit: hours
+    source: experiments/log/run-1.json
+  cost_per_attempt:
+    status: recorded
+    value: 0.0
+    currency: USD
+    source: experiments/log/compute-ledger.jsonl

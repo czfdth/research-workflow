@@ -5,6 +5,16 @@
 
 ## 从这里开始
 
+日常只需要一条命令：
+
+```powershell
+scripts/quickstart.ps1 --repo-root .
+```
+
+它把三件事合成一屏：环境健康（`doctor`）、论文列表与状态（`dashboard`）、以及**当前唯一该做的下一步**（`worklist --next`，含要读的 packet、要写的台账、以及完成判据）。加 `--json` 给机器读，加 `--paper-root <p>` 指定某篇。
+
+它是只读视图：不校验任何东西、不改变任何 gate 结论，也**不隐藏** doctor 的问题——有 problem 会原样打在最上面。`ready` 仍由 `readiness` 判定。
+
 | 你现在要做的事 | 阅读或执行 |
 | --- | --- |
 | 第一次安装 | 本页「从零搭建」，然后运行 `scripts/doctor.ps1` |
@@ -123,6 +133,8 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/e2e_check.py` | 一条命令给出单篇论文的现状快照：完整 gate 表、阻塞、人工待办、环境健康、git/CI 与投稿倒计时；只读，缺省只打印不写文件 | `scripts/e2e-check.ps1` |
 | `tools/ccfa/worklist.py` | **人工待办的有序清单（只读视图，不新增 gate）**：把 `readiness` 的待办项、对应 packet、要写入的台账、以及该台账校验器要求的字段（即"什么算完成"）合成一份按阻塞优先级排序的清单；`--next` 只打印第一条 | `scripts/worklist.ps1` |
+| `tools/ccfa/quickstart.py` | **一条命令的日常入口**：把 `doctor`（环境）+ `dashboard`（论文列表）+ `worklist --next`（唯一该做的下一步）合成一屏；只读，不新增 gate，也不隐藏 doctor 的问题 | `scripts/quickstart.ps1` |
+| `tools/ccfa/mcp_gates.py` | **只读 MCP 门禁服务**：用 stdio JSON-RPC 把 `brief` / `readiness` / `worklist` / `argument_audit` / `e2e_check` / `doctor` 暴露给其他 agent，零新依赖；**没有任何写入或开释工具**，每个工具都调用与 CLI 相同的函数，所以 agent 拿到的答案不会和人跑出来的不同 | `scripts/mcp-gates.ps1` |
 | `tools/ccfa/tool_eval.py` | 给工作流自己的 gate 做度量：往临时夹具里注入已知缺陷，记录各 gate 的检出率与误报率；另带 **外部基准 harness**（`--benchmark spec.yaml`）：按 spec 跑别人的任务、读度量、比阈值，任务跑不起来记 `unavailable` 并从分母剔除；只测量、不改写任何 gate，跑完退出 0 | `scripts/tool-eval.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
@@ -607,6 +619,32 @@ scripts/anonymity.ps1 --paper-root <paper-root>
 硬失败（problem）覆盖五类真实触发点：`\author{...}` 不是匿名写法、配置里声明的真实姓名/单位出现在正文、`our previous work` / `我们之前的工作` 这类自指措辞、作者自有 URL、以及 PDF 的 Author/Subject/Keywords 等元数据里带身份信息。judgement call 留成 advisory，避免逼人做假陈述：**致谢章节**默认只提醒（CSF 这类会议要求把 AI 使用写进致谢，禁掉它就是错的；venue 真禁止时在 config 里写 `acknowledgements: forbidden` 升级为 problem），**未列出的代码托管 URL** 也只提醒（第三方 artifact 链接是合法的，作者自有的写进 `self_urls` 才升级）。
 
 数据来自 `data/anonymity.yaml`（可选）：`blind`、`authors`、`affiliations`、`self_urls`、`allow`、`acknowledgements`。没有这个文件时按"双盲 + 无已知姓名"跑通用检查。`readiness` 从 `internal-review` 阶段起把 `anonymity` 作为正式 gate 执行（`minimal` profile 除外）。
+
+## 把门禁暴露给别的 agent（只读 MCP）
+
+生成型智能体（Codex、ARIS、open-science）不该绕过这套工作流自己判断"做完了没有"。所以这里提供一个**只读** MCP 服务，让它们能问、但不能改：
+
+```powershell
+scripts/mcp-gates.ps1 list-tools          # 看有哪些工具
+scripts/mcp-gates.ps1 serve               # stdio JSON-RPC 服务（给 MCP 客户端用）
+scripts/mcp-gates.ps1 call --tool readiness --arg paper_root=<paper-root>
+```
+
+暴露六个工具：`brief`、`readiness`、`worklist`、`argument_audit`、`e2e_check`、`doctor`。三条性质是刻意设计并写了测试的：
+
+- **没有写入面**：不存在能推进 stage、写台账、把复核标成完成、或落地 patch 的工具。agent 可以问"gate 怎么说"，不能问"怎么让 gate 通过"。
+- **不重复实现 gate**：每个工具调用的是 CLI 用的同一个函数，所以 agent 得到的答案和真人跑出来的一致。
+- **零新依赖**：stdio + 换行分隔的 JSON-RPC 2.0，手写实现（initialize / tools/list / tools/call / ping / notifications）。
+
+接到 Codex 的 `config.toml`（注意 cc-switch 会重写这个文件）：
+
+```toml
+[mcp_servers.ccfa-gates]
+command = "C:\\Users\\best\\Documents\\ChatGPT\\科研\\tools\\.venv\\Scripts\\python.exe"
+args = ["-m", "ccfa.mcp_gates", "serve"]
+cwd = "C:\\Users\\best\\Documents\\ChatGPT\\科研"
+env = { PYTHONPATH = "C:\\Users\\best\\Documents\\ChatGPT\\科研\\tools" }
+```
 
 ## 人工待办清单
 

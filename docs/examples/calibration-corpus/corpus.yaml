@@ -1,0 +1,54 @@
+# Labelled corpus for `tool-eval --corpus`.
+#
+# WHAT THIS IS: a harness validation set. Each case is an independent fixture
+# directory, and the label says what the gate *should* do with it. Running it
+# proves the calibration runner measures the gates correctly.
+#
+# WHAT THIS IS NOT: evidence about the gates' real-world accuracy. These
+# fixtures were written from the same patterns as the built-in cases, by the
+# same author, so the numbers are optimistic by construction and n is tiny.
+# Replace or extend this with an external corpus (published bug lists,
+# retraction records, reported numerical-inconsistency cases) before quoting
+# any TPR/FPR as a property of the gates.
+version: 1
+cases:
+  - id: stats-plan-clean
+    gate: stats-plan
+    label: clean
+    source: seed corpus (harness validation, not external evidence)
+    note: 声明了 zero-skill baseline 的统计计划
+  - id: stats-plan-no-baseline
+    gate: stats-plan
+    label: defective
+    source: seed corpus (harness validation, not external evidence)
+    note: 同一份计划，删掉 null_baseline
+  - id: citation-clean
+    gate: citation-guard
+    label: clean
+    source: seed corpus (harness validation, not external evidence)
+    note: 引用齐全且台账有抓取证据
+  - id: citation-dangling
+    gate: citation-guard
+    label: defective
+    source: seed corpus (harness validation, not external evidence)
+    note: 正文 cite 了文献表里没有的 key
+  - id: post-submission-clean
+    gate: post-submission
+    label: clean
+    source: seed corpus (harness validation, not external evidence)
+    note: 尾部台账结构完整
+  - id: post-submission-placeholder
+    gate: post-submission
+    label: defective
+    source: seed corpus (harness validation, not external evidence)
+    note: commitments 里留 TODO 占位
+  - id: cost-ledger-clean
+    gate: cost-ledger
+    label: clean
+    source: seed corpus (harness validation, not external evidence)
+    note: 记录了 time_to_first_attempt 与 cost_per_attempt
+  - id: cost-ledger-no-metrics
+    gate: cost-ledger
+    label: defective
+    source: seed corpus (harness validation, not external evidence)
+    note: 同一份台账，缺 metrics 段

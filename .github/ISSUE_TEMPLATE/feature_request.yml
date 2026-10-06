@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a new gate, tool or check
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: failure-mode
+    attributes:
+      label: What real failure would this catch?
+      description: |
+        This repository only adds a check when it can name the accident it
+        prevents. Describe a concrete way a paper or experiment goes wrong today
+        and which part of the workflow would have caught it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: who-fills-it
+    attributes:
+      label: Who fills the ledger, and how often?
+      description: If the answer is "nobody" or "the model", the check will be rejected — say who maintains it and when it goes stale.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: What does it cost?
+      description: Runtime, dependencies, and whether it works without PowerShell.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else could catch this?
+      description: An existing check, a checklist line, or a human review that already covers it.
+    validations:
+      required: false

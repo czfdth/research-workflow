@@ -18,6 +18,30 @@ def _write(path: Path, text: str) -> Path:
     return path
 
 
+def _pymupdf():
+    """PyMuPDF renamed its import from ``fitz`` to ``pymupdf``.
+
+    Mirror the production fallback so this suite runs on a machine that only
+    has the older distribution (observed on the Linux side of this setup).
+    """
+    try:
+        import pymupdf
+
+        return pymupdf
+    except ImportError:  # pragma: no cover - depends on the installed wheel
+        import fitz
+
+        return fitz
+
+
+def _has_pymupdf() -> bool:
+    try:
+        _pymupdf()
+    except ImportError:
+        return False
+    return True
+
+
 def _paper(root: Path, body: str = "\\author{\\IEEEauthorblockN{Anonymous Submission}}\n") -> Path:
     (root / "manuscript").mkdir(parents=True, exist_ok=True)
     _write(root / "manuscript" / "main.tex", body)
@@ -278,6 +302,7 @@ class ConfigDrivenTests(unittest.TestCase):
         self.assertEqual(_codes(problems), ["anonymity-root-missing"])
 
 
+@unittest.skipUnless(_has_pymupdf(), "PyMuPDF (pymupdf/fitz) 未安装")
 class PdfMetadataTests(unittest.TestCase):
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory()
@@ -286,8 +311,7 @@ class PdfMetadataTests(unittest.TestCase):
         _paper(self.root)
 
     def _make_pdf(self, *, author: str) -> Path:
-        import pymupdf
-
+        pymupdf = _pymupdf()
         path = self.root / "manuscript" / "main.pdf"
         document = pymupdf.open()
         document.new_page()
@@ -317,7 +341,7 @@ class PdfMetadataTests(unittest.TestCase):
         config, _problems = anonymity.load_config(self.root)
         config["affiliations"] = ["Example University"]
         path = self.root / "manuscript" / "main.pdf"
-        import pymupdf
+        pymupdf = _pymupdf()
 
         with pymupdf.open(path) as document:
             metadata = dict(document.metadata or {})
