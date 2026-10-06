@@ -2281,3 +2281,24 @@ Tests: a new assertion in test_cross_review.test_argv_has_exact_required_flags_a
   - `tools.tests.test_cross_review`
   - `tools.tests.test_meta_apply`
 
+## WC-20261006T130834Z-df7d41fdb6 - Align the anonymity gate with ARIS's documented 5-layer spec
+
+- timestamp: `2026-10-06T13:08:34Z`
+- status: `complete`
+- author: `codex`
+- reason: Aligned the anonymity gate with ARIS's actual spec after checking what ARIS really ships. ARIS has no anonymity source code: the resubmit-pipeline hygiene rules live in skills/resubmit-pipeline/SKILL.md as a prose "5-layer anonymity check" plus a couple of grep regexes, and a repo-wide search for an anonymity script finds none (the only .py that mentions the terms is extract_paper_style.py, unrelated). So the alignment here is spec-level, not a vendored file.
+
+Two layers ARIS documents that the first implementation missed are now covered, and both matter for a double-blind venue:
+
+- Layer 4, cross-rebuttal references: "this revision addresses reviewer 2's concern from the prior submission", "rebuttal at <venue>", "resubmission of", "addressing reviewer N", and the Chinese equivalents (上次投稿 / 之前被拒 / 审稿意见). ARIS's own note is that this is equally blocking as a leaked name, because it breaks anonymity and advertises a prior rejection. These are hard problems (anonymity-cross-rebuttal).
+- Layer 5, internal codenames and workspace links: a configured codenames list is a hard problem (anonymity-codename) and generic internal-workspace signals (Slack channel/workspace, Confluence/Atlassian, "internal wiki/repo/tracker") are advisories (anonymity-internal-link), because the string alone does not prove it identifies the lab.
+
+Also adopted from the same spec: acknowledgements are now detected as a macro (\acknowledgments{...} / \begin{acknowledgments}) and as a standalone acknowledgments.tex, not only as a \section*{Acknowledgments}; and ARIS's separate "residual coloring / margin-note scan" (leftovers such as \revise{} / \fix{} / \todo{} / \todonotes{} / \textcolor{red}{}) is reported as advisories, matching ARIS's own "list them; the user decides" stance. Config gains the optional codenames key.
+
+Tests: 7 new cases in tools/tests/test_anonymity.py (English and Chinese cross-rebuttal, codename hit, internal-link advisory, residual-markup advisory, acknowledgements macro, standalone acknowledgments file). 33 tests in the module pass and ruff is clean. Verified live on the flagship paper: still 0 problems and the same single acknowledgements advisory, so the new layers do not invent findings.
+- files:
+  - `tools/ccfa/anonymity.py`
+  - `tools/tests/test_anonymity.py`
+- tests:
+  - `tools.tests.test_anonymity`
+

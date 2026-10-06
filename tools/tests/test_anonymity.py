@@ -195,6 +195,67 @@ class SourceScanTests(unittest.TestCase):
 
         self.assertEqual(_codes(problems), ["anonymity-manuscript-missing"])
 
+    def test_a_cross_rebuttal_reference_fails(self):
+        # ARIS resubmit-pipeline layer 4.
+        problems, _advisories = self._check(
+            "\\author{Anonymous}\n"
+            "This revision addresses reviewer 2's concern from the prior submission.\n"
+        )
+
+        self.assertIn("anonymity-cross-rebuttal", _codes(problems))
+
+    def test_chinese_cross_rebuttal_reference_fails(self):
+        problems, _advisories = self._check(
+            "\\author{Anonymous}\n本文回应了上次投稿的审稿意见。\n"
+        )
+
+        self.assertIn("anonymity-cross-rebuttal", _codes(problems))
+
+    def test_an_internal_codename_fails(self):
+        problems, _advisories = self._check(
+            "\\author{Anonymous}\nThe Project Falcon harness collects traces.\n",
+            codenames=["Project Falcon"],
+        )
+
+        self.assertIn("anonymity-codename", _codes(problems))
+
+    def test_an_internal_workspace_link_is_an_advisory(self):
+        # ARIS resubmit-pipeline layer 5.
+        problems, advisories = self._check(
+            "\\author{Anonymous}\nSee the internal wiki for details.\n"
+        )
+
+        self.assertEqual(problems, [])
+        self.assertIn("anonymity-internal-link", _codes(advisories))
+
+    def test_residual_revision_markup_is_an_advisory(self):
+        problems, advisories = self._check(
+            "\\author{Anonymous}\n\\todo{check this number} and \\textcolor{red}{fix}\n"
+        )
+
+        self.assertEqual(problems, [])
+        self.assertIn("anonymity-residual-markup", _codes(advisories))
+
+    def test_an_acknowledgements_macro_is_detected(self):
+        problems, advisories = self._check(
+            "\\author{Anonymous}\n\\acknowledgments{Thanks to the funders.}\n"
+        )
+
+        self.assertEqual(problems, [])
+        self.assertIn("anonymity-acknowledgement", _codes(advisories))
+
+    def test_a_standalone_acknowledgements_file_is_detected(self):
+        _paper(self.root)
+        _write(
+            self.root / "manuscript" / "acknowledgments.tex",
+            "We thank the funders.\n",
+        )
+        config, _problems = anonymity.load_config(self.root)
+
+        _problems, advisories = anonymity.check_sources(self.root, config)
+
+        self.assertIn("anonymity-acknowledgement", _codes(advisories))
+
 
 class ConfigDrivenTests(unittest.TestCase):
     def setUp(self):

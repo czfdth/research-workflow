@@ -36,6 +36,7 @@ Config (``data/anonymity.yaml``), all keys optional::
     authors: ["Zhang San"]      # real names that must not appear
     affiliations: ["Example University"]
     self_urls: ["github.com/owner"]
+    codenames: ["Project Falcon"]
     allow: ["anonymous.example"]  # strings exempt from the URL advisory
     acknowledgements: allowed   # allowed | forbidden
 
@@ -74,7 +75,42 @@ ACK_SECTION_RE = re.compile(
     r"\\(?:section\*?|chapter\*?)\s*\{\s*(?:Acknowledg\w*|致谢|Acknowledgements?)\s*\}",
     re.IGNORECASE,
 )
+# ARIS's resubmit-pipeline scans acknowledgements as a *macro* too, not only as
+# a section, and it also looks for a dedicated acknowledgments file.
+ACK_MACRO_RE = re.compile(
+    r"\\(?:acknowledg(?:e)?ments?|thanks)\s*\{"
+    r"|\\begin\s*\{\s*acknowledg(?:e)?ments?\s*\}",
+    re.IGNORECASE,
+)
+ACK_FILENAME_RE = re.compile(r"acknowledg(?:e)?ments?", re.IGNORECASE)
 URL_RE = re.compile(r"https?://[^\s{}\\]*", re.IGNORECASE)
+
+# ARIS resubmit-pipeline Phase 0.5, layer 4: a cross-rebuttal reference breaks
+# anonymity *and* advertises that an earlier venue rejected the paper. ARIS
+# treats this as equally blocking as a leaked author name.
+CROSS_REBUTTAL_PATTERNS = (
+    re.compile(r"\b(?:rebuttal|response)\s+(?:at|from|to)\s+[A-Z]", 0),
+    re.compile(r"\breviewer\s*#?\d+(?:'s|’s|\s+)?\s*(?:concern|comment|objection)", re.IGNORECASE),
+    re.compile(r"\b(?:prior|previous|earlier)\s+(?:submission|version of this paper|rejected version)", re.IGNORECASE),
+    re.compile(r"\bresubmission of\b", re.IGNORECASE),
+    re.compile(r"\baddressing\s+reviewer\s*\d+", re.IGNORECASE),
+    re.compile(r"(?:上次|之前|先前)(?:投稿|被拒|审稿意见)"),
+)
+
+# ARIS layer 5: internal codenames and project links that identify the lab.
+INTERNAL_LINK_PATTERNS = (
+    re.compile(r"https?://[^\s{}]*\bslack\.com\b", re.IGNORECASE),
+    re.compile(r"\bslack\s+(?:channel|workspace)\b", re.IGNORECASE),
+    re.compile(r"https?://[^\s{}]*\b(?:atlassian\.net|confluence)\b", re.IGNORECASE),
+    re.compile(r"\binternal\s+(?:wiki|repo|repository|tracker)\b", re.IGNORECASE),
+)
+
+# ARIS's "residual coloring / margin-note scan": leftovers from a camera-ready
+# cycle. ARIS lists them for the user to decide, so these are advisories.
+RESIDUAL_MARKUP_PATTERNS = (
+    re.compile(r"\\(?:revise|fix|todo|todonotes|note)\s*\{"),
+    re.compile(r"\\textcolor\s*\{\s*(?:red|blue|green)\s*\}\s*\{"),
+)
 
 # Strings that mean "this author block is already anonymised".
 ANONYMOUS_MARKERS = (
@@ -101,6 +137,7 @@ def load_config(paper_root: Path) -> tuple[dict, list[Problem]]:
             "affiliations": [],
             "self_urls": [],
             "allow": [],
+            "codenames": [],
             "acknowledgements": "allowed",
             "config_present": False,
         }, []
@@ -118,6 +155,7 @@ def load_config(paper_root: Path) -> tuple[dict, list[Problem]]:
         "affiliations": [str(item) for item in (payload.get("affiliations") or [])],
         "self_urls": [str(item) for item in (payload.get("self_urls") or [])],
         "allow": [str(item) for item in (payload.get("allow") or [])],
+        "codenames": [str(item) for item in (payload.get("codenames") or [])],
         "acknowledgements": str(payload.get("acknowledgements", "allowed")).casefold(),
         "config_present": True,
     }
@@ -182,6 +220,7 @@ def check_sources(
     affiliations = [item for item in config.get("affiliations", []) if item.strip()]
     self_urls = [item.casefold() for item in config.get("self_urls", []) if item.strip()]
     allow = [item.casefold() for item in config.get("allow", []) if item.strip()]
+    codenames = [item for item in config.get("codenames", []) if item.strip()]
     for path in sources:
         text = path.read_text(encoding="utf-8", errors="replace")
         for line_number, line in enumerate(text.splitlines(), start=1):
@@ -217,6 +256,48 @@ def check_sources(
                             "双盲投稿要求改写成第三人称（如 «prior work [12]»）",
                         )
                     )
+            for codename in codenames:
+                if codename and codename.casefold() in line.casefold():
+                    problems.append(
+                        _problem(
+                            "anonymity-codename",
+                            path,
+                            f"第 {line_number} 行出现内部代号 {codename!r}",
+                        )
+                    )
+            for pattern in CROSS_REBUTTAL_PATTERNS:
+                match = pattern.search(line)
+                if match:
+                    problems.append(
+                        _problem(
+                            "anonymity-cross-rebuttal",
+                            path,
+                            f"第 {line_number} 行出现跨轮/跨会引用 {match.group(0)!r}；"
+                            "ARIS layer 4：这同时泄漏身份与「前一次被拒」，必须整段删除",
+                        )
+                    )
+            for pattern in INTERNAL_LINK_PATTERNS:
+                match = pattern.search(line)
+                if match:
+                    advisories.append(
+                        _problem(
+                            "anonymity-internal-link",
+                            path,
+                            f"第 {line_number} 行出现内部链接/工作区线索 "
+                            f"{match.group(0)!r}（ARIS layer 5）",
+                        )
+                    )
+            for pattern in RESIDUAL_MARKUP_PATTERNS:
+                match = pattern.search(line)
+                if match:
+                    advisories.append(
+                        _problem(
+                            "anonymity-residual-markup",
+                            path,
+                            f"第 {line_number} 行残留修订标记 {match.group(0)!r}；"
+                            "camera-ready 循环的遗留物，双盲前应清掉",
+                        )
+                    )
             for url in URL_RE.findall(line):
                 lowered = url.casefold()
                 if any(item in lowered for item in allow):
@@ -249,7 +330,12 @@ def check_sources(
                         "双盲投稿必须是 Anonymous 之类",
                     )
                 )
-        if ACK_SECTION_RE.search(text):
+        has_acknowledgements = bool(
+            ACK_SECTION_RE.search(text)
+            or ACK_MACRO_RE.search(text)
+            or ACK_FILENAME_RE.search(path.stem)
+        )
+        if has_acknowledgements:
             if config.get("acknowledgements") == "forbidden":
                 problems.append(
                     _problem(
