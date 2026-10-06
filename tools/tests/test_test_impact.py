@@ -377,6 +377,23 @@ class SelectTestsTests(unittest.TestCase):
         self.assertEqual(selection.tests, ("tools.tests.test_docs_consistency",))
         self.assertFalse(selection.full)
 
+    def test_root_prose_files_do_not_force_the_full_suite(self):
+        # Regression: an unrecognised path falls closed to the full suite, which
+        # meant a CONTRIBUTING.md edit ran 2379 tests and a MiKTeX install.
+        for name in (
+            "README.en.md",
+            "CONTRIBUTING.md",
+            "CODE_OF_CONDUCT.md",
+            "SECURITY.md",
+        ):
+            with self.subTest(path=name):
+                selection = select_tests([name], suite="tools")
+                self.assertEqual(
+                    selection.tests, ("tools.tests.test_docs_consistency",)
+                )
+                self.assertFalse(selection.full)
+                self.assertEqual(selection.unknown, ())
+
     def test_dot_prefixed_paths_keep_their_prefix(self):
         selection = select_tests(
             [".github/workflows/tests.yml"],

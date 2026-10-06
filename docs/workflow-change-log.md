@@ -2530,3 +2530,20 @@ Wiring for the two new modules moves together: dispatch, PowerShell wrappers, CC
   - `tools.tests.test_test_impact`
   - `tools.tests.test_tool_eval`
 
+## WC-20261006T154223Z-2113d2945d - Stop root prose edits from forcing the full CI suite
+
+- timestamp: `2026-10-06T15:42:23Z`
+- status: `complete`
+- author: `codex`
+- reason: The Linux/CI commit took 9m50s and the dominant job was "tools impacted tests" at 588s, because the impact selector fell closed to the full suite: the three new root files (README.en.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) were not in the path map, so the reason was "unknown paths require the full suite", which pulled in needs_latex=true and a two-minute Chocolatey MiKTeX install before running all 2379 tests. A documentation edit should not cost a TeX install.
+
+ROOT_DOCS_PATHS now lists the root-level prose files (README.md, README.en.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md) and both the tools and app selectors use it, so they map to tools.tests.test_docs_consistency instead of falling through to unknown. The app selector gets the same list so those files stay ignored by the app suite rather than triggering it.
+
+Verified with the selector itself: plan --suite tools --base origin/master now reports full=false, unknown=[], and four modules (docs_consistency, github_workflows, scripts, test_impact) for this very change, instead of the full suite. Regression test added: test_root_prose_files_do_not_force_the_full_suite walks the four new names and asserts a focused selection with no unknown paths.
+- files:
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

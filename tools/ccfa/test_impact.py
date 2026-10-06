@@ -41,6 +41,18 @@ class Selection(NamedTuple):
         }
 
 
+# Root-level prose that only the docs-consistency suite reads. Listing them
+# explicitly matters: an unrecognised path falls closed to the full suite, so
+# adding a README/CONTRIBUTING file without this would run all 2379 tests plus
+# a two-minute MiKTeX install for a documentation edit.
+ROOT_DOCS_PATHS = (
+    "README.md",
+    "README.en.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+)
+
 _TOOLS_FULL_PATHS = {
     "tools/ccfa/__init__.py",
     "tools/ccfa/cli.py",
@@ -427,7 +439,7 @@ def _select_tools(path: str) -> tuple[str, ...] | None:
         return ("tools.tests.test_github_workflows",)
     if path == ".gitignore":
         return ("tools.tests.test_docs_consistency",)
-    if path == "README.md" or path.startswith("docs/"):
+    if path in ROOT_DOCS_PATHS or path.startswith("docs/"):
         return ("tools.tests.test_docs_consistency",)
     if path.startswith("checklists/"):
         return (
@@ -443,7 +455,7 @@ def _select_tools(path: str) -> tuple[str, ...] | None:
 
 def _select_app(path: str) -> tuple[str, ...] | None:
     if (
-        path == "README.md"
+        path in ROOT_DOCS_PATHS
         or path.startswith(
             (
                 ".github/",
