@@ -1633,3 +1633,15 @@ rewrite historical entries.
   - `tools.tests.test_e2e_check`
   - `tools.tests.test_github_workflows`
 
+## WC-20261006T051449Z-caedbe1de5 - Compare the workflow with ARIS skill-by-skill and record where each is stronger.
+
+- timestamp: `2026-10-06T05:14:49Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS is the closest open-source neighbour but is a prompt-skill corpus rather than a verification layer; the comparison separates the two so the remaining gaps (compute access, adversarial-review roles, self-evolution gate) are not confused with skill count.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Read ARIS docs/SKILLS_CATALOG.md at its current revision (83 skills, 10 categories) and compared against this repo's 87 modules and 20 gates. Documentation only.
+
