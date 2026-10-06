@@ -241,3 +241,69 @@ cross-review:   review-prompt-drift, review-blocking, review-stale-finding
 ### 结论
 
 差距 2 已按建议收窄，过期结论问题也已修掉并被 gate 捕获。与 ARIS 相比，结构差距只剩三条：**算力接入面**（唯一能力级缺口）、**自演化落地门**、**图件与投稿后产出深度**。其余（专利、领域适配器、wiki 自动化）属于可选方向。
+
+## 九、第四轮更新（2026-10-06 修订三）：对标差距已全部关闭
+
+### 规模变化
+
+| 指标 | 第三轮 | 本轮 | 变化 |
+| --- | ---: | ---: | --- |
+| 工具模块 | 89 | 100 | +11 |
+| PowerShell 入口 | 74 | 85 | +11 |
+| 工具测试 | 1866 | 2227 | +361 |
+
+### 我上一轮列出的差距，逐条状态
+
+| 上轮差距 | 本轮结果 | 证据 |
+| --- | --- | --- |
+| 1 算力接入面（唯一能力级缺口） | **已关闭** | `10c8cea` 可执行 SSH 后端 + fail-closed 配置校验；`295730a` 整个队列派发到远端；`4dbbfce` 崩溃后可续跑；`74716fb` 分波 gate。并有真实端到端实测：容器内 sshd、远端真执行、`--minutes 0.05` 跑 `sleep 120` 在 3.03 秒被杀并记 `timed_out=true`、队列两项重试后 complete、kill 队列进程后 `--resume` 只重跑未完成项 |
+| 2 自演化落地门 | **已关闭** | `759aaa5` 新增 `meta_apply`，与 `meta_optimize` 形成"只读产出 → 特权落地"分离 |
+| 3 图件与投稿后产出深度 | **已关闭** | `fdd92ea` 确定性 `figure_spec` → SVG 渲染器；`6700b40` Beamer 生成；`e5619ba` 版式润色；`9262b25` 可编辑 PPTX；`57df42d` print-ready HTML 海报；`7ef14ea` 海报几何测量；`08211fe`/`fa3a5c9` 风格门两半；`6419761` 度量型 talk/poster gate 编排器 |
+| 4 专利链路 | **已关闭** | `e94ceba` 新增 `patent.py`（848 行 + 553 行测试） |
+| 5 领域适配器 | **已关闭** | `e94ceba` 新增 `domain_adapters.py`（296 行 + 187 行测试） |
+| 6 知识库自动化 | **已关闭** | `e94ceba` 扩展 `research_wiki.py`（+460 行） |
+| 7 外部基准评价 | **已关闭** | `e94ceba` 扩展 `tool_eval.py`（+278 行 + 317 行测试），并加 `docs/examples/benchmark-example.yaml` |
+
+同时新增 `docs/reference-aris-2026-10-06.md`：一份源码级参考审计，20 个切片逐条记录"读了 ARIS 的哪一部分、落地成什么、没采纳什么"。
+
+### 结论：与 ARIS 的结构性差距已经没有剩余项
+
+ARIS 的 83 个 skill 覆盖的能力面，本工作流现在在**每一类都有对应物**，并且在验证深度上仍然领先（确定性 gate、fail-closed 变更日志、9 个形式化引擎、容器复现收据、artifact badge、跨仓库提交门、2000+ 测试）。ARIS 剩下的优势是"skill 语料的宽度与可移植性"（单文件 SKILL.md、跨 agent 运行、领域社区贡献），属于生态位差异，不是能力缺失。
+
+### 但仍有未完成的事（都不在 ARIS 对比范围内）
+
+1. **环境回退**：`doctor` 从 0 advisory 变为 2 条——Docker daemon 不可达、Zotero 不可达。两者此前都是可用的。
+2. **旗舰论文仍 `ready=false`**，两项阻塞：
+   - `argument-audit`：proof 8 条仍 `pending-human-review`；
+   - `cross-review`：`review-provider-config-drift`、`review-prompt-drift`、`review-blocking`、`review-stale-finding` 四条。
+3. **新 gate 尚未在旗舰论文上跑过**：`reviews/adversarial-review.json` 不存在；talk / poster / patent / domain 模块没有真实材料验证。
+4. **governance 三处占位**：COI、查重工具、披露联系人仍是 pending。
+5. **外部链路**：Zenodo / OSF 未通（本机 `zenodo.org` 解析异常）；`artifact-badge.yaml` 与 `scientific-acceptance.yaml` 未创建；安装包缺干净机器验收。
+6. **插件冗余**：两个来源的 GitHub 插件与两个 computer-use 插件重复启用。
+7. **测试时长**：2227 项约 247 秒。规模仍在增长，建议保留 fast / full 分层。
+
+## 十、建议（按优先级）
+
+### P0：把工具变成论文进展
+
+1. **重跑 cross-review**。`review-provider-config-drift` 与 `review-prompt-drift` 说明评审指令与 provider 配置都变了，当前记录已失效。用已有的 OpenRouter gate-capable 跨族模型重跑一次，让记录与新指令对齐。
+2. **跑一次 `adversarial-review`**。新角色已建但旗舰论文没有记录，未跑的 gate 等于没有覆盖。
+3. **完成六项人工复核**：proof 8 条、citation-support 6 条、figure-support 1 条、claim-candidates 晋升、research-plans 审批。这是 `ready` 从 false 变 true 的唯一路径。
+
+### P1：外部链路与环境
+
+4. 重启 Docker daemon 与 Zotero，让 `doctor` 回到 0 advisories。
+5. 解决 `zenodo.org` 解析后跑一次 draft，取 DOI；补 `artifact-badge.yaml` 与 `scientific-acceptance.yaml`。
+6. 在一台无开发环境的机器上验收 `dist/ccfa-workbench-setup-0.1.0.exe`。
+
+### P2：清理与长期
+
+7. 填 governance 的 COI / 查重 / 披露联系人真实值。
+8. 清理重复插件（GitHub 与 computer-use 各留一个来源）。
+9. 给测试加 fast / full 分层，避免 2200+ 项全量跑成日常负担。
+
+### 最重要的一条
+
+**停止对标驱动的开发。** 与 ARIS 的差距已逐条归零，工具模块到 100 个、测试到 2227 项。继续按"对标 → 补缺口"的循环推进会进入自循环：每轮都能找到新的可对比项，但论文的 `ready` 不会因此改变。
+
+现在唯一的进展信号应该是：**`ready` 从 false 变 true，或者 cross-review 的阻塞条目减少**。如果下一轮更新后这两个数字仍未变化，那说明投入放在了错误的地方。

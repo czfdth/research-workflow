@@ -2214,3 +2214,16 @@ Wiring: dispatch gains patent and domain-adapters commands; scripts/domain-adapt
   - `tools.tests.test_test_impact`
   - `tools.tests.test_tool_eval`
 
+## WC-20261006T113229Z-224ab31b20 - Fourth round of the ARIS comparison: every remaining structural gap is closed; record the new priorities.
+
+- timestamp: `2026-10-06T11:32:29Z`
+- status: `complete`
+- author: `codex`
+- reason: The repo closed the compute, self-evolution, figure/poster/slides, patent, domain-adapter, knowledge-base and benchmark gaps (modules 89 to 100, tests 1866 to 2227), so the comparison needed to record that no structural gap remains and to shift the recommendations to the paper's own blockers.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+  - `tools.unittest discover (2227 tests)`
+- notes: Also records the current environment regression (docker daemon and zotero unreachable, 2 advisories), the four cross-review blockers, and that reviews/adversarial-review.json has still not been produced.
+
