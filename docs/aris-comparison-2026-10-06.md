@@ -98,7 +98,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 
 | 序号 | 差距 | ARIS | 你 |
 | --- | --- | --- | --- |
-| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行，且**整条队列可下发到该后端**（超时/stall/重试/流式输出语义照旧，已实测）；队列已有 **crash-safe 续跑状态**（`.queue-state` 与清单摘要绑定，改清单即拒绝续跑，已实测 kill→resume）；Slurm/PBS 只探测不提交；仍无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`、无 wave gating；远端 GPU 计量未实现（`gpu_budget_s` 会被拒绝）；论文仍未声明远程后端 |
+| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行，且**整条队列可下发到该后端**（超时/stall/重试/流式输出语义照旧，已实测）；**分波 + 波间 gate**（gate 退出码入状态，失败不开下一波，已实测）；**crash-safe 续跑状态**（`.queue-state` 与清单摘要绑定，改清单即拒绝续跑，已实测 kill→resume）；Slurm/PBS 只探测不提交；仍无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`；远端 GPU 计量未实现（`gpu_budget_s` 会被拒绝）；论文仍未声明远程后端 |
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | 只有 `meta_optimize`，无独立特权落地门 |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | 依赖外部 figure skill + `figure_manifest`，无内置确定性渲染器 |
@@ -140,6 +140,10 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
   第 1 项 `complete`；同一份清单加 `--resume` 重跑，第 1 项被跳过、第 2/3 项执行
   完成。远端 `/tmp/ccfa-log` 最终正好是 `ONE/TWO/THREE` 各一次——如果第 1 项被
   重跑，`ONE` 会出现两次。改过清单再 `--resume` 则直接 exit 2，不会拿旧状态套新清单。
+* 分波 gate：screen 波产出 `recall=0.4`，第二波的 gate（`recall >= 0.6`）退出 1 →
+  `stopped=gate`、下一波项记 `skipped-gate`、整体 exit 1；此时 run-log 里**只有
+  screen 那一条记录**，被挡住的命令没有留下任何运行痕迹。把 screen 改成 `0.8`
+  后同一份清单跑通两波，gate 记 `exit_code=0 / passed=true`。
 
 过程中踩过一个真实坑，值得记下来：用 `ssh-keygen -N '""'`（PowerShell 单引号）会生成
 **带口令 `""` 的私钥**，客户端在 BatchMode 下无法解锁，表现为服务端日志已经是

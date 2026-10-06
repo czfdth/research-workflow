@@ -114,6 +114,11 @@ class QueueTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_waves(self, waves, *, version=1, **extra):
+        payload = {"schema_version": version, "waves": waves}
+        payload.update(extra)
+        self.queue_path.write_text(json.dumps(payload), encoding="utf-8")
+
     def _item(self, name="run-1", command=None, **overrides):
         item = {
             "name": name,
@@ -334,6 +339,7 @@ class TestRunQueue(QueueTests):
                 "runs": [{"name": "run-1", "attempts": 1, "status": "complete"}],
                 "stopped": None,
                 "resumed": False,
+                "gates": [],
             },
         )
         self.assertEqual(self._records()[0]["status"], "completed")
@@ -489,7 +495,7 @@ class TestRunQueue(QueueTests):
         result = self._run(RecordingRunner([]))
         self.assertEqual(
             result,
-            {"runs": [], "stopped": None, "resumed": False},
+            {"runs": [], "stopped": None, "resumed": False, "gates": []},
         )
 
     def test_negative_budget_is_rejected(self):
@@ -1698,6 +1704,349 @@ class QueueResumeTests(QueueTests):
 
         self.assertEqual(code, 0)
         self.assertTrue(run.call_args.kwargs["resume"])
+
+
+class WaveGateTests(QueueTests):
+    def _statuses(self, result):
+        return {entry["name"]: entry["status"] for entry in result["runs"]}
+
+    def test_a_passing_gate_opens_the_next_wave(self):
+        self._write_waves(
+            [
+                {
+                    "name": "screen",
+                    "items": [self._item(name="s1", command=["echo", "s1"])],
+                },
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-screen"]},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        runner = RecordingRunner([0, 0, 0])
+
+        result = self._run(runner)
+
+        self.assertIsNone(result["stopped"])
+        self.assertEqual(
+            [call["argv"] for call in runner.calls],
+            [["echo", "s1"], ["check-screen"], ["echo", "f1"]],
+        )
+        self.assertEqual(
+            self._statuses(result),
+            {"s1": "complete", "f1": "complete"},
+        )
+        self.assertEqual(len(result["gates"]), 1)
+        self.assertEqual(result["gates"][0]["wave"], "full")
+        self.assertTrue(result["gates"][0]["passed"])
+        self.assertEqual(result["gates"][0]["exit_code"], 0)
+
+    def test_a_failing_gate_stops_the_rest_of_the_queue(self):
+        self._write_waves(
+            [
+                {
+                    "name": "screen",
+                    "items": [self._item(name="s1", command=["echo", "s1"])],
+                },
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-screen"]},
+                    "items": [
+                        self._item(name="f1", command=["echo", "f1"]),
+                        self._item(name="f2", command=["echo", "f2"]),
+                    ],
+                },
+            ]
+        )
+        runner = RecordingRunner([0, 3])
+
+        result = self._run(runner)
+
+        self.assertEqual(result["stopped"], "gate")
+        # The blocked wave's items never reach the runner.
+        self.assertEqual(
+            [call["argv"] for call in runner.calls],
+            [["echo", "s1"], ["check-screen"]],
+        )
+        self.assertEqual(
+            self._statuses(result),
+            {
+                "s1": "complete",
+                "f1": "skipped-gate",
+                "f2": "skipped-gate",
+            },
+        )
+        self.assertFalse(result["gates"][0]["passed"])
+        self.assertEqual(result["gates"][0]["exit_code"], 3)
+
+    def test_a_failed_item_blocks_the_next_wave_by_default(self):
+        self._write_waves(
+            [
+                {
+                    "name": "screen",
+                    "items": [self._item(name="s1", command=["echo", "s1"])],
+                },
+                {
+                    "name": "full",
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        runner = RecordingRunner([1])
+
+        result = self._run(runner)
+
+        self.assertEqual(result["stopped"], "wave-failed")
+        self.assertEqual([call["argv"] for call in runner.calls], [["echo", "s1"]])
+        self.assertEqual(
+            self._statuses(result),
+            {"s1": "failed", "f1": "skipped-wave"},
+        )
+
+    def test_continue_on_failure_lets_the_next_wave_run(self):
+        self._write_waves(
+            [
+                {
+                    "name": "screen",
+                    "continue_on_failure": True,
+                    "items": [self._item(name="s1", command=["echo", "s1"])],
+                },
+                {
+                    "name": "full",
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        runner = RecordingRunner([1, 0])
+
+        result = self._run(runner)
+
+        self.assertIsNone(result["stopped"])
+        self.assertEqual(
+            [call["argv"] for call in runner.calls],
+            [["echo", "s1"], ["echo", "f1"]],
+        )
+        self.assertEqual(
+            self._statuses(result),
+            {"s1": "failed", "f1": "complete"},
+        )
+
+    def test_a_gate_timeout_counts_as_blocked(self):
+        self._write_waves(
+            [
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-screen"], "timeout_s": 5},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        runner = RecordingRunner(
+            [subprocess.TimeoutExpired(cmd="check-screen", timeout=5)]
+        )
+
+        result = self._run(runner)
+
+        self.assertEqual(result["stopped"], "gate")
+        self.assertEqual(result["gates"][0]["exit_code"], 124)
+        self.assertFalse(result["gates"][0]["passed"])
+        self.assertEqual(self._statuses(result), {"f1": "skipped-gate"})
+
+    def test_gate_outcomes_are_persisted_to_the_state(self):
+        self._write_waves(
+            [
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-screen"]},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+
+        self._run(RecordingRunner([0, 0]))
+
+        state = json.loads(
+            (self.log_dir / ".queue-state").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(state["gates"]), 1)
+        self.assertEqual(state["gates"][0]["wave"], "full")
+        self.assertTrue(state["gates"][0]["passed"])
+
+    def test_resume_reevaluates_the_gate_only_for_a_wave_with_pending_items(self):
+        self._write_waves(
+            [
+                {
+                    "name": "screen",
+                    "items": [self._item(name="s1", command=["echo", "s1"])],
+                },
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-screen"]},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        self._run(RecordingRunner([0, 0, 1]))
+
+        runner = RecordingRunner([0, 0])
+        result = self._run(runner, resume=True)
+
+        # The finished wave is skipped entirely; the pending wave re-derives
+        # its gate instead of trusting a cached decision.
+        self.assertEqual(
+            [call["argv"] for call in runner.calls],
+            [["check-screen"], ["echo", "f1"]],
+        )
+        self.assertEqual(
+            self._statuses(result),
+            {"s1": "complete", "f1": "complete"},
+        )
+
+    def test_changing_a_gate_invalidates_resume(self):
+        self._write_waves(
+            [
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-a"]},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+        self._run(RecordingRunner([0, 0]))
+        self._write_waves(
+            [
+                {
+                    "name": "full",
+                    "gate": {"command": ["check-b"]},
+                    "items": [self._item(name="f1", command=["echo", "f1"])],
+                },
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "不能安全续跑"):
+            self._run(RecordingRunner([0, 0]), resume=True)
+
+
+class WaveManifestTests(QueueTests):
+    def test_waves_and_a_flat_queue_are_mutually_exclusive(self):
+        self.queue_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "queue": [self._item()],
+                    "waves": [{"name": "w", "items": [self._item()]}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "二选一"):
+            load_queue(self.queue_path)
+
+    def test_a_flat_queue_still_loads_as_one_implicit_wave(self):
+        self._write_queue([self._item(name="solo")])
+
+        items, options = _load_queue_document(self.queue_path)
+
+        self.assertEqual([item["name"] for item in items], ["solo"])
+        self.assertEqual(
+            options["waves"],
+            [
+                {
+                    "name": "default",
+                    "gate": None,
+                    "continue_on_failure": False,
+                    "first_index": 0,
+                    "count": 1,
+                }
+            ],
+        )
+
+    def test_wave_layout_records_boundaries_and_gates(self):
+        self._write_waves(
+            [
+                {"name": "a", "items": [self._item(name="a1")]},
+                {
+                    "name": "b",
+                    "gate": {"command": ["g"], "timeout_s": 3},
+                    "items": [self._item(name="b1"), self._item(name="b2")],
+                },
+            ]
+        )
+
+        items, options = _load_queue_document(self.queue_path)
+
+        self.assertEqual(
+            [item["name"] for item in items],
+            ["a1", "b1", "b2"],
+        )
+        self.assertEqual(
+            [wave["first_index"] for wave in options["waves"]],
+            [0, 1],
+        )
+        self.assertEqual(
+            [wave["count"] for wave in options["waves"]],
+            [1, 2],
+        )
+        self.assertEqual(
+            options["waves"][1]["gate"],
+            {"command": ["g"], "timeout_s": 3},
+        )
+
+    def test_invalid_wave_shapes_are_rejected(self):
+        cases = (
+            {"schema_version": 1, "waves": []},
+            {"schema_version": 1, "waves": [{"items": [self._item()]}]},
+            {"schema_version": 1, "waves": [{"name": "w", "items": []}]},
+            {"schema_version": 1, "waves": [{"name": "  ", "items": [self._item()]}]},
+            {
+                "schema_version": 1,
+                "waves": [
+                    {"name": "w", "items": [self._item()]},
+                    {"name": "w", "items": [self._item()]},
+                ],
+            },
+            {
+                "schema_version": 1,
+                "waves": [
+                    {
+                        "name": "w",
+                        "gate": {"command": []},
+                        "items": [self._item()],
+                    }
+                ],
+            },
+            {
+                "schema_version": 1,
+                "waves": [
+                    {
+                        "name": "w",
+                        "gate": {"command": ["g"], "timeout_s": 0},
+                        "items": [self._item()],
+                    }
+                ],
+            },
+            {
+                "schema_version": 1,
+                "waves": [
+                    {
+                        "name": "w",
+                        "continue_on_failure": "yes",
+                        "items": [self._item()],
+                    }
+                ],
+            },
+        )
+
+        for payload in cases:
+            with self.subTest(payload=payload):
+                self.queue_path.write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    load_queue(self.queue_path)
 
 
 if __name__ == "__main__":

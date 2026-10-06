@@ -104,7 +104,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/governance_map.py` | 校验 risk→control→evidence status→residual gap，以及 machine-readable data flows 和明文凭据 | `scripts/governance-map.ps1` |
 | `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
-| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试、stall 看门狗与失败停止规则；`backend` 可指向 `data/compute.yaml` 的 `kind: ssh` 后端，让整条队列在远端执行；`--resume` 依据 `<log-dir>/.queue-state` 跳过已 complete 的项，清单变化即拒绝续跑（远端 GPU 计量未支持，会拒绝 `gpu_budget_s`） | `scripts/queue.ps1` |
+| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试、stall 看门狗与失败停止规则；`waves` 支持分波与波间 gate（gate 退出 0 才开下一波，波内有失败默认挡住下一波）；`backend` 可指向 `data/compute.yaml` 的 `kind: ssh` 后端整条下发；`--resume` 依据 `<log-dir>/.queue-state` 跳过已 complete 的项，清单变化即拒绝续跑 | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 | `tools/ccfa/stages.py` | stage/gate 状态机的唯一来源；CLI 把整表以 JSON 输出，供工作台等外部消费者读取而不必 import `ccfa` | `scripts/stages.ps1` |
@@ -370,6 +370,18 @@ scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20
 `<log-dir>/.queue-state`，只跳过上一轮真正 `complete` 的项，失败的项会重跑。
 状态与清单的规范化摘要绑定，改过清单再续跑会直接报错退出 2，而不是悄悄跳过
 或重跑错的东西。不加 `--resume` 时仍然从头重跑。
+
+分波与波间 gate：顶层用 `waves` 代替 `queue`，每个 wave 可带一个 `gate`
+（一条命令，退出 0 才开这一波）。波内有任何一项没 `complete`，默认就不开下一
+波；确需继续的波写 `continue_on_failure: true`。gate 的退出码与耗时会记进
+`<log-dir>/.queue-state` 的 `gates`，被挡住的项记 `skipped-gate` /
+`skipped-wave`，并且**不会**进入 run-log——被挡住的命令根本没运行。续跑时只有
+「还有未完成项」的波会重新求值 gate，整波已完成的波连同它的 gate 一起跳过。
+
+一个如实的边界：崩溃时正在跑的那一次尝试会留下一条 `running` 的 run-log 记录
+（原有行为，代表"这次尝试没跑完"），`run-log check` 会在超过 24 小时后把它报成
+`run-log-stale-running`。续跑不会删除它——失败尝试必须留痕，续跑只会新增一条
+新的记录。
 
 ## 跑测试
 

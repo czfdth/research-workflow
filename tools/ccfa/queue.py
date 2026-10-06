@@ -106,6 +106,85 @@ def _load_payload(path: Path) -> dict:
     return payload
 
 
+def _normalize_item(item: object, where: str) -> dict:
+    """Validate one queue item, whoever lists it (flat queue or a wave)."""
+    if not isinstance(item, dict):
+        raise ValueError(f"{where} 必须是对象")
+    name = item.get("name")
+    command = item.get("command")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"{where} 缺少非空 name")
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) and part for part in command)
+    ):
+        raise ValueError(f"{where} command 必须是非空字符串列表")
+    cwd = item.get("cwd")
+    if cwd is not None and not isinstance(cwd, str):
+        raise ValueError(f"{where} cwd 必须是字符串")
+    timeout_s = item.get("timeout_s")
+    if timeout_s is not None and (
+        not isinstance(timeout_s, (int, float))
+        or isinstance(timeout_s, bool)
+        or timeout_s <= 0
+    ):
+        raise ValueError(f"{where} timeout_s 必须是正数")
+    stall_timeout_s = item.get("stall_timeout_s")
+    if stall_timeout_s is not None and (
+        not isinstance(stall_timeout_s, (int, float))
+        or isinstance(stall_timeout_s, bool)
+        or stall_timeout_s <= 0
+    ):
+        raise ValueError(f"{where} stall_timeout_s 必须是正数")
+    retry_exit_codes = item.get("retry_exit_codes", [])
+    if not isinstance(retry_exit_codes, list) or not all(
+        type(code) is int for code in retry_exit_codes
+    ):
+        raise ValueError(f"{where} retry_exit_codes 必须是整数列表")
+    retry_on_timeout = item.get("retry_on_timeout", False)
+    if not isinstance(retry_on_timeout, bool):
+        raise ValueError(f"{where} retry_on_timeout 必须是布尔值")
+    retry_on_stall = item.get("retry_on_stall", False)
+    if not isinstance(retry_on_stall, bool):
+        raise ValueError(f"{where} retry_on_stall 必须是布尔值")
+    max_attempts = item.get("max_attempts", 1)
+    if type(max_attempts) is not int or max_attempts < 1:
+        raise ValueError(f"{where} max_attempts 必须是正整数")
+    return {
+        "name": name,
+        "command": list(command),
+        "cwd": cwd,
+        "timeout_s": timeout_s,
+        "stall_timeout_s": stall_timeout_s,
+        "retry_exit_codes": list(retry_exit_codes),
+        "retry_on_timeout": retry_on_timeout,
+        "retry_on_stall": retry_on_stall,
+        "max_attempts": max_attempts,
+    }
+
+
+def _normalize_gate(gate: object, where: str) -> dict:
+    """Validate one wave gate: a command that must exit 0 to open the wave."""
+    if not isinstance(gate, dict):
+        raise ValueError(f"{where} gate 必须是对象，含 command")
+    command = gate.get("command")
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) and part for part in command)
+    ):
+        raise ValueError(f"{where} gate command 必须是非空字符串列表")
+    timeout_s = gate.get("timeout_s")
+    if timeout_s is not None and (
+        not isinstance(timeout_s, (int, float))
+        or isinstance(timeout_s, bool)
+        or timeout_s <= 0
+    ):
+        raise ValueError(f"{where} gate timeout_s 必须是正数")
+    return {"command": list(command), "timeout_s": timeout_s}
+
+
 def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
     """Load queue items and queue-level options."""
     path = Path(path)
@@ -183,73 +262,79 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
         if key in payload:
             items = payload[key]
             break
+    waves_spec = payload.get("waves")
+    if waves_spec is not None and items is not None:
+        raise ValueError(
+            "队列清单不能同时使用 waves 与 queue/items/runs；二选一"
+        )
+    if items is None:
+        items = []
     if not isinstance(items, list):
-        raise ValueError("队列清单必须包含 queue/items/runs 列表")
+        raise ValueError(
+            "队列清单必须包含 queue/items/runs 列表或 waves 列表"
+        )
 
     normalized: list[dict] = []
     for index, item in enumerate(items, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"队列第 {index} 项必须是对象")
-        name = item.get("name")
-        command = item.get("command")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"队列第 {index} 项缺少非空 name")
-        if (
-            not isinstance(command, list)
-            or not command
-            or not all(isinstance(part, str) and part for part in command)
-        ):
-            raise ValueError(f"队列第 {index} 项 command 必须是非空字符串列表")
-        cwd = item.get("cwd")
-        if cwd is not None and not isinstance(cwd, str):
-            raise ValueError(f"队列第 {index} 项 cwd 必须是字符串")
-        timeout_s = item.get("timeout_s")
-        if timeout_s is not None and (
-            not isinstance(timeout_s, (int, float))
-            or isinstance(timeout_s, bool)
-            or timeout_s <= 0
-        ):
-            raise ValueError(f"队列第 {index} 项 timeout_s 必须是正数")
-        stall_timeout_s = item.get("stall_timeout_s")
-        if stall_timeout_s is not None and (
-            not isinstance(stall_timeout_s, (int, float))
-            or isinstance(stall_timeout_s, bool)
-            or stall_timeout_s <= 0
-        ):
-            raise ValueError(f"队列第 {index} 项 stall_timeout_s 必须是正数")
-        retry_exit_codes = item.get("retry_exit_codes", [])
-        if not isinstance(retry_exit_codes, list) or not all(
-            type(code) is int for code in retry_exit_codes
-        ):
-            raise ValueError(
-                f"队列第 {index} 项 retry_exit_codes 必须是整数列表"
-            )
-        retry_on_timeout = item.get("retry_on_timeout", False)
-        if not isinstance(retry_on_timeout, bool):
-            raise ValueError(
-                f"队列第 {index} 项 retry_on_timeout 必须是布尔值"
-            )
-        retry_on_stall = item.get("retry_on_stall", False)
-        if not isinstance(retry_on_stall, bool):
-            raise ValueError(
-                f"队列第 {index} 项 retry_on_stall 必须是布尔值"
-            )
-        max_attempts = item.get("max_attempts", 1)
-        if type(max_attempts) is not int or max_attempts < 1:
-            raise ValueError(f"队列第 {index} 项 max_attempts 必须是正整数")
-        normalized.append(
+        normalized.append(_normalize_item(item, f"队列第 {index} 项"))
+
+    wave_layout: list[dict] = []
+    if waves_spec is None:
+        wave_layout.append(
             {
-                "name": name,
-                "command": list(command),
-                "cwd": cwd,
-                "timeout_s": timeout_s,
-                "stall_timeout_s": stall_timeout_s,
-                "retry_exit_codes": list(retry_exit_codes),
-                "retry_on_timeout": retry_on_timeout,
-                "retry_on_stall": retry_on_stall,
-                "max_attempts": max_attempts,
+                "name": "default",
+                "gate": None,
+                "continue_on_failure": False,
+                "first_index": 0,
+                "count": len(normalized),
             }
         )
+    else:
+        if not isinstance(waves_spec, list) or not waves_spec:
+            raise ValueError("队列 waves 必须是非空列表")
+        normalized = []
+        seen_waves: set[str] = set()
+        for wave_index, wave in enumerate(waves_spec):
+            where = f"waves[{wave_index}]"
+            if not isinstance(wave, dict):
+                raise ValueError(f"{where} 必须是对象")
+            wave_name = wave.get("name")
+            if not isinstance(wave_name, str) or not wave_name.strip():
+                raise ValueError(f"{where} 缺少非空 name")
+            wave_name = wave_name.strip()
+            if wave_name in seen_waves:
+                raise ValueError(f"{where} 与前面的 wave 重名: {wave_name}")
+            seen_waves.add(wave_name)
+            wave_items = wave.get("items")
+            if not isinstance(wave_items, list) or not wave_items:
+                raise ValueError(f"{where} items 必须是非空列表")
+            continue_on_failure = wave.get("continue_on_failure", False)
+            if not isinstance(continue_on_failure, bool):
+                raise ValueError(
+                    f"{where} continue_on_failure 必须是布尔值"
+                )
+            gate = wave.get("gate")
+            normalised_gate = (
+                None if gate is None else _normalize_gate(gate, where)
+            )
+            first_index = len(normalized)
+            for item_index, item in enumerate(wave_items, start=1):
+                normalized.append(
+                    _normalize_item(
+                        item,
+                        f"wave {wave_name} 第 {item_index} 项",
+                    )
+                )
+            wave_layout.append(
+                {
+                    "name": wave_name,
+                    "gate": normalised_gate,
+                    "continue_on_failure": continue_on_failure,
+                    "first_index": first_index,
+                    "count": len(normalized) - first_index,
+                }
+            )
+
     options = {
         "sandbox": sandbox,
         "gpu_budget_s": gpu_budget_s,
@@ -263,6 +348,7 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
             if isinstance(compute_config, str)
             else None
         ),
+        "waves": wave_layout,
     }
     return normalized, options
 
@@ -325,12 +411,14 @@ def _write_queue_state(
     digest: str,
     runs: list[dict],
     stopped: str | None,
+    gates: list[dict] | None = None,
 ) -> None:
     payload = {
         "schema_version": QUEUE_STATE_VERSION,
         "queue_digest": digest,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "runs": runs,
+        "gates": list(gates or []),
         "stopped": stopped,
     }
     save_text_atomically(
@@ -856,6 +944,10 @@ def run_queue(
         for index, entry in enumerate(prior_runs)
         if entry.get("status") == "complete"
     }
+    waves = options["waves"]
+    wave_of_index: list[int] = []
+    for wave_position, wave in enumerate(waves):
+        wave_of_index.extend([wave_position] * wave["count"])
     sandbox_mode = options["sandbox"] if sandbox is None else sandbox
     if sandbox_mode not in SANDBOX_MODES:
         raise ValueError(
@@ -964,44 +1056,132 @@ def run_queue(
         started = now()
         gpu_total = 0.0
         runs: list[dict] = []
+        gates: list[dict] = []
         stopped: str | None = None
+        opened_waves: set[int] = set()
+        wave_failed: set[int] = set()
 
-        def record_result(entry: dict) -> None:
-            # Persist after every recorded outcome so a crash keeps the items
-            # that already finished. The run-log record is written first, so
-            # "complete" in the state always has its evidence on disk.
-            runs.append(entry)
+        def persist_state() -> None:
             _write_queue_state(
                 resume_state_path,
                 digest=digest,
                 runs=runs,
+                gates=gates,
                 stopped=stopped,
             )
+
+        def record_result(item_index: int, entry: dict) -> None:
+            # Persist after every recorded outcome so a crash keeps the items
+            # that already finished. The run-log record is written first, so
+            # "complete" in the state always has its evidence on disk.
+            runs.append(entry)
+            if entry.get("status") != "complete":
+                wave_failed.add(wave_of_index[item_index])
+            persist_state()
+
+        def run_gate(wave: dict, gate: dict) -> dict:
+            """Run one wave gate through the same runner as the items.
+
+            A gate is a precondition, not a scientific run, so it is recorded
+            in the queue state instead of the experiment run-log.
+            """
+            command = list(gate["command"])
+            container_name = None
+            if remote_backend is not None:
+                argv = compute.remote_argv(remote_backend, command)
+                gate_cwd = queue_root
+                gate_env = None
+            elif sandbox_mode == "docker":
+                container_name = _docker_container_name(
+                    f"gate-{wave['name']}",
+                    -1,
+                    0,
+                )
+                argv = _docker_argv(
+                    {"name": f"gate-{wave['name']}", "command": command},
+                    queue_root,
+                    image=docker_image,
+                    network=docker_network,
+                    gpus=docker_gpus,
+                    output_relative=docker_output,
+                    env={},
+                    name=container_name,
+                )
+                gate_cwd = queue_root
+                gate_env = None
+            else:
+                argv = command
+                gate_cwd = queue_root
+                gate_env = (
+                    _sandbox_env() if sandbox_mode == "policy" else None
+                )
+            started_at = time.monotonic()
+            try:
+                exit_code = invoke(
+                    argv,
+                    gate_cwd,
+                    gate["timeout_s"],
+                    item={"stall_timeout_s": None},
+                    sandbox_env=gate_env,
+                )
+            except (QueueStalled, subprocess.TimeoutExpired, TimeoutError):
+                exit_code = 124
+            finally:
+                if container_name is not None:
+                    _docker_remove(container_name)
+            return {
+                "wave": wave["name"],
+                "command": command,
+                "exit_code": int(exit_code),
+                "passed": int(exit_code) == 0,
+                "duration_s": round(time.monotonic() - started_at, 6),
+            }
+
+        def skip_remaining(from_index: int, status: str) -> None:
+            for skipped_index in range(from_index, len(items)):
+                if skipped_index in done:
+                    runs.append(dict(prior_runs[skipped_index]))
+                    continue
+                record_result(
+                    skipped_index,
+                    {
+                        "name": items[skipped_index]["name"],
+                        "attempts": 0,
+                        "status": status,
+                    },
+                )
 
         for index, item in enumerate(items):
             if index in done:
                 runs.append(dict(prior_runs[index]))
                 continue
+            wave_position = wave_of_index[index]
+            if wave_position not in opened_waves:
+                opened_waves.add(wave_position)
+                if wave_position > 0:
+                    previous = waves[wave_position - 1]
+                    if (
+                        (wave_position - 1) in wave_failed
+                        and not previous["continue_on_failure"]
+                    ):
+                        stopped = "wave-failed"
+                        skip_remaining(index, "skipped-wave")
+                        break
+                gate = waves[wave_position]["gate"]
+                if gate is not None:
+                    outcome = run_gate(waves[wave_position], gate)
+                    gates.append(outcome)
+                    persist_state()
+                    if not outcome["passed"]:
+                        stopped = "gate"
+                        skip_remaining(index, "skipped-gate")
+                        break
             if gpu_budget_s is not None and gpu_total >= gpu_budget_s:
-                for skipped in items[index:]:
-                    record_result(
-                        {
-                            "name": skipped["name"],
-                            "attempts": 0,
-                            "status": "skipped-gpu-budget",
-                        }
-                    )
+                skip_remaining(index, "skipped-gpu-budget")
                 stopped = "gpu-budget"
                 break
             if budget_s is not None and now() - started >= budget_s:
-                for skipped in items[index:]:
-                    record_result(
-                        {
-                            "name": skipped["name"],
-                            "attempts": 0,
-                            "status": "skipped-budget",
-                        }
-                    )
+                skip_remaining(index, "skipped-budget")
                 stopped = "budget"
                 break
 
@@ -1171,6 +1351,7 @@ def run_queue(
                 break
 
             record_result(
+                index,
                 {
                     "name": item["name"],
                     "attempts": attempts,
@@ -1178,27 +1359,20 @@ def run_queue(
                 }
             )
             if gpu_exhausted and index + 1 < len(items):
-                for skipped in items[index + 1 :]:
-                    record_result(
-                        {
-                            "name": skipped["name"],
-                            "attempts": 0,
-                            "status": "skipped-gpu-budget",
-                        }
-                    )
+                skip_remaining(index + 1, "skipped-gpu-budget")
                 stopped = "gpu-budget"
                 break
             if stopped == "retries":
                 break
 
         # Final write also covers an empty queue and the terminal `stopped`.
-        _write_queue_state(
-            resume_state_path,
-            digest=digest,
-            runs=runs,
-            stopped=stopped,
-        )
-        return {"runs": runs, "stopped": stopped, "resumed": bool(done)}
+        persist_state()
+        return {
+            "runs": runs,
+            "stopped": stopped,
+            "resumed": bool(done),
+            "gates": gates,
+        }
 
 
 def build_parser() -> argparse.ArgumentParser:

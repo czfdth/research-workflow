@@ -1859,3 +1859,18 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
   - `tools.tests.test_queue`
 
+## WC-20261006T081941Z-367980d605 - Add wave gating to the experiment queue
+
+- timestamp: `2026-10-06T08:19:41Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS runs the queue in waves with a gate between them; this queue could only run one flat list. A manifest can now use waves instead of queue, each wave carrying an optional gate whose command must exit 0 before that wave opens, and any item that does not complete blocks the following wave unless that wave sets continue_on_failure. Gate outcomes (command, exit code, duration, pass/fail) go into <log-dir>/.queue-state, and blocked items are recorded as skipped-gate or skipped-wave without ever reaching the runner, so no run-log record is fabricated for work that did not happen. Flat manifests still load as one implicit wave, and the digest now covers the wave layout and gates so resume refuses a manifest whose gating changed. Only a wave with pending items re-derives its gate on resume; a fully finished wave and its gate are skipped. Item validation was extracted into _normalize_item so waves and the flat list share one contract. Verified locally end to end: recall 0.4 blocked the second wave (exit 1, skipped-gate, run-log held only the screen record), recall 0.8 ran both waves with gate exit_code 0, and a killed run resumed correctly across waves with the gate re-evaluated.
+- files:
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `tools/ccfa/queue.py`
+  - `tools/tests/test_queue.py`
+- tests:
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_queue`
+
