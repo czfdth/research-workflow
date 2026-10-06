@@ -1900,3 +1900,30 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T084417Z-9d2cbe8267 - Add a deterministic figure-spec to SVG renderer
+
+- timestamp: `2026-10-06T08:44:17Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS has /figure-spec, a deterministic JSON->SVG renderer with shape-aware edge trimming, self-loops and CJK width handling; this repo only had figure_manifest (which hashes figures) and figurebytes (which sniffs image types), so a figure could not be re-rendered or diffed from data. tools/ccfa/figure_spec.py takes a declarative JSON/YAML spec and emits SVG bytes: the same spec always produces identical bytes, which is asserted in the tests. Shape-aware trimming stops an edge on the boundary of the rectangle, ellipse or diamond it points at instead of at the node centre; from == to draws a real loop with its own arrowhead; text width uses unicodedata.east_asian_width so a Chinese label does not overflow its box (and check reports the overflow as an advisory instead of clipping silently). A straight edge that would run through an unrelated node is detected with a Liang-Barsky clip test and bowed around it, because a line crossing a box reads as a pipeline that does not exist. Nodes without coordinates are placed by longest-path rank so a pipeline reads left to right. Determinism means no timestamps, no random ids and a fixed float format. Verified by rendering the committed docs/examples/figure-spec-example.yaml, checking the sha is identical across two runs, and inspecting the PNG conversion visually.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/examples/figure-spec-example.yaml`
+  - `scripts/figure-spec.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/figure_spec.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_figure_spec.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_figure_spec`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

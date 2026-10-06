@@ -22,6 +22,7 @@ VERSION = "ccfa-research-workflow 0.1.0"
 COMMANDS: dict[str, str] = {
     "adversarial-review": "ccfa.adversarial_review",
     "meta-apply": "ccfa.meta_apply",
+    "figure-spec": "ccfa.figure_spec",
     "ara-compile": "ccfa.ara_compile",
     "ara-extract": "ccfa.ara_extract",
     "archive": "ccfa.archive_client",

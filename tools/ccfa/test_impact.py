@@ -214,6 +214,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/figure_spec.py": (
+        "tools.tests.test_figure_spec",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/review_loop.py": (
         "tools.tests.test_docs_consistency",
         "tools.tests.test_review_loop",

@@ -1,0 +1,43 @@
+version: 1
+# A method figure as data. Render with:
+#   scripts/figure-spec.ps1 render --spec docs/examples/figure-spec-example.yaml --out figure.svg
+# Nodes without x/y are placed by edge rank, so this reads left to right.
+nodes:
+  - id: query
+    label: "用户查询"
+    shape: roundrect
+  - id: retriever
+    label: "检索器\n(RAG)"
+    shape: box
+  - id: memory
+    label: "记忆库"
+    shape: ellipse
+  - id: selector
+    label: "选择器"
+    shape: diamond
+  - id: answer
+    label: "回答"
+    shape: roundrect
+edges:
+  - from: query
+    to: retriever
+  - from: retriever
+    to: selector
+    label: "top-k"
+  - from: memory
+    to: retriever
+    label: "write"
+    style: dashed
+  - from: selector
+    to: memory
+    label: "plant"
+    style: dashed
+  - from: selector
+    to: answer
+  - from: selector
+    to: selector
+    label: "retry"
+groups:
+  - id: attack-surface
+    label: "攻击面"
+    nodes: [memory, selector]

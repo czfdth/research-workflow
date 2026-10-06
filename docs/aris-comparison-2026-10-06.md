@@ -43,7 +43,7 @@
 | 训练监控 | `/training-check` 轮询 W&B 抓 NaN / 发散 / 空转 | 无 | 缺口 |
 | 性能剖析 | `/system-profile` | 无 | 缺口 |
 | 对抗评审细度 | 8 个专门角色（含零上下文数值复核、双线 kill-argument、作弊模式取证） | cross_review + review_loop + argument_audit，角色较粗 | 细度缺口 |
-| 图件生成 | `/figure-spec` 确定性 JSON→SVG（含形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | figure_manifest + 外部 figure skill，无内置确定性渲染器 | 缺口 |
+| 图件生成 | `/figure-spec` 确定性 JSON→SVG（含形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 已实现确定性 JSON/YAML→SVG（形状感知裁边、自环、CJK 宽度、穿节点自动绕行）；仍无 illustration / mermaid / poster HTML 生成器 | 已对齐核心 |
 | 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 | post_submission / resubmit / talk 契约 | 深度缺口 |
 | 专利链路 | 9 个 skill 的完整链路 | 无 | 可选缺口 |
 | 领域适配 | communications、robotics、architecture/EDA 三个方向适配器 | 无 | 缺口 |
@@ -101,7 +101,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行，且**整条队列可下发到该后端**（超时/stall/重试/流式输出语义照旧，已实测）；**分波 + 波间 gate**（gate 退出码入状态，失败不开下一波，已实测）；**crash-safe 续跑状态**（`.queue-state` 与清单摘要绑定，改清单即拒绝续跑，已实测 kill→resume）；Slurm/PBS 只探测不提交；仍无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`；远端 GPU 计量未实现（`gpu_budget_s` 会被拒绝）；论文仍未声明远程后端 |
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
-| 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | 依赖外部 figure skill + `figure_manifest`，无内置确定性渲染器 |
+| 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
 | 5 | 投稿后产出深度 | slides + slides-polish + poster-html（带度量硬门） | `post_submission` / `resubmit_pipeline` / `talk_pipeline` 只有契约，无生成器 |
 | 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
 | 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
@@ -187,6 +187,7 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 | 免费跨族评审来源识别 | 识别独立实验室提供的免费评审模型；已用 OpenRouter 的 `nvidia/nemotron-3-super-120b-a12b:free` 跑通 gate-capable + cross-family 评审 |
 | CI 成本 | MiKTeX 改为仅在受影响测试需要编译文档时安装（fail closed） |
 | 自演化落地门（差距 2） | 新增 `tools/ccfa/meta_apply.py` + 27 项测试：`stage` 把候选改动写进 `ccfa-workfiles/meta-apply/`（不碰工作树）、`review` 对 staged diff 跑 jury（每个模型可单独指定 provider）、`apply` 要求 staged 哈希、目标哈希、被评审 diff 三者都未漂移，且 ≥2 个 gate-capable 通过、覆盖 ≥2 个模型族并含跨族评审；落地前先写**字节级**备份（`read_bytes`/`write_bytes`，不走会翻译换行的文本路径），再记 append-only ledger；默认只允许 `docs/`、`checklists/`、`automation/`、`skills/`、`library/`，改 `tools/` 等代码区需 `--allow-code` 且写进 ledger |
+| 图件生成（差距 3） | 新增 `tools/ccfa/figure_spec.py` + 31 项测试：JSON/YAML spec → 确定性 SVG（同一份 spec 渲染两次字节完全相同，实测 sha 一致）；形状感知裁边（矩形/椭圆/菱形，边停在边界而不是中心）、自环画成真正的环带箭头、CJK 宽度按 `east_asian_width` 计、直线边会穿过无关节点时自动绕成曲线；`check` 把文字溢出报成 advisory。示例 `docs/examples/figure-spec-example.yaml` 已渲染并目视检查 |
 
 ### 旗舰论文当前状态
 
@@ -209,7 +210,7 @@ cross-review:   review-prompt-drift, review-blocking, review-stale-finding
 | --- | --- | --- | --- |
 | 1 | 算力接入面 | `data/compute.yaml` 仍为 `backends: []` | 唯一的能力级缺口。ARIS 有本机/SSH/Vast/Modal/启智 + 队列（OOM 重试、wave gating、crash-safe state）+ W&B 训练监控 + `/system-profile` |
 | 2 | 自演化落地门 | **已关闭**（见上表） | 残留一条：真模型跨族 jury 还没在本机跑通——`glm-4-flash` 返回的是 `verdict=block` 的 key=value 而不是 JSON（被契约检查拒绝并 exit 2），`glm-4-plus` 与 OpenRouter 免费模型则撞上间歇性的 MCP `Auth required`。quorum 逻辑目前由 27 项单元测试覆盖 |
-| 3 | 图件生成 | `svg` / `figure_spec` 命中 0 | ARIS 有 `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度） |
+| 3 | 图件生成 | **核心已关闭**（见上表） | `figure_spec` 已实现确定性 JSON/YAML→SVG；残留 `illustration` / `mermaid` / `poster HTML` 三类生成器没有对应实现 |
 | 4 | 投稿后产出深度 | 只有 `talk_pipeline.py` | ARIS 有 slides + slides-polish + poster-html（带度量硬门） |
 | 5 | 专利链路 | 无专利模块 | ARIS 有 9 个 skill 的完整链路 |
 | 6 | 领域适配器 | 无 | ARIS 有 communications / robotics / architecture-EDA |
