@@ -556,7 +556,7 @@ def extract_candidates(
                 _candidate_from_chunk(
                     chunk,
                     item,
-                    extractor="ollama" if model else "heuristic",
+                    extractor=api if model else "heuristic",
                     model=model,
                 )
             )

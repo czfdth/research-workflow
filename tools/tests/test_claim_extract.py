@@ -183,6 +183,7 @@ class ClaimExtractTests(unittest.TestCase):
 
         self.assertEqual(report["generator"]["kind"], "openai")
         self.assertEqual(report["generator"]["api"], "openai")
+        self.assertEqual(report["claims"][0]["extractor"]["kind"], "openai")
 
     def test_check_detects_source_drift(self):
         report = extract_candidates(self.paper, ["paper.pdf"])

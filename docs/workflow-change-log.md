@@ -2790,3 +2790,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `python -m unittest tests.test_claim_extract (7 tests, OK)`
 
+## WC-20261006T214635Z-9f8fd045d9 - Record the OpenAI API kind in per-claim extractor metadata
+
+- timestamp: `2026-10-06T21:46:35Z`
+- status: `complete`
+- author: `codex`
+- reason: The first OpenAI-compatible change still stamped each extracted claim with extractor.kind=ollama; provenance metadata should name the endpoint actually used.
+- files:
+  - `tools/ccfa/claim_extract.py`
+  - `tools/tests/test_claim_extract.py`
+- tests:
+  - `python -m unittest tests.test_claim_extract (7 tests, OK)`
+
