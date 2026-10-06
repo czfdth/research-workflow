@@ -372,3 +372,90 @@ deck 一致，图件按真实像素双向适配，字号按画布比例推导（
 新依赖是 `python-pptx==1.0.2`，锁文件带上哈希；`scripts/pptx-export.ps1` 只是薄包装。
 这个切片同时暴露并修掉了一处文档漂移：`automation/experiment-queue.md` 漏了 `resumed`
 / `gates` 两个字段，被 `test_automation_e2e` 在运行时抓到。
+
+## 十五、第十七切片：专利链路（读源码后对齐）
+
+读了参考的九个专利 skill：`prior-art-search`、`patent-novelty-check`、
+`invention-structuring`、`claims-drafting`、`specification-writing`、
+`figure-description`、`embodiment-description`、`patent-review`、
+`jurisdiction-format`，以及 `patent-pipeline/SKILL.md` 里的 pipeline 图与
+`PATENT_STATE.json` 恢复契约。它们是纯散文流程，真正的失败模式是"案卷看起来齐了，
+但有一条权利要求没有前序基础、EP 缺 `characterised in that`、中文摘要超过 300 字"。
+
+`tools/ccfa/patent.py` 把其中**可机械判定**的部分做成 gate：
+
+| 参考契约 | 实现 |
+| --- | --- |
+| `PATENT_STATE.json` compaction 恢复 + 24h 过期重开 | `state` 读写；`check_state` 校验 phase/status/jurisdiction/type，`in_progress` 超过 24h 报 `patent-state-stale`（advisory） |
+| 发明分解 core/supporting/optional | `INVENTION_DISCLOSURE.md` 必须同时出现这三段，否则 `patent-disclosure-unstructured` |
+| claims-drafting 编号与依赖规则 | 编号必须 1..N 连续；从属项必须指向**更早**的项；独立项数量按专利类型（发明 2、实用新型 1）；实用新型禁方法项；>20 条只 advisory（USPTO 基础费） |
+| 三辖区特征句 | CN `其特征在于`、US `comprising`、EP `characterised/characterized in that`，逐个独立权利要求检查 |
+| prior-art-search / patent-novelty-check | `PRIOR_ART_REPORT.md` 至少 3 条可定位 URL/DOI；`NOVELTY_ASSESSMENT.md` 存在且够长 |
+| patent-review | `patent-review.yaml` 每条 objection 必须 `resolved` 且附 `resolution` |
+| jurisdiction-format 的"只重排不翻译" | `format` 按 CNIPA/USPTO/EPO Rule 42 顺序装配 `output/<J>/`；输出再过一遍语言/摘要字数/权利要求完整性检查 |
+
+**实测**：一个完整的 CN 发明案卷 `check` 0 problem；漏掉 `PATENT_STATE.json` → exit 1；
+把独立项 1 的 `其特征在于` 删掉 → `patent-claim-characterising-missing`；`format ALL`
+写出 CN/US/EP 三份，其中把中文摘要塞进 US 输出会得到 `patent-output-language`；
+中文摘要写 320 字 → `patent-output-abstract-too-long`。36 项测试覆盖编号间隙、前向依赖、
+实用新型方法项、阈值与 CLI 退出码。
+
+## 十六、第十八切片：领域适配器（读源码后对齐）
+
+参考把领域知识放在 per-domain skill 里（`idea-discovery-robot`、`comm-lit-review`、
+`writing-systems-papers`），每次都要 agent 重新读一遍散文。这里把它变成可检查的数据：
+`tools/ccfa/domain_adapters.py` 为 robotics / communications / architecture-EDA 各声明
+venue 列表、检索词、pilot 策略，以及**计划必需要素**——
+
+| 领域 | 必需要素（节选） |
+| --- | --- |
+| robotics | embodiment、task_family、observation_action、simulator、sim2real_story、evaluation（成功率+失败+安全+干预+延迟+样本效率） |
+| communications | system_model、channel_model、protocol_baseline、traffic_model、evaluation_stack、metrics |
+| architecture-EDA | workload、technology_node、simulator、area_power_model、ppa、baseline |
+
+`check` 对研究计划 fail closed：缺项 → `domain-element-missing`，写成 `TODO`/`N/A`
+→ `domain-element-placeholder`，都在 problem 里 exit 1；venue 不在该领域常见列表只是
+advisory（跨领域投稿合法，但值得知道）。`prompt` 输出一段可直接粘贴的约束块。
+这是 `idea-discovery-robot` 里"先选定本体、任务族、观测/动作接口"那一段的机器可读版。
+
+## 十七、第十九切片：知识库自动化（读源码后对齐）
+
+参考的 `research-wiki` 只负责 scaffold，`wiki-enrich` 是"缺的后半边"，另外还有一条
+capture-hygiene 规则：**不要把运行事故当成持久研究事实**——否则它会在之后的每次会话里
+被当成事实引用（self-poisoning）。`library/wiki/` 此前只有校验/索引，没有写入路径。
+
+本轮给 `tools/ccfa/research_wiki.py` 补上：
+
+* `ingest` —— 从 BibTeX / PDF 目录 / arXiv id 生成标准的 12 段 paper 骨架（10 段可填，
+  `Connections` 与 `Abstract (original)` 受保护），已存在的页默认不覆盖；
+* `enrich-report` —— 列出每个 paper 仍未填的段落；
+* `enrich` —— 按 JSON 填充指定段落，**拒绝**改写受保护段，**拒绝**写入被 `screen` 命中
+  的文本；
+* `screen` —— 三类 capture-hygiene 模式：`env-failure`（command not found / not
+  installed / ModuleNotFoundError…）、`transient-error`（timeout / rate limit /
+  connection reset / auth required…）、`negative-tool-claim`（"codex/the reviewer
+  can't …"这类把工具事故写成结论的句子）；
+* `hook` —— `ingest → enrich → rebuild → log` 一条命令跑完。
+
+**顺带修掉一个真 bug**：`rebuild_catalog` / `query_pack` / `append_log` 会生成
+`index.md`、`gap_map.md`、`query_pack.md`、`log.md`，而 `check_wiki` 之前只跳过
+`README.md`，于是"重建目录"之后 wiki 立刻变成 invalid（`research-wiki-invalid`：
+缺少 frontmatter）。现在生成物统一跳过，`rebuild` 后再 `check` 是 0 problem——
+实测 hook 之后 `check_wiki` 0 problem、`build_index` 能列出条目。
+
+## 十八、第二十切片：外部基准 harness（差距 8）
+
+`tool_eval` 之前只有自造用例，所以它只能证明"gate 抓得住我自己造的缺陷"。参考项目
+（以及我们）都没有外部基准评价，这是双方共有的缺口。本轮给 `tool_eval` 加上
+MLGym 式的**外部** harness（`--benchmark spec.yaml`）：
+
+* spec 每个 task 声明 `command`、可选 `workdir`、`metric`（`{path, key}`，路径必须落在
+  workdir 内，防目录穿越）与 `threshold`；
+* 判定三态：达阈值 `pass`；非零退出 / 低于阈值 / 读不到度量 `fail`；**命令或工作目录
+  不存在 → `unavailable`，并从 pass 分母剔除**——把"本机没装这个基准"算成"方法失败"
+  是最容易骗自己的地方，这里直接排除，和 errored probe 的处理一致；
+* 跑完退出 0（度量不是 gate）；`--dry-run` 只列任务；`--out/--json` 出报告。
+
+这是**接口**而不是分数：`docs/examples/benchmark-example.yaml` 给出 spec 形状，接真实
+外部基准时把 `workdir` 指到那个 checkout、命令照抄它自己的 README。本轮没有真的跑
+MLGym——没有那条环境的机器，声称跑过会违背这套工作流自己的规则。

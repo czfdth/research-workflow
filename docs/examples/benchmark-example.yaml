@@ -1,0 +1,22 @@
+# External benchmark spec for `tool-eval --benchmark`.
+#
+# This harness runs *someone else's* tasks and reports the score; it does not
+# invent a score. Point `workdir` at the checkout that holds each task, give it
+# the command the task's own README documents, and say where the metric lands.
+#
+# A task whose command or workdir is missing is reported as `unavailable` and
+# excluded from the pass denominator, so "not installed on this machine" can
+# never be mistaken for "the method failed".
+version: 1
+name: example-benchmark
+tasks:
+  - id: toy-regression
+    source: "example/own-toy-task（不是外部基准，仅示意 spec 形状）"
+    # workdir is relative to this file; omit it to run in the spec's directory.
+    workdir: .
+    command: ["python", "-c", "import json,pathlib; pathlib.Path('metrics.json').write_text(json.dumps({'score': 0.75}))"]
+    metric:
+      path: metrics.json
+      key: score
+    threshold: 0.5
+    note: "替换成真实外部基准（例如 MLGym 的一个 task）的 repo 路径与命令"

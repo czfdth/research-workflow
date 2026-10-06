@@ -181,6 +181,7 @@ jobs:
             tools/ccfa/citation_calibration.py `
             tools/ccfa/dashboard.py `
             tools/ccfa/doctor.py `
+            tools/ccfa/domain_adapters.py `
             tools/ccfa/e2e_check.py `
             tools/ccfa/experiment_loop.py `
             tools/ccfa/experiment_optimizer.py `
@@ -203,6 +204,7 @@ jobs:
             tools/ccfa/review_loop.py `
             tools/ccfa/rigor.py `
             tools/ccfa/passport_ledger.py `
+            tools/ccfa/patent.py `
             tools/ccfa/run_ledger.py `
             tools/ccfa/session_replay.py `
             tools/ccfa/skill_registry.py `

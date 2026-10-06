@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -525,6 +526,232 @@ def render_markdown(summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# External benchmark harness (MLGym-style).
+#
+# The internal cases above measure this workflow's own gates. They cannot say
+# whether the workflow helps on *someone else's* tasks, because every fixture
+# is written by the same author. This harness runs an external benchmark spec
+# — a list of tasks with a command, a metric source and a threshold — and
+# reports per-task outcomes without fabricating anything:
+#
+# * a task whose command or working directory is missing is `unavailable` and
+#   excluded from the pass denominator, exactly like an errored probe;
+# * a completed run exits 0 whatever the rate says — this is a measurement;
+# * the spec carries a `source` per task so a published score can name where
+#   the task came from rather than implying it was invented here.
+# ---------------------------------------------------------------------------
+
+BENCH_VERSION = 1
+BENCH_PASS = "pass"
+BENCH_FAIL = "fail"
+BENCH_UNAVAILABLE = "unavailable"
+BENCH_PLANNED = "planned"
+
+
+def load_benchmark(path: Path) -> dict:
+    """Validate a benchmark spec before anything is executed."""
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"找不到 benchmark spec: {path}")
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"无法解析 {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} 顶层必须是映射")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError(f"{path} 需要非空 tasks 列表")
+    seen: set[str] = set()
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            raise ValueError(f"tasks[{index}] 必须是映射")
+        for field in ("id", "command"):
+            if field not in task:
+                raise ValueError(f"tasks[{index}] 缺少 {field}")
+        task_id = task["id"]
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise ValueError(f"tasks[{index}].id 必须是非空字符串")
+        if task_id in seen:
+            raise ValueError(f"task id 重复: {task_id!r}")
+        seen.add(task_id)
+        command = task["command"]
+        if not isinstance(command, list) or not command or not all(
+            isinstance(part, str) for part in command
+        ):
+            raise ValueError(f"tasks[{index}].command 必须是非空字符串数组")
+        metric = task.get("metric")
+        if metric is not None and not isinstance(metric, dict):
+            raise ValueError(f"tasks[{index}].metric 必须是映射")
+        threshold = task.get("threshold")
+        if threshold is not None and not isinstance(threshold, (int, float)):
+            raise ValueError(f"tasks[{index}].threshold 必须是数字")
+    return payload
+
+
+def _read_metric(workdir: Path, metric: dict | None):
+    """Read a numeric metric from ``{path, key}`` inside the task workdir."""
+    if not metric:
+        return None
+    relative = metric.get("path")
+    if not isinstance(relative, str) or not relative:
+        return None
+    candidate = (workdir / relative).resolve()
+    try:
+        candidate.relative_to(workdir.resolve())
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    key = metric.get("key")
+    if isinstance(key, str) and key:
+        for part in key.split("."):
+            if isinstance(payload, dict) and part in payload:
+                payload = payload[part]
+            else:
+                return None
+    if isinstance(payload, bool) or not isinstance(payload, (int, float)):
+        return None
+    return float(payload)
+
+
+def run_benchmark(
+    spec: dict,
+    *,
+    spec_path: Path | None = None,
+    timeout: float = 600.0,
+    dry_run: bool = False,
+) -> dict:
+    """Run every task in the spec; never raise for a single task's failure."""
+    base = Path(spec_path).parent if spec_path else Path.cwd()
+    results: list[dict] = []
+    for task in spec.get("tasks", []):
+        workdir = (base / str(task.get("workdir", "."))).resolve()
+        entry = {
+            "id": task["id"],
+            "source": task.get("source", ""),
+            "note": task.get("note", ""),
+            "command": list(task["command"]),
+            "workdir": str(workdir),
+            "threshold": task.get("threshold"),
+        }
+        if dry_run:
+            entry["outcome"] = BENCH_PLANNED
+            entry["detail"] = "dry-run：未执行"
+            results.append(entry)
+            continue
+        if not workdir.is_dir():
+            entry["outcome"] = BENCH_UNAVAILABLE
+            entry["detail"] = f"workdir 不存在: {workdir}"
+            results.append(entry)
+            continue
+        try:
+            completed = subprocess.run(
+                task["command"],
+                cwd=str(workdir),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            entry["outcome"] = BENCH_UNAVAILABLE
+            entry["detail"] = f"命令不可用: {exc}"
+            results.append(entry)
+            continue
+        except subprocess.TimeoutExpired:
+            entry["outcome"] = BENCH_FAIL
+            entry["detail"] = f"超过 {timeout:.0f}s 未完成"
+            results.append(entry)
+            continue
+        entry["returncode"] = completed.returncode
+        metric = _read_metric(workdir, task.get("metric"))
+        entry["metric"] = metric
+        threshold = task.get("threshold")
+        if completed.returncode != 0:
+            entry["outcome"] = BENCH_FAIL
+            entry["detail"] = f"退出码 {completed.returncode}"
+        elif threshold is not None and metric is None:
+            entry["outcome"] = BENCH_FAIL
+            entry["detail"] = "没有读到度量值"
+        elif threshold is not None and metric < float(threshold):
+            entry["outcome"] = BENCH_FAIL
+            entry["detail"] = f"metric {metric} < threshold {threshold}"
+        else:
+            entry["outcome"] = BENCH_PASS
+            entry["detail"] = (
+                f"metric {metric} >= {threshold}"
+                if threshold is not None
+                else "命令成功"
+            )
+        entry["stdout_tail"] = (completed.stdout or "").strip()[-400:]
+        entry["stderr_tail"] = (completed.stderr or "").strip()[-400:]
+        results.append(entry)
+    return {
+        "version": BENCH_VERSION,
+        "generated_at": _now_iso(),
+        "name": spec.get("name", "benchmark"),
+        "dry_run": dry_run,
+        "results": results,
+    }
+
+
+def summarise_benchmark(report: dict) -> dict:
+    results = report["results"]
+    totals = {
+        "tasks": len(results),
+        "pass": sum(1 for r in results if r["outcome"] == BENCH_PASS),
+        "fail": sum(1 for r in results if r["outcome"] == BENCH_FAIL),
+        "unavailable": sum(
+            1 for r in results if r["outcome"] == BENCH_UNAVAILABLE
+        ),
+        "planned": sum(1 for r in results if r["outcome"] == BENCH_PLANNED),
+    }
+    denominator = totals["pass"] + totals["fail"]
+    return {
+        "version": report["version"],
+        "name": report["name"],
+        "generated_at": report["generated_at"],
+        "dry_run": report["dry_run"],
+        "totals": totals,
+        # Unavailable tasks are excluded, exactly like errored probes: a task
+        # that could not start is neither a pass nor a failure.
+        "pass_rate": _rate(totals["pass"], denominator),
+        "results": results,
+    }
+
+
+def render_benchmark_markdown(summary: dict) -> str:
+    totals = summary["totals"]
+    lines = [
+        f"# 外部基准：{summary['name']}",
+        "",
+        f"- 生成时间: `{summary['generated_at']}`",
+        f"- 任务: {totals['tasks']}（pass {totals['pass']} / fail "
+        f"{totals['fail']} / unavailable {totals['unavailable']}）",
+        f"- pass_rate: {summary['pass_rate']}",
+        "",
+        "只测量：跑完退出 0，不可用的任务从分母里剔除，不会把"
+        "“没跑起来”算成“通过”。",
+        "",
+        "| task | source | outcome | metric | threshold | detail |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in summary["results"]:
+        lines.append(
+            f"| `{item['id']}` | {item.get('source', '')} | {item['outcome']} "
+            f"| {item.get('metric')} | {item.get('threshold')} "
+            f"| {item['detail']} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="测量工作流自身的 gate 是否能抓住注入的缺陷（只测量）",
@@ -532,11 +759,62 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--case", action="append", default=None, help="只跑指定 id")
     parser.add_argument("--out", default=None, help="写入 Markdown 报告")
     parser.add_argument("--json", default=None, help="写入 JSON 报告")
+    parser.add_argument(
+        "--benchmark",
+        default=None,
+        help="运行外部基准 spec（YAML/JSON），而不是内置注入用例",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="每个外部任务的时间上限（秒）",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="只列出外部任务，不执行",
+    )
     return parser
 
 
 def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
+    if args.benchmark:
+        try:
+            spec_path = Path(args.benchmark)
+            spec = load_benchmark(spec_path)
+            report = run_benchmark(
+                spec,
+                spec_path=spec_path,
+                timeout=args.timeout,
+                dry_run=args.dry_run,
+            )
+            summary = summarise_benchmark(report)
+            if args.out:
+                save_text_atomically(
+                    Path(args.out),
+                    render_benchmark_markdown(summary),
+                    description="外部基准报告",
+                )
+            if args.json:
+                save_text_atomically(
+                    Path(args.json),
+                    json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True)
+                    + "\n",
+                    description="外部基准 JSON",
+                )
+        except (OSError, ValueError) as exc:
+            return tool_error(str(exc))
+        print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+        totals = summary["totals"]
+        print(
+            f"tool-eval bench: {totals['tasks']} tasks, {totals['pass']} pass, "
+            f"{totals['fail']} fail, {totals['unavailable']} unavailable",
+            file=sys.stderr,
+        )
+        # Measurement, not a gate: a completed benchmark exits 0.
+        return 0
     selected = CASES
     if args.case:
         wanted = set(args.case)

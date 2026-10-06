@@ -45,9 +45,9 @@
 | 对抗评审细度 | 8 个专门角色（含零上下文数值复核、双线 kill-argument、作弊模式取证） | cross_review + review_loop + argument_audit，角色较粗 | 细度缺口 |
 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（含形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 已实现确定性 JSON/YAML→SVG（形状感知裁边、自环、CJK 宽度、穿节点自动绕行）；仍无 illustration / mermaid / poster HTML 生成器 | 已对齐核心 |
 | 投稿后产出 | slides（Beamer+PPTX+notes+script）、slides-polish、poster-html 带度量硬门 + 12 条风格门 | `talk_deck` 生成 Beamer + `\note` + 独立 notes + 状态文件，`pptx_export` 导出同源可编辑 PPTX，`talk_gates` 提供规范顺序的度量硬门与 PDF 几何核对，`slides_polish` 提供不改内容、可校验的版式润色，`poster_html`/`poster_measure`/`poster_style` 覆盖海报生成、几何测量与 12 条风格门（源码 10 条 + Playwright 渲染 2 条） | 已对齐 |
-| 专利链路 | 9 个 skill 的完整链路 | 无 | 可选缺口 |
-| 领域适配 | communications、robotics、architecture/EDA 三个方向适配器 | 无 | 缺口 |
-| 知识库自动化 | research-wiki 有生命周期 hook 自动 ingest，wiki-enrich 补 TODO | research_wiki 工具存在但**手工**，只有 3 个文件 | 自动化缺口 |
+| 专利链路 | 9 个 skill 的完整链路 | `patent` 实现可机械判定的一半：状态/发明分解/权利要求结构（编号、依赖、三辖区特征句、实用新型限制）/现有技术 URL-DOI 下限/审查意见 resolved/各辖区输出一致性与摘要字数；`format` 按 CNIPA/USPTO/EPO 顺序编译但**不翻译** | 核心对齐 |
+| 领域适配 | communications、robotics、architecture/EDA 三个方向适配器 | `domain_adapters` 把三个领域的 venue、检索词与**计划必需要素**做成 fail-closed 检查（缺项/占位即 problem） | 已对齐 |
+| 知识库自动化 | research-wiki 有生命周期 hook 自动 ingest，wiki-enrich 补 TODO | `research_wiki` 补上写入半边：`ingest` 生成 12 段 paper 骨架、`enrich-report`/`enrich` 填充、`screen` 做 capture-hygiene、`hook` 串起 ingest→enrich→rebuild→log | 已对齐 |
 | 自演化落地 | meta-optimize（只读）→ meta-apply（特权落地 + jury） | `meta_apply` 已实现：stage → 跨族 jury 审 staged diff → apply（哈希绑定 + ≥2 gate-capable 通过 + ≥2 模型族 + 含跨族；先备份再 append-only ledger） | 已对齐 |
 | 多后端评审 | Codex / 任意 OpenAI 兼容 / MiniMax / Oracle Pro | 4 个 provider（custom、local-qwen、zhipu、openrouter），已用 OpenRouter 免费跨族模型跑通 | 基本持平 |
 
@@ -103,10 +103,10 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | `meta_apply` 已实现同样的分离：`stage` 不碰工作树、`review` 每个模型一个 provider、`apply` fail-closed（默认只能改文档语料） |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | `figure_spec` 补齐了确定性渲染器；`illustration` / `mermaid` / `poster HTML` 仍依赖外部 skill |
 | 5 | 投稿后产出深度 | slides（Beamer+PPTX+notes+script）+ slides-polish + poster-html（带度量硬门 + 12 条风格门） | 度量硬门 + Beamer 生成 + PPTX 导出 + 版式润色 + poster HTML 生成/打印/**几何测量**/**风格门**均已对齐（`talk_gates` / `talk_deck` / `pptx_export` / `slides_polish` / `poster_html` / `poster_measure` / `poster_style`） |
-| 6 | 专利链路 | 9 个 skill 的完整链路 | 无 |
-| 7 | 领域适配器 | communications / robotics / architecture-EDA | 无 |
-| 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 工具存在但靠手工，当前只有 3 个文件 |
-| 9 | 外部基准评价 | 无（ARIS 也未做） | `tool_eval` 有 10 例自设计用例，仍属自评 |
+| 6 | 专利链路 | 9 个 skill 的完整链路 | `patent` 覆盖 gate 与 jurisdiction 编译（见上表）；仍未对齐的是图件描述与实施例自动撰写——那两步需要模型，本仓库只校验它们产出的结构 |
+| 7 | 领域适配器 | communications / robotics / architecture-EDA | `domain_adapters` 三个领域包已落地（见上表） |
+| 8 | 知识库自动化 | research-wiki 生命周期 hook 自动 ingest + `/wiki-enrich` 补 TODO | `research_wiki` 的 ingest/enrich/hook 已落地，并修掉"rebuild 之后 wiki 立刻 invalid"的真 bug |
+| 9 | 外部基准评价 | 无（ARIS 也未做） | `tool_eval --benchmark` 提供 MLGym 式外部 harness（三态判定 + unavailable 剔除分母），但**本轮没有真跑过 MLGym**——没有那个环境的机器 |
 
 差距 2 已收窄：`ccfa.adversarial_review` 把零上下文数值复核（`claim-audit`）与双线
 kill-argument 落成两个只产出、永不开释的角色。`claim-audit` 按机械规则排除作者的推导
@@ -195,6 +195,11 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
 | 投稿后产出的**风格门**（差距 4 的 `style` 段，源码级对齐） | 读了 ARIS 的 `skills/paper-poster-html/scripts/style_check.py` 全文后实现 `tools/ccfa/poster_style.py`：12 条设计规则拆成**源码 gate**（1/2/3/5/6/7/8/9/10/11，纯静态、无需浏览器）与**渲染 gate**（4/12，Playwright 打印仿真取 computed style），`--no-render` 的语义照抄（源码 gate 照常判定并打印"两条规则未评估"），退出码 0/1/2，WARN 永不失败。规则 4 的色相 18° 贪心圆环聚类、`nonneutral_alpha=0.10`、`nonneutral_sat=0.18`、chroma 地板 `sat*0.56`、`dark_area_frac=0.08`、`colorsys.rgb_to_hls` 的 `(h,l,s)` 顺序全部逐字对齐。**纠正一处抄错**：参考源码里规则 12 与 9 的 severity 都是 `warn`，上一轮写成 hard/soft 是错的，已改回。实测真生成的 ICLR 海报 `overall=pass`（规则 4 报 1 个色相聚类、规则 12 报深色面积 0.0%）；三组构造实验分别让规则 4 硬失败、规则 12 告警、以及验证 `data-color-exempt` 子树被豁免 |
 | 可编辑 **PPTX 导出**（差距 4 的 `slides` 另一半，源码级对齐） | 参考的 `paper-slides` 产出 `main.pdf` + `main.pptx`，我们此前只给 PDF 并在状态文件写 `not_implemented: ["pptx"]`。新增 `tools/ccfa/pptx_export.py` + 测试：从同一份 `data/talk-plan.yaml` 生成 16:9（13.333×7.5in）/4:3 画布、`speaker_notes` 写进 PPT notes、venue 主题色、图件真实像素双向适配、字号按画布比例推导，核心属性钉时间戳保证同 plan 同字节；新依赖 `python-pptx==1.0.2` 带哈希进锁文件 |
 
+| **专利链路**（差距 6，源码级对齐） | 读了 ARIS 的 `patent-pipeline` / `claims-drafting` / `jurisdiction-format` / `patent-review` 等九个 skill 后实现 `tools/ccfa/patent.py` + 36 项测试：`PATENT_STATE.json`（phase/status/jurisdiction/type + 24h 过期 advisory）、发明分解 core/supporting/optional、权利要求编号连续 / 从属指向更早项 / 独立项数量 / CN `其特征在于` / US `comprising` / EP `characterised in that` / 实用新型禁方法项、现有技术 ≥3 条 URL/DOI、`patent-review.yaml` 全部 resolved 且有 resolution、各辖区输出的权利要求完整性与摘要字数/语言/附图标记；`format` 按 CNIPA/USPTO/EPO Rule 42 顺序装配且**不翻译**（中文塞进 US 会被 `patent-output-language` 抓住）。实测 CN 案卷 0 problem、缺 state exit 1、删掉特征句被抓、320 字中文摘要被抓 |
+| **领域适配器**（差距 7，源码级对齐） | 读了 `idea-discovery-robot` / `comm-lit-review` / `writing-systems-papers` 的领域约束后实现 `tools/ccfa/domain_adapters.py` + 15 项测试：robotics / communications / architecture-EDA 三个包，各带 venue、检索词、pilot 策略与**必需要素**（robotics 的 embodiment / task_family、communications 的 channel_model、EDA 的 technology_node 等）；`check` fail closed，缺项/占位即 problem，off-list venue 是 advisory；`prompt` 输出可粘贴约束块 |
+| **知识库自动化**（差距 8，源码级对齐） | 读了 `research-wiki` / `wiki-enrich` 与 `capture-antipatterns` 后扩展 `tools/ccfa/research_wiki.py`：`ingest` 生成 12 段 paper 骨架（10 可填 + 受保护 Connections/Abstract）、`enrich-report` 列未填段、`enrich` 按 JSON 填充（拒绝受保护段与运行事故文本）、`screen` 三类 capture-hygiene 模式、`hook` 串 ingest→enrich→rebuild→log。**顺带修 bug**：rebuild 生成的 index.md/gap_map.md 之前会被 `check_wiki` 当成缺 frontmatter 的条目，导致重建后 wiki 立刻 invalid |
+| **外部基准 harness**（差距 9，接口） | 给 `tools/ccfa/tool_eval.py` 加 `--benchmark spec.yaml`：任务 `command`/`workdir`/`metric{path,key}`/`threshold`，判定 pass/fail/**unavailable**（跑不起来的任务从分母剔除），路径限制在 workdir 内防目录穿越，跑完退出 0；`docs/examples/benchmark-example.yaml` 是 spec 形状。诚实说明：本轮**没有真跑** MLGym 或任何外部任务，分数仍为空白 |
+
 ### 旗舰论文当前状态
 
 `readiness` 仍为 `ready=false`，两项阻塞：
@@ -218,10 +223,10 @@ cross-review:   review-prompt-drift, review-blocking, review-stale-finding
 | 2 | 自演化落地门 | **已关闭**（见上表） | 残留一条：真模型跨族 jury 还没在本机跑通——`glm-4-flash` 返回的是 `verdict=block` 的 key=value 而不是 JSON（被契约检查拒绝并 exit 2），`glm-4-plus` 与 OpenRouter 免费模型则撞上间歇性的 MCP `Auth required`。quorum 逻辑目前由 27 项单元测试覆盖 |
 | 3 | 图件生成 | **核心已关闭**（见上表） | `figure_spec` 已实现确定性 JSON/YAML→SVG；残留 `illustration` / `mermaid` / `poster HTML` 三类生成器没有对应实现 |
 | 4 | 投稿后产出深度 | **已关闭** | 按 `run_gates.py` / `poster_check.py` / `_posterly/measure.py` / `_posterly/verify_final.py` 实现 4 段 gate；`style` 段由 `poster_style` 补齐（源码 10 条 + Playwright 渲染的规则 4/12，见上表）；按 `paper-slides/SKILL.md` 实现 `talk_deck` + `pptx_export`；按 `slides-polish/SKILL.md` 实现 `slides_polish`（不改内容可校验）；按 `paper-poster-html` 的模板约束 + `tokens/*.json` + `_posterly/verify_final.py` 的 `--from-html` 机制实现 `poster_html`（`@page` 与容器尺寸构造上同步、Edge 无头打印、按海报自身声明核对 PDF） |
-| 5 | 专利链路 | 无专利模块 | ARIS 有 9 个 skill 的完整链路 |
-| 6 | 领域适配器 | 无 | ARIS 有 communications / robotics / architecture-EDA |
-| 7 | 知识库自动化 | `library/wiki/` 仍 3 个文件 | ARIS 有生命周期 hook 自动 ingest + `/wiki-enrich` |
-| 8 | 外部基准评价 | `tool_eval` 10 例自设计用例 | 双方都没有 MLGym 式外部基准 |
+| 5 | 专利链路 | **gate 已关闭**（见上表） | `patent` 覆盖状态/发明分解/权利要求/现有技术/审查/输出一致性；残留的是"图件描述与实施例撰写"这两步的生成——需要模型，本仓库只校验结构 |
+| 6 | 领域适配器 | **已关闭**（见上表） | `domain_adapters` 三个领域包 + fail-closed `check` |
+| 7 | 知识库自动化 | **已关闭**（见上表） | `ingest`/`enrich`/`screen`/`hook` 落地，并修掉 rebuild 后 wiki 自失效的 bug |
+| 8 | 外部基准评价 | **接口已关闭，分数未产出** | `tool_eval --benchmark` 给出 MLGym 式 harness（三态判定 + unavailable 剔除分母），但本轮没有真跑过 MLGym 或任何外部任务；分数仍是空白 |
 
 对抗评审这条已从「4 个角色 vs 8 个」收窄为「6 个角色 vs 8 个」。没对齐的两个是 `/experiment-audit`（假 ground truth、分数归一化作弊、幽灵结果、范围膨胀等作弊模式）与 `/integrity-forensics`（46 模式取证）；`/proof-checker` 的 20 类分型部分由 `formal_check` + 9 个形式化引擎覆盖，且你多了一条 ARIS 没有的机器校验证明。
 

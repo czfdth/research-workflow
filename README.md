@@ -120,7 +120,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv/交付格式/排版/数据版本/算力），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/e2e_check.py` | 一条命令给出单篇论文的现状快照：完整 gate 表、阻塞、人工待办、环境健康、git/CI 与投稿倒计时；只读，缺省只打印不写文件 | `scripts/e2e-check.ps1` |
-| `tools/ccfa/tool_eval.py` | 给工作流自己的 gate 做度量：往临时夹具里注入已知缺陷，记录各 gate 的检出率与误报率；只测量、不改写任何 gate，跑完退出 0 | `scripts/tool-eval.ps1` |
+| `tools/ccfa/tool_eval.py` | 给工作流自己的 gate 做度量：往临时夹具里注入已知缺陷，记录各 gate 的检出率与误报率；另带 **外部基准 harness**（`--benchmark spec.yaml`）：按 spec 跑别人的任务、读度量、比阈值，任务跑不起来记 `unavailable` 并从分母剔除；只测量、不改写任何 gate，跑完退出 0 | `scripts/tool-eval.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
 | `tools/ccfa/verifiers.py` | 清点本机可用的形式化验证器（z3/cvc5/lean/coq/isabelle/agda/why3/sage/julia），对照 `data/formal-checks.yaml` 说明缺哪个、禁用了哪个能力、如何安装 | `scripts/verifiers.ps1` |
@@ -145,7 +145,9 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/artifact_badge.py` | 校验 ACM available/evaluated/reusable badge、第三方复核、reuse 记录与 DOI/归档证据 | `scripts/artifact-badge.ps1` |
 | `tools/ccfa/artifact_store.py` | 内容寻址的 immutable artifact store、完整性验证、provenance replay 与 `.science` 打包 | `scripts/artifact-store.ps1` |
 | `tools/ccfa/session_replay.py` | 串联 passport、run ledger、artifact store 与 review state，生成只读 session replay HTML | `scripts/session-replay.ps1` |
-| `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges；支持 BibTeX sync、catalog/gap map 重建、搜索和 query pack | `scripts/research-wiki.ps1` |
+| `tools/ccfa/research_wiki.py` | 校验跨项目 Markdown wiki、typed graph edges；支持 BibTeX sync、catalog/gap map 重建、搜索和 query pack；**生命周期自动化**：`ingest` 从 BibTeX/PDF 目录/arXiv id 生成 12 段 paper 骨架（10 段可填 + 受保护的 Connections/Abstract），`enrich-report` 列出未填段，`enrich` 按 JSON 填充（拒绝改写受保护段、拒绝把运行事故写进条目），`screen` 做 capture-hygiene 筛查，`hook` 串起 ingest→enrich→rebuild→log | `scripts/research-wiki.ps1` |
+| `tools/ccfa/domain_adapters.py` | 领域适配包：robotics / communications / architecture-EDA，各带 venue 列表、检索词与**计划必需要素**（如 embodiment、channel model、technology node）；`check` 对研究计划 fail closed，缺项即 problem，占位值即 problem，off-list venue 是 advisory；`prompt` 输出可粘贴的领域约束块 | `scripts/domain-adapters.ps1` |
+| `tools/ccfa/patent.py` | 专利链路的确定性 gate + jurisdiction 编译：校验 `PATENT_STATE.json`（phase/status/jurisdiction/type，24h 过期 advisory）、发明分解（core/supporting/optional）、权利要求（编号连续、独立项数量、依赖指向更早项、CN `其特征在于` / US `comprising` / EP `characterised in that`、实用新型禁方法项）、现有技术 URL/DOI 数量、审查意见是否全部 resolved、各辖区输出的权利要求完整性与摘要字数/语言；`format` 按 CN/US/EP 顺序把 `specification/` 编译成 `output/<J>/`，**不翻译**（语言错配会被 check 抓到） | `scripts/patent.ps1` |
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 | `tools/ccfa/change_log.py` | 强制记录每次工作流修改；append-only JSONL + 生成 Markdown + fail-closed 覆盖检查 | `scripts/change-log.ps1` |
 | `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
@@ -495,6 +497,82 @@ scripts/poster-style.ps1 run --html <paper-root>/poster.html --no-render
 的稿子付渲染成本；默认累积全部问题（`--fail-fast` 给 CI 用）；`polish` 默认只警告，
 `--strict-polish` 才升级成硬失败。`verify-final` 必须显式给 `--canvas` 或
 `--from-plan`，没有默认画布——默认值猜错比报错更糟。
+
+## 领域与知识库自动化
+
+选题和读文献最容易漏的，是领域自己规定的那些"必须说清楚的东西"：机器人不说本体、
+通信不说信道模型、体系结构不说工艺节点。**领域适配包**把这些变成可检查的清单，
+而不是每轮靠 agent 重新记忆：
+
+```powershell
+scripts/domain-adapters.ps1 list
+scripts/domain-adapters.ps1 show    --domain robotics
+scripts/domain-adapters.ps1 prompt  --domain communications --out <paper-root>/domain.md
+scripts/domain-adapters.ps1 check   --domain architecture-eda --plan <paper-root>/research-plan.yaml
+```
+
+`check` 是 fail-closed 的：计划缺 `embodiment` / `channel_model` / `technology_node`
+这类必需项，或者写了 `TODO` 占位，都会变成 problem 并返回 exit 1；venue 不在该领域
+常见列表里只是 advisory（跨领域投稿是合法的，但值得知道）。三个内置领域是
+`robotics`、`communications`、`architecture-eda`。
+
+知识库那一侧补上了「写进去」的半边：以前只有校验/索引，现在有生命周期钩子——
+从 BibTeX、PDF 目录或 arXiv id 生成标准的 12 段 paper 骨架，再把未填的段落标出来。
+
+```powershell
+scripts/research-wiki.ps1 ingest        --dir <wiki> --bib <root>/library/refs.bib
+scripts/research-wiki.ps1 enrich-report --dir <wiki>
+scripts/research-wiki.ps1 enrich        --dir <wiki> --slug alpha --from summary.json
+scripts/research-wiki.ps1 hook          --dir <wiki> --bib <root>/library/refs.bib
+```
+
+两条护栏：`Connections` 与 `Abstract (original)` 是受保护段落，`enrich` 拒绝改写；
+任何要写进条目的文本先过 `screen`，把「命令找不到 / 超时 / 某模型做不了 X」这类
+**运行事故**挡在门外——它们一旦固化成条目，会在之后的每次会话里被当成研究事实引用，
+也就是参考实现说的 self-poisoning。`hook` 按 `ingest → enrich → rebuild → log`
+顺序执行，顺手刷新 `index.md`/`gap_map.md`。
+
+## 专利链路
+
+专利不是论文的附属品，它保护的是**发明的法律范围**，所以它有一条独立的
+`prior-art → novelty → structuring → claims → specification → review →
+jurisdiction-format` 链路。参考实现把它拆成 9 个 skill；这里把其中**可机械判定**的
+部分做成 gate，把"需要人/模型判断"的部分留给评审记录：
+
+```powershell
+scripts/patent.ps1 state  --patent-root <paper-root>/patent --phase 3 `
+    --status in_progress --jurisdiction CN --patent-type invention --title "一种…"
+scripts/patent.ps1 check  --patent-root <paper-root>/patent
+scripts/patent.ps1 format --patent-root <paper-root>/patent --jurisdiction ALL
+```
+
+`check` 会真的去数：权利要求编号是否从 1 连续不断号、独立权利要求够不够（发明 2 条、
+实用新型 1 条）、从属项是否指向**更早**的项、CN 独立项有没有「其特征在于」、US 有没有
+`comprising`、EP 有没有 `characterised in that`；实用新型只允许 CN 且不能出现方法项；
+`PRIOR_ART_REPORT.md` 里至少有 3 条可定位的 URL/DOI；`patent-review.yaml` 的每条
+objection 都必须 `resolved` 并附 resolution。`format` 只做**编排**——按 CNIPA / USPTO /
+EPO Rule 42 的顺序把 `specification/` 的七个小节重新装配，不翻译；所以把中文权利要求
+塞进 US 输出会得到 `patent-output-language`，而不是悄悄过门。
+
+`PATENT_STATE.json` 是 compaction 恢复用的：`status=in_progress` 超过 24 小时会报
+`patent-state-stale`（advisory），提醒你重新开始而不是续跑一个过期的上下文。
+
+## 外部基准
+
+内置的 `tool-eval` 用例都是自己写的，所以它只能证明"gate 抓得住我自己造的缺陷"。
+要回答"这套工作流在**别人的任务**上有没有用"，就得跑外部基准：
+
+```powershell
+scripts/tool-eval.ps1 --benchmark docs/examples/benchmark-example.yaml --json bench.json
+scripts/tool-eval.ps1 --benchmark <spec>.yaml --dry-run
+```
+
+spec 里每个 task 声明 `command`、可选的 `workdir`、`metric`（文件 + 键，路径必须落在
+workdir 内）和 `threshold`。判定只有三种诚实结果：达到阈值是 `pass`，命令非零退出或
+低于阈值是 `fail`，**命令/工作目录不存在是 `unavailable` 并从分母里剔除**——把"本机
+没装这个基准"算成"方法失败"是最容易骗自己的地方，这里直接排除。跑完退出 0（这是度量，
+不是 gate）。`docs/examples/benchmark-example.yaml` 是 spec 形状的示意，接真实外部基准
+时把 `workdir` 指到那个 checkout、命令照抄它自己的 README。
 
 ## 跑测试
 

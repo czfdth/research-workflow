@@ -30,6 +30,8 @@ CLI_WRAPPERS = {
     "poster_measure": "scripts/poster-measure.ps1",
     "poster_style": "scripts/poster-style.ps1",
     "pptx_export": "scripts/pptx-export.ps1",
+    "domain_adapters": "scripts/domain-adapters.ps1",
+    "patent": "scripts/patent.ps1",
     "citation_guard": "scripts/citation-guard.ps1",
     "trace_claims": "scripts/trace-claims.ps1",
     "latex_check": "scripts/latex-check.ps1",

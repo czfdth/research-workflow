@@ -2167,3 +2167,50 @@ rewrite historical entries.
   - `tools.tests.test_scripts`
   - `tools.tests.test_test_impact`
 
+## WC-20261006T112044Z-9b638ef5a8 - Close the patent, domain-adapter, knowledge-base and external-benchmark gaps
+
+- timestamp: `2026-10-06T11:20:44Z`
+- status: `complete`
+- author: `codex`
+- reason: Closes the four remaining ARIS-alignment gaps from docs/aris-comparison-2026-10-06.md: the patent chain, domain adapters, knowledge-base automation, and external benchmark evaluation.
+
+Patent chain (new tools/ccfa/patent.py + scripts/patent.ps1): after reading ARIS patent-pipeline, claims-drafting, invention-structuring, jurisdiction-format and patent-review, this implements the mechanically checkable half as a gate over a patent/ directory. check_state validates PATENT_STATE.json (phase/status/jurisdiction/type, utility_model must be CN, and an in_progress state older than 24h is a stale advisory for compaction recovery); INVENTION_DISCLOSURE.md must carry the core/supporting/optional decomposition; check_claims enforces sequential claim numbering with no gaps, the per-type minimum independent-claim count, dependent claims referencing an earlier claim, the jurisdiction characterising phrase on every independent claim (CN 其特征在于, US comprising, EP characterised in that), and the utility-model restriction (CN only, no method claims), with >20 claims as an advisory only; PRIOR_ART_REPORT.md needs at least three locatable URL/DOI references; patent-review.yaml must have every objection resolved with a resolution; check_output validates each compiled output/<J>/ tree for claim completeness, jurisdiction-specific abstract limits (CN 300 characters, US/EP 150 words), language matching and shared reference numerals. format re-assembles the canonical specification sections in CNIPA / USPTO / EPO Rule 42 order and deliberately does not translate, so a Chinese claim pasted into a US filing is caught by patent-output-language rather than silently translated. It also fixes a real claim parser bug found while testing: the body slice started after the claim's own first line, so a claim's characterising phrase and every dependency were invisible.
+
+Domain adapters (new tools/ccfa/domain_adapters.py + scripts/domain-adapters.ps1): robotics, communications and architecture-EDA packs with venues, search terms, pilot mode and required elements (embodiment/task_family/observation_action/simulator/sim2real_story/evaluation, system_model/channel_model/protocol_baseline/traffic_model/evaluation_stack/metrics, workload/technology_node/simulator/area_power_model/ppa/baseline). check fails closed on a missing required element or a placeholder value and treats an off-list venue as an advisory; prompt prints a paste-ready constraint block. This is the machine-checkable form of the per-domain prose that ARIS keeps in idea-discovery-robot and comm-lit-review.
+
+Knowledge-base automation (tools/ccfa/research_wiki.py): adds ingest (paper scaffolds from BibTeX, a PDF dir or arXiv ids, with the twelve-section body and the two protected sections), enrich-report, enrich (fills named sections from JSON, refusing protected sections and refusing text flagged by the capture-hygiene screen), screen (env-failure / transient-error / negative-tool-claim patterns, so an operational accident cannot harden into a durable research fact), and hook (ingest -> enrich -> rebuild -> log). It also fixes a real bug: rebuild_catalog, query_pack and append_log generate index.md, gap_map.md, query_pack.md and log.md, but check_wiki only skipped README.md, so a rebuild made the wiki immediately invalid with research-wiki-invalid missing frontmatter; generated catalogues are now skipped and rebuild leaves the wiki valid.
+
+External benchmark harness (tools/ccfa/tool_eval.py --benchmark): an MLGym-style spec with per-task command, optional workdir, metric {path, key} and threshold. Grading is three-state: pass at/above threshold, fail on non-zero exit or below threshold or an unreadable metric, and unavailable when the command or working directory does not exist, with unavailable tasks excluded from the pass denominator exactly like errored probes. The metric path must stay inside the task workdir. A completed run exits 0 because this is a measurement, not a gate. docs/examples/benchmark-example.yaml ships the spec shape. Honest limitation, recorded in the docs: no external benchmark task (MLGym or otherwise) was actually executed this round, so the score remains blank.
+
+Wiring: dispatch gains patent and domain-adapters commands; scripts/domain-adapters.ps1 and scripts/patent.ps1 are thin wrappers; CCFA_WRAPPERS in test_scripts, CLI_WRAPPERS in test_docs_consistency, the py_compile list in .github/workflows/tests.yml, and the test_impact mappings all move together with the two new modules; README documents the new tools, the patent chain, the domain packs, the wiki hook and the external benchmark. Tests: 36 in tools/tests/test_patent.py, 15 in tools/tests/test_domain_adapters.py, 16 added to tools/tests/test_tool_eval.py, plus the updated research_wiki, docs-consistency, scripts, dispatch and test-impact suites.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `docs/examples/benchmark-example.yaml`
+  - `docs/reference-aris-2026-10-06.md`
+  - `scripts/domain-adapters.ps1`
+  - `scripts/patent.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/domain_adapters.py`
+  - `tools/ccfa/patent.py`
+  - `tools/ccfa/research_wiki.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/ccfa/tool_eval.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_domain_adapters.py`
+  - `tools/tests/test_patent.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+  - `tools/tests/test_tool_eval.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_domain_adapters`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_patent`
+  - `tools.tests.test_research_wiki`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+  - `tools.tests.test_tool_eval`
+
