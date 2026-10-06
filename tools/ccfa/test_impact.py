@@ -268,6 +268,12 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/integrity_forensics.py": (
+        "tools.tests.test_integrity_forensics",
+        "tools.tests.test_readiness",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/patent.py": (
         "tools.tests.test_patent",
         "tools.tests.test_docs_consistency",

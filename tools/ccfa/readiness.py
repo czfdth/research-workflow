@@ -33,6 +33,7 @@ from ccfa import (
     formal_check,
     governance_map,
     governance,
+    integrity_forensics,
     latex_check,
     novelty,
     passport_ledger,
@@ -653,6 +654,12 @@ def _gate_specs(
         specs["artifact-store"] = lambda: artifact_store.verify_store(paper_root)
     if (paper_root / "data" / "formal-checks.yaml").is_file():
         specs["formal-check"] = lambda: _formal_check_gate(paper_root)
+    if (paper_root / "data" / "integrity-forensics.json").is_file():
+        # Only runs once a sweep exists: the pinned upstream checkout is not
+        # installed everywhere, and a missing tool must not be mistaken for a
+        # clean paper — but it also must not block every paper that never
+        # asked for a forensic sweep.
+        specs["integrity-forensics"] = lambda: integrity_forensics.check(paper_root)
     if tail.get("resubmit-pipeline") or (
         paper_root / "data" / "resubmit-plan.yaml"
     ).is_file():

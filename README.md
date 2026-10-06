@@ -111,6 +111,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/stats_plan.py` | 检查预注册统计设计：alpha、功效、样本量、多重比较、停止规则与缺失数据处理 | `scripts/statistics.ps1` |
 | `tools/ccfa/governance.py` | 检查署名/贡献、利益冲突、伦理与许可、AI 使用、查重、双用途与负责任披露 | `scripts/governance.ps1` |
 | `tools/ccfa/anonymity.py` | 双盲投稿的匿名门：扫 `manuscript/*.tex` 与 PDF，硬失败于未匿名的 `\author{...}`、配置里声明的真实姓名/单位、自指措辞（our previous work / 我们之前的工作）、作者自有 URL、以及 PDF 元数据里的作者信息；致谢章节与未列出的代码仓 URL 先是 advisory（venue 强制 AI 披露时不该逼人撒谎） | `scripts/anonymity.ps1` |
+| `tools/ccfa/integrity_forensics.py` | ARIS `/integrity-forensics` **指向的那个上游仓库**（`wanshuiyin/Anti-Autoresearch`，MIT）的 pinned launcher：固定 commit 校验 checkout（不追 HEAD），可跑上游自己的 `eval/run_eval.py` 校准门，然后原样驱动它的确定性链（`build_claim_ledger` → `check_numeric_consistency`/`check_stat_consistency` → `adjudicate_findings`）。verdict 原词保留：`CLEAN_GIVEN_EVIDENCE` 只表示"在现有证据下没抓到"，`HARD_FLAGS`/`REVIEW_UNAVAILABLE` 阻塞、`SOFT_FLAGS` 警告；finding 落成 **append-only obligations**，消失的 finding 永不自动关闭，关闭需要带哈希证据的 `resolve` 或人工 `waive` | `scripts/integrity-forensics.ps1` |
 | `tools/ccfa/governance_map.py` | 校验 risk→control→evidence status→residual gap，以及 machine-readable data flows 和明文凭据 | `scripts/governance-map.ps1` |
 | `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
@@ -574,6 +575,25 @@ workdir 内）和 `threshold`。判定只有三种诚实结果：达到阈值是
 没装这个基准"算成"方法失败"是最容易骗自己的地方，这里直接排除。跑完退出 0（这是度量，
 不是 gate）。`docs/examples/benchmark-example.yaml` 是 spec 形状的示意，接真实外部基准
 时把 `workdir` 指到那个 checkout、命令照抄它自己的 README。
+
+## 投稿前取证（ARIS 指向的上游仓库）
+
+ARIS 的 `/integrity-forensics` 自己写得很清楚：它是一个 **thin launcher**，把 `wanshuiyin/Anti-Autoresearch`（MIT）pin 在某个 commit 上，"vendors nothing and forks nothing"。检测器不在 ARIS 里。所以我们也没去重写它，而是做同样形状的 launcher：
+
+```powershell
+$co = "$HOME\.ccfa\anti-autoresearch"
+git clone https://github.com/wanshuiyin/Anti-Autoresearch.git $co
+git -C $co checkout b47af6f983b38347b6d2110379e266400597cf66
+
+scripts/integrity-forensics.ps1 pin    --checkout $co
+scripts/integrity-forensics.ps1 verify --checkout $co --run-eval
+scripts/integrity-forensics.ps1 run    --paper-root <paper-root> --checkout $co
+scripts/integrity-forensics.ps1 check  --paper-root <paper-root>
+```
+
+三条设计约束照抄 ARIS 的：**pin 不追 HEAD**（checkout 不在 pin 上直接 fail closed，换 pin 是受审阅的改动）；**原词保留 verdict**（`CLEAN_GIVEN_EVIDENCE` 只表示"在现有证据下没抓到"，绝不等于"论文诚实"；`REVIEW_UNAVAILABLE` 表示扫描没跑完，同样阻塞）；**obligation 永不自动关闭**——finding 落成 append-only 台账，下一轮报告里它消失了只会记 `unresolved-disappearance`，关闭必须 `resolve`（附证据文件，记 sha256）或人工 `waive`（并记是谁批的）。上游那 13 条 AI 写作风格印象本身是零裁决权重的，在这里也保持零权重。
+
+upstream 的确定性链全部是 stdlib，不需要装任何 Python 依赖；`run` 不会自动下载仓库，缺 checkout 就是 fail closed，不会把"没装工具"读成"论文干净"。
 
 ## 双盲投稿的匿名门
 

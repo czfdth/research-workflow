@@ -58,6 +58,7 @@ COMMANDS: dict[str, str] = {
     "governance-map": "ccfa.governance_map",
     "human-coding": "ccfa.human_coding",
     "install-toolchain": "install.fetch_toolchain",
+    "integrity-forensics": "ccfa.integrity_forensics",
     "latex-check": "ccfa.latex_check",
     "library": "ccfa.library",
     "long-task": "ccfa.long_task",

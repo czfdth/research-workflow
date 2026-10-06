@@ -16,6 +16,7 @@ CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 CCFA_WRAPPERS = {
     "adversarial_review": "adversarial-review.ps1",
     "anonymity": "anonymity.ps1",
+    "integrity_forensics": "integrity-forensics.ps1",
     "meta_apply": "meta-apply.ps1",
     "figure_spec": "figure-spec.ps1",
     "talk_gates": "talk-gates.ps1",

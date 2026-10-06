@@ -2302,3 +2302,37 @@ Tests: 7 new cases in tools/tests/test_anonymity.py (English and Chinese cross-r
 - tests:
   - `tools.tests.test_anonymity`
 
+## WC-20261006T131947Z-13cad6d730 - Add the pinned launcher for ARIS's integrity-forensics upstream repo
+
+- timestamp: `2026-10-06T13:19:47Z`
+- status: `complete`
+- author: `codex`
+- reason: Wired in the repo ARIS actually points at. ARIS's own skills/integrity-forensics says it plainly: "This skill is a thin launcher: it pins an upstream commit, validates the pin with the upstream eval gate, delegates execution unchanged, and post-processes the verdict into ARIS's policy vocabulary. It vendors nothing and forks nothing." The detector is wanshuiyin/Anti-Autoresearch (MIT), pinned by ARIS at b47af6f983b38347b6d2110379e266400597cf66.
+
+New tools/ccfa/integrity_forensics.py + scripts/integrity-forensics.ps1 is the same shape in our vocabulary. pin/verify resolve a checkout (explicit --checkout, else CCFA_ANTI_AUTORESEARCH, else ~/.ccfa/anti-autoresearch), read git rev-parse HEAD and fail closed unless it is exactly the pinned commit, and --run-eval can additionally run upstream's own calibration gate (eval/run_eval.py). run drives the upstream deterministic chain unchanged - build_claim_ledger.py, check_numeric_consistency.py, check_stat_consistency.py, adjudicate_findings.py - which is stdlib-only, so nothing is installed beyond the checkout, and passes absolute paths because upstream runs with cwd=checkout. The verdict vocabulary is preserved verbatim and mapped, never re-labelled: CLEAN_GIVEN_EVIDENCE means "no flag in the evidence at hand" (never "the paper is honest"), HARD_FLAGS and REVIEW_UNAVAILABLE block, SOFT_FLAGS warns, and upstream's zero-weight AI-style impressions stay zero-weight here. Findings become append-only obligations in data/integrity-obligations.jsonl; a finding that a later report no longer contains is recorded as unresolved-disappearance and never auto-closed, and closing needs either resolve with a hashed evidence file or an explicit human waive (this is ARIS's own tools/forensics_gate.py doctrine). The normalised report records the pin, the checkout, the upstream report/adjudicator/taxonomy versions, the preserved findings and the sha256 of every manuscript source read, so check can flag integrity-forensics-stale when the text moves after a sweep. run never downloads anything: a missing checkout is integrity-forensics-not-installed, never a silent pass.
+
+readiness runs integrity-forensics as a gate whenever data/integrity-forensics.json exists - deliberately conditional, because the pinned checkout is not installed everywhere and a missing tool must not be mistaken for a clean paper, while a paper that never asked for a forensic sweep should not be blocked by one.
+
+Wiring moves together: dispatch command, PowerShell wrapper, CCFA_WRAPPERS, CLI_WRAPPERS, the py_compile list in .github/workflows/tests.yml, the test_impact mapping and README.
+
+Tests: 34 in tools/tests/test_integrity_forensics.py using a fake git checkout with stub upstream tools (pin resolution precedence, missing/non-git/pin-mismatch/incomplete failure modes, fingerprint stability, open -> resolve -> waive folding, vanished findings never auto-closing, resolve requiring hashed evidence, waive recorded separately, the full verdict/gate matrix including stale detection, sweep orchestration against stubs, and CLI exit codes), plus the readiness, docs-consistency, scripts and test-impact suites. Verified live end to end: the pinned checkout at ~/.ccfa/anti-autoresearch passed verify and upstream's eval gate, and the flagship paper returned CLEAN_GIVEN_EVIDENCE with 0 findings and 0 obligations.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `scripts/integrity-forensics.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/integrity_forensics.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_integrity_forensics.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_integrity_forensics`
+  - `tools.tests.test_readiness`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+

@@ -22,6 +22,7 @@ CCFA_DIR = REPO_ROOT / "tools" / "ccfa"
 CLI_WRAPPERS = {
     "adversarial_review": "scripts/adversarial-review.ps1",
     "anonymity": "scripts/anonymity.ps1",
+    "integrity_forensics": "scripts/integrity-forensics.ps1",
     "meta_apply": "scripts/meta-apply.ps1",
     "figure_spec": "scripts/figure-spec.ps1",
     "talk_gates": "scripts/talk-gates.ps1",
