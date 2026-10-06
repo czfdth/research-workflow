@@ -212,6 +212,9 @@ _TOOLS_EXACT = {
     "tools/ccfa/__main__.py": (
         "tools.tests.test_dispatch",
     ),
+    "tools/ccfa/tool_eval.py": (
+        "tools.tests.test_tool_eval",
+    ),
 }
 
 

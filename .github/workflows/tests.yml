@@ -155,6 +155,7 @@ jobs:
             tools/ccfa/skill_registry.py `
             tools/ccfa/talk_pipeline.py `
             tools/ccfa/test_impact.py `
+            tools/ccfa/tool_eval.py `
             tools/ccfa/venue_fixtures.py `
             tools/ccfa/verifiers.py `
             tools/ccfa/worktree_audit.py `

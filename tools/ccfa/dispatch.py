@@ -83,6 +83,7 @@ COMMANDS: dict[str, str] = {
     "statistics": "ccfa.stats_plan",
     "talk-pipeline": "ccfa.talk_pipeline",
     "test-impact": "ccfa.test_impact",
+    "tool-eval": "ccfa.tool_eval",
     "trace-claims": "ccfa.trace_claims",
     "validate": "ccfa.validate",
     "venue-fixtures": "ccfa.venue_fixtures",

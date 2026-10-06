@@ -1657,3 +1657,28 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Verified against the code: stats_plan.py zero-skill requirement, research_ledgers.COST_METRIC_FIELDS, e2e_check metric rendering, and the paper's cost-ledger.yaml metrics block.
 
+## WC-20261006T052843Z-3de3db1c8f - Measure the workflow's own gates instead of only wiring them
+
+- timestamp: `2026-10-06T05:28:43Z`
+- status: `complete`
+- author: `codex`
+- reason: The last remaining engineering gap in the gaps analysis was that the tool layer was never evaluated: gates were wired and drilled by hand, but nothing measured whether a gate rejects what it claims to reject. ccfa.tool_eval injects known defects into throwaway fixtures and reports per-gate detection and false-alarm rates. Deliberately aligned with ARIS tools/meta_opt/trigger_eval.py: measure-only, errors graded separately and excluded from the denominators, rates rounded to three decimals, exit 0 on a completed run and 2 only on a setup error.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/tool-eval-2026-10-06.json`
+  - `docs/tool-eval-2026-10-06.md`
+  - `scripts/tool-eval.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/ccfa/tool_eval.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_tool_eval.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_test_impact`
+  - `tools.tests.test_tool_eval`
+

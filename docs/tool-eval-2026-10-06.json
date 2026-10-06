@@ -1,0 +1,134 @@
+{
+  "detection_rate": 1.0,
+  "false_alarm_rate": 0.0,
+  "gates": {
+    "citation-guard": {
+      "cases": 2,
+      "caught": 1,
+      "clean": 1,
+      "detection_rate": 1.0,
+      "false_alarm_rate": 0.0,
+      "false_alarms": 0,
+      "missed": 0
+    },
+    "cost-ledger": {
+      "cases": 2,
+      "caught": 1,
+      "clean": 1,
+      "detection_rate": 1.0,
+      "false_alarm_rate": 0.0,
+      "false_alarms": 0,
+      "missed": 0
+    },
+    "post-submission": {
+      "cases": 3,
+      "caught": 2,
+      "clean": 1,
+      "detection_rate": 1.0,
+      "false_alarm_rate": 0.0,
+      "false_alarms": 0,
+      "missed": 0
+    },
+    "stats-plan": {
+      "cases": 3,
+      "caught": 2,
+      "clean": 1,
+      "detection_rate": 1.0,
+      "false_alarm_rate": 0.0,
+      "false_alarms": 0,
+      "missed": 0
+    }
+  },
+  "generated_at": "2026-10-06T05:28:34Z",
+  "results": [
+    {
+      "detail": "gate accepted the clean fixture",
+      "expectation": "accept",
+      "gate": "stats-plan",
+      "id": "statistics-null-baseline-recorded",
+      "note": "a claim that states the zero-skill baseline must pass",
+      "outcome": "clean"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "stats-plan",
+      "id": "statistics-null-baseline-missing",
+      "note": "a claim with no zero-skill baseline must be rejected",
+      "outcome": "caught"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "stats-plan",
+      "id": "statistics-null-baseline-no-reason",
+      "note": "not-applicable without a reason must be rejected",
+      "outcome": "caught"
+    },
+    {
+      "detail": "gate accepted the clean fixture",
+      "expectation": "accept",
+      "gate": "cost-ledger",
+      "id": "cost-ledger-metrics-present",
+      "note": "attempt economics recorded must pass",
+      "outcome": "clean"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "cost-ledger",
+      "id": "cost-ledger-metrics-missing",
+      "note": "a ledger without attempt metrics must be rejected",
+      "outcome": "caught"
+    },
+    {
+      "detail": "gate accepted the clean fixture",
+      "expectation": "accept",
+      "gate": "citation-guard",
+      "id": "citation-clean",
+      "note": "a cited, verified entry must pass",
+      "outcome": "clean"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "citation-guard",
+      "id": "citation-dangling-key",
+      "note": "a cite that the bibliography lacks must be rejected",
+      "outcome": "caught"
+    },
+    {
+      "detail": "gate accepted the clean fixture",
+      "expectation": "accept",
+      "gate": "post-submission",
+      "id": "post-submission-valid-skeleton",
+      "note": "a well-formed tail ledger must pass",
+      "outcome": "clean"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "post-submission",
+      "id": "post-submission-placeholder-commitment",
+      "note": "a placeholder commitment must be rejected",
+      "outcome": "caught"
+    },
+    {
+      "detail": "gate rejected the injected defect",
+      "expectation": "reject",
+      "gate": "post-submission",
+      "id": "post-submission-required-section-missing",
+      "note": "a tail stage whose own section is not complete must be rejected",
+      "outcome": "caught"
+    }
+  ],
+  "totals": {
+    "cases": 10,
+    "caught": 6,
+    "clean": 4,
+    "errors": 0,
+    "false_alarms": 0,
+    "missed": 0
+  },
+  "version": 1
+}

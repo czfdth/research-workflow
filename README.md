@@ -110,6 +110,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/doctor.py` | 预检本地平台依赖（git/LaTeX/codex/Docker/GPU/venv/交付格式/排版/数据版本/算力），报告缺什么与禁用了哪个能力；`found` 只表示在 PATH 上，不表示命令一定跑得通 | `scripts/doctor.ps1` |
 | `tools/ccfa/readiness.py` | 生成一页式 readiness report，执行 profile 对应的 gate，并区分结构、证据存在、gate 通过、独立复核与科学接受 | `scripts/readiness.ps1` |
 | `tools/ccfa/e2e_check.py` | 一条命令给出单篇论文的现状快照：完整 gate 表、阻塞、人工待办、环境健康、git/CI 与投稿倒计时；只读，缺省只打印不写文件 | `scripts/e2e-check.ps1` |
+| `tools/ccfa/tool_eval.py` | 给工作流自己的 gate 做度量：往临时夹具里注入已知缺陷，记录各 gate 的检出率与误报率；只测量、不改写任何 gate，跑完退出 0 | `scripts/tool-eval.ps1` |
 | `tools/ccfa/dashboard.py` | 扫描 `papers/`，汇总每篇论文的 readiness、阻塞项、人工待办、Git/CI 状态与下一动作 | `scripts/dashboard.ps1` |
 | `tools/ccfa/formal_check.py` | 运行论文声明的 Z3/形式化检查，验证机器输出并写入 `reviews/formal-check.json` | `scripts/formal-check.ps1` |
 | `tools/ccfa/verifiers.py` | 清点本机可用的形式化验证器（z3/cvc5/lean/coq/isabelle/agda/why3/sage/julia），对照 `data/formal-checks.yaml` 说明缺哪个、禁用了哪个能力、如何安装 | `scripts/verifiers.ps1` |
