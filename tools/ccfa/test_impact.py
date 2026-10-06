@@ -209,6 +209,11 @@ _TOOLS_EXACT = {
         "tools.tests.test_docs_consistency",
         "tools.tests.test_scripts",
     ),
+    "tools/ccfa/meta_apply.py": (
+        "tools.tests.test_meta_apply",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/review_loop.py": (
         "tools.tests.test_docs_consistency",
         "tools.tests.test_review_loop",

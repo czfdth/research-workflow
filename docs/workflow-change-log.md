@@ -1874,3 +1874,29 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency`
   - `tools.tests.test_queue`
 
+## WC-20261006T083121Z-9c0a1d56b3 - Add the self-evolution landing gate (meta-apply)
+
+- timestamp: `2026-10-06T08:31:21Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS pairs a read-only /meta-optimize producer with a single privileged /meta-apply that lands a staged diff only after a cross-model jury passes it; this repo had only the producer. tools/ccfa/meta_apply.py adds the other half. stage writes the candidate under ccfa-workfiles/meta-apply/<id>/ with before/after hashes and a unified diff and never touches the working tree. review runs one model per --model over that diff, with an optional per-model provider so a cross-aggregator jury is possible, and records each verdict with its family and capability tier. apply refuses unless the staged bytes, the live target and the reviewed diff all still hash to what was recorded, at least two gate-capable reviewers passed, they span at least two model families and at least one is cross-family relative to the executor; it then writes a byte-identical backup (read_bytes/write_bytes, because the text helpers would rewrite CRLF) and appends an audit record to an append-only ledger. The default allowlist is the guidance corpus (docs/checklists/automation/skills/library); landing into tools/scripts/app needs an explicit --allow-code that is recorded. check verifies the ledger still matches its backups. Live attempt surfaced a real reviewer defect: glm-4-flash answered 'verdict=block' in a key=value format, and the old fallback would have parsed the nested finding as if it were the verdict; the parser now requires a verdict-bearing object and reports the raw output, so a broken contract fails closed with exit 2 instead of half-parsing.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `scripts/meta-apply.ps1`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/meta_apply.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_meta_apply.py`
+  - `tools/tests/test_scripts.py`
+  - `tools/tests/test_test_impact.py`
+- tests:
+  - `tools.tests.test_dispatch`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_github_workflows`
+  - `tools.tests.test_meta_apply`
+  - `tools.tests.test_scripts`
+  - `tools.tests.test_test_impact`
+
