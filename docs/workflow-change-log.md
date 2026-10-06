@@ -1645,3 +1645,15 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Read ARIS docs/SKILLS_CATALOG.md at its current revision (83 skills, 10 categories) and compared against this repo's 87 modules and 20 gates. Documentation only.
 
+## WC-20261006T051610Z-1092f39662 - Correct the tooling and gaps report: zero-skill baseline, attempt economics and remote-compute declaration are already implemented.
+
+- timestamp: `2026-10-06T05:16:10Z`
+- status: `complete`
+- author: `codex`
+- reason: The first revision listed three gaps that commits 5e84186 and 39706eb closed while the report was being written: stats_plan now requires a zero-skill baseline, research_ledgers requires time_to_first_attempt and cost_per_attempt, and data/compute.yaml exists with an explicit empty backend list.
+- files:
+  - `docs/research-workflow-tooling-and-gaps-2026-10-06.md`
+- tests:
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Verified against the code: stats_plan.py zero-skill requirement, research_ledgers.COST_METRIC_FIELDS, e2e_check metric rendering, and the paper's cost-ledger.yaml metrics block.
+
