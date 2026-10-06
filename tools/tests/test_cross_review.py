@@ -50,6 +50,31 @@ class ModelFamilyTests(unittest.TestCase):
             "unknown",
         )
 
+    def test_vendor_prefixed_ids_keep_their_family(self):
+        # Aggregators serve ids like these. Matching only the full string called
+        # every one of them unknown, which fails closed on a usable reviewer.
+        for name, family in (
+            ("nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia"),
+            ("z-ai/glm-5.3", "zhipu"),
+            ("qwen/qwen3.8-flash", "qwen"),
+            ("meta-llama/llama-3.3-70b-instruct:free", "meta"),
+            ("google/gemma-4-31b-it:free", "google"),
+        ):
+            with self.subTest(model=name):
+                self.assertEqual(cross_review_module._model_family(name), family)
+
+    def test_vendor_prefixed_reviewer_is_cross_family_and_gate_capable(self):
+        model = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+        self.assertEqual(
+            cross_review_module._family_judgement(model, "deepseek-v4-flash"),
+            "cross-family",
+        )
+        self.assertEqual(
+            cross_review_module._review_tier(model, "openrouter"),
+            "gate-capable",
+        )
+
 
 class CrossReviewTests(unittest.TestCase):
     def setUp(self):

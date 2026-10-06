@@ -1682,3 +1682,15 @@ rewrite historical entries.
   - `tools.tests.test_test_impact`
   - `tools.tests.test_tool_eval`
 
+## WC-20261006T062142Z-4ac65227c5 - Derive model families for vendor-prefixed aggregator ids
+
+- timestamp: `2026-10-06T06:21:42Z`
+- status: `complete`
+- author: `codex`
+- reason: Free cross-family reviewers are only reachable through aggregators, whose ids are vendor-prefixed (nvidia/nemotron-3-ultra-550b-a55b:free, z-ai/glm-5.3, qwen/qwen3.8-flash). Matching only the full string classified every one of them as unknown, so family_judgement returned unknown and the gate failed closed on a reviewer it could otherwise accept. The bare name after the slash is now matched too, and nvidia/nemotron map to the nvidia family.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `tools.tests.test_cross_review`
+

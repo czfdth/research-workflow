@@ -91,6 +91,8 @@ _MODEL_FAMILIES = (
     ("grok", "xai"),
     ("moonshot", "moonshot"),
     ("kimi", "moonshot"),
+    ("nemotron", "nvidia"),
+    ("nvidia", "nvidia"),
 )
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STDERR_LIMIT = 4000
@@ -131,9 +133,14 @@ def _now_iso() -> str:
 
 def _model_family(model: str) -> str:
     normalized = str(model).strip().casefold()
-    for prefix, family in _MODEL_FAMILIES:
-        if normalized.startswith(prefix):
-            return family
+    # Aggregators serve vendor-prefixed ids (nvidia/nemotron-..., z-ai/glm-5.3,
+    # qwen/qwen3.8-flash). Matching only the full id would call every one of them
+    # unknown and fail closed, so the bare name after the slash is matched too.
+    candidates = (normalized, normalized.rsplit("/", 1)[-1])
+    for candidate in candidates:
+        for prefix, family in _MODEL_FAMILIES:
+            if candidate.startswith(prefix):
+                return family
     return "unknown"
 
 
