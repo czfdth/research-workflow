@@ -59,6 +59,13 @@ class ModelFamilyTests(unittest.TestCase):
             ("qwen/qwen3.8-flash", "qwen"),
             ("meta-llama/llama-3.3-70b-instruct:free", "meta"),
             ("google/gemma-4-31b-it:free", "google"),
+            ("thinkingmachines/inkling:free", "thinkingmachines"),
+            ("nvidia/nemotron-3-super-120b-a12b:free", "nvidia"),
+            ("dots-studio/dots-3-note-preview:free", "dots"),
+            ("poolside/laguna-s-2.1:free", "poolside"),
+            ("cohere/north-mini-code:free", "cohere"),
+            ("inclusionai/ling-3.0-flash-sante:free", "inclusionai"),
+            ("liquid/lfm-2.5-2.6b:free", "liquid"),
         ):
             with self.subTest(model=name):
                 self.assertEqual(cross_review_module._model_family(name), family)

@@ -93,6 +93,20 @@ _MODEL_FAMILIES = (
     ("kimi", "moonshot"),
     ("nemotron", "nvidia"),
     ("nvidia", "nvidia"),
+    # Independent labs that serve free reviewers through aggregators. Each is a
+    # distinct family from the DeepSeek executor, which is the only thing this
+    # table is asked; capability is judged separately by _review_tier.
+    ("inkling", "thinkingmachines"),
+    ("thinkingmachines", "thinkingmachines"),
+    ("apodex", "apodex"),
+    ("dots", "dots"),
+    ("laguna", "poolside"),
+    ("poolside", "poolside"),
+    ("north", "cohere"),
+    ("ling", "inclusionai"),
+    ("inclusionai", "inclusionai"),
+    ("lfm", "liquid"),
+    ("liquid", "liquid"),
 )
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STDERR_LIMIT = 4000

@@ -1707,3 +1707,15 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Records that the remaining structural gaps against ARIS are compute access, adversarial-review role granularity and the self-evolution landing gate; also notes a model-authored stale review-advisory-only item inside the otherwise gate-capable cross-review record.
 
+## WC-20261006T063624Z-5fbeb8a85e - Recognise the independent labs that serve free reviewers
+
+- timestamp: `2026-10-06T06:36:24Z`
+- status: `complete`
+- author: `codex`
+- reason: The free tier that makes a cross-family review affordable is served by new labs (thinkingmachines/inkling, dots-studio/dots-3, poolside/laguna, cohere/north, inclusionai/ling, liquid/lfm, apodex). None were in the family table, so every one of them derived as unknown and the gate failed closed on the strongest free reviewers available. Each is a distinct family from the DeepSeek executor, which is the only question this table answers; capability stays with _review_tier.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `tools.tests.test_cross_review`
+
