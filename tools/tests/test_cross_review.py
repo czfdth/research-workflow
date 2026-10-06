@@ -210,6 +210,7 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("checks", prompt)
         self.assertIn("sha256", prompt)
         self.assertIn("≥20 个字符", prompt)
+        self.assertIn("reviews/history/", prompt)
 
     def test_argv_has_exact_required_flags_and_stdin_prompt(self):
         runner = self._runner(payload=self._payload())

@@ -2833,3 +2833,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `silent install exit 0; installed app launches with %APPDATA% settings`
 - notes: Backfill for a batch already on origin/master: the installer landed before this contract existed. PySide6 is pinned to 6.9.1 because 6.11.2 freezes into an exe that dies at import QtWidgets. Not verified here: the interactive project/validate round trip inside the installed GUI.
 
+## WC-20261006T221840Z-3ab1aec19c - Forbid history-file hashes as cross-review evidence
+
+- timestamp: `2026-10-06T22:18:40Z`
+- status: `complete`
+- author: `codex`
+- reason: Attempt 11 returned pass but quoted stale sha256 values copied from reviews/history records; the prompt now states that history files are not evidence and points to the current hashes in reviews/verification-index.json.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `python -m unittest tests.test_cross_review (99 tests, OK)`
+

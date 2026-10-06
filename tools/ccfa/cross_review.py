@@ -415,6 +415,12 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
                 "review-contradiction / review-advisory-only / "
                 "review-unevidenced-pass 这三个标题前缀保留给工作流，"
                 "你自己不得使用。",
+                "reviews/history/ 下的历史轮次记录不是本次评审的输入："
+                "其中的哈希、verdict 与 blocking 结论只属于过去轮次，"
+                "不得作为本次 checks 的证据。每个 checks[] 的 evidence "
+                "必须逐字取自同条目 path 指定的文件本身，或使用该文件"
+                "当前的 sha256（当前值见 reviews/verification-index.json "
+                "的 files map）；不得引用历史文件里的任何 sha256。",
                 "人工复核判据的边界：三项人工复核台账的签字人必须是人类；"
                 "工作流设计上接受单作者论文由作者本人签字（工具只拒绝把模型"
                 "列为签字人），不要求复核人是独立第三方。人类双编码在本工作流"
