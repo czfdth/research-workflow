@@ -2766,3 +2766,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `tools.tests.test_cross_review (99 tests)`
 
+## WC-20261006T205742Z-8a9e167dee - Require >=20-character verbatim evidence in the cross-review pass contract
+
+- timestamp: `2026-10-06T20:57:42Z`
+- status: `complete`
+- author: `codex`
+- reason: Cross-review attempts 7-8 returned model verdict=pass but were downgraded to blocking because the prompt required only 'a verbatim fragment or the file sha256' and did not state the harness minimum of 20 characters; the model quoted 16-18 character strings.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `python -m unittest tests.test_cross_review (99 tests, OK)`
+

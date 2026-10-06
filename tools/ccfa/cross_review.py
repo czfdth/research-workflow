@@ -430,8 +430,9 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
             "blocking[{title,evidence}]、checks[{gate,path,evidence}]、summary。",
             "blocking 中每条必须给可核对的 evidence，不得凭印象断言。",
             "verdict=pass 时必须用 checks 给出正面证据：path 必须是本次待评审"
-            "文件之一，evidence 必须是该文件里的原文片段或该文件的 sha256；"
-            "没有可核验证据的 pass 一律按未验证处理。",
+            "文件之一，evidence 必须是该文件里连续 ≥20 个字符的原文片段"
+            "（不足 20 字符的片段会被确定性检查判为无证据）或该文件的 "
+            "sha256；没有可核验证据的 pass 一律按未验证处理。",
             "禁止修改任何文件；你只有只读权限，不得创建、删除或写入文件。",
         ]
     )

@@ -209,6 +209,7 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("不要因为 reviews/cross-review.json 尚不存在", prompt)
         self.assertIn("checks", prompt)
         self.assertIn("sha256", prompt)
+        self.assertIn("≥20 个字符", prompt)
 
     def test_argv_has_exact_required_flags_and_stdin_prompt(self):
         runner = self._runner(payload=self._payload())
