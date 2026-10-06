@@ -245,6 +245,16 @@ class TestPromptAndArgv(CrossReviewTests):
             REVIEW_SCHEMA["properties"]["blocking"]["items"]["required"],
             ["title", "evidence"],
         )
+        self.assertEqual(
+            REVIEW_SCHEMA["properties"]["checks"]["items"]["required"],
+            ["gate", "path", "evidence"],
+        )
+        # OpenAI-style strict structured output rejects a schema whose
+        # ``required`` list omits any property, so every key must be listed.
+        self.assertEqual(
+            set(REVIEW_SCHEMA["required"]),
+            set(REVIEW_SCHEMA["properties"]),
+        )
 
 
 class TestRunReview(CrossReviewTests):

@@ -57,7 +57,10 @@ REVIEW_SCHEMA = {
         },
         "summary": {"type": "string"},
     },
-    "required": ["verdict", "blocking", "summary"],
+    # OpenAI-style strict structured output requires every property to be
+    # listed in ``required``; ``checks`` may be an empty array when the
+    # verdict is ``blocking``, but the key itself must always be present.
+    "required": ["verdict", "blocking", "checks", "summary"],
     "additionalProperties": False,
 }
 

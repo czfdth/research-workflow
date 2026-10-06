@@ -2665,3 +2665,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
   - `现场演示：stage=experiments-running 且 limit=2.0、实际 2.2681 -> cost-metrics check exit 1 + cost-budget-exceeded（按 stage 覆盖 default=1.0）`
 
+## WC-20261006T171113Z-ab4e64e163 - cross-review schema now satisfies strict structured-output validation
+
+- timestamp: `2026-10-06T17:11:13Z`
+- status: `complete`
+- author: `codex`
+- reason: OpenAI-style strict response_format requires every property to appear in required; checks was optional in the schema, so strict providers rejected the whole request. checks stays semantically required only for pass under harness validation, but the key is now always present.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `tools.tests.test_cross_review (99 tests)`
+
