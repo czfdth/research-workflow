@@ -1694,3 +1694,16 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_cross_review`
 
+## WC-20261006T063331Z-57f6587ee6 - Update the ARIS comparison: the multi-backend reviewer gap closed, tool self-evaluation added, and one stale blocking item found.
+
+- timestamp: `2026-10-06T06:33:31Z`
+- status: `complete`
+- author: `codex`
+- reason: Since the first comparison the repo gained four model providers and ran a gate-capable cross-family review through OpenRouter, and it added ccfa.tool_eval to measure its own gate detection rates; the comparison's multi-backend row was stale and the new self-inconsistency in the cross-review record needed recording.
+- files:
+  - `docs/aris-comparison-2026-10-06.md`
+- tests:
+  - `ccfa.tool_eval (10 cases: 6 caught, 4 clean, 0 missed, 0 false alarms)`
+  - `tools.tests.test_docs_consistency (17 tests)`
+- notes: Records that the remaining structural gaps against ARIS are compute access, adversarial-review role granularity and the self-evolution landing gate; also notes a model-authored stale review-advisory-only item inside the otherwise gate-capable cross-review record.
+
