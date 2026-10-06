@@ -46,6 +46,12 @@ class ArgumentAuditTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_summary(self, text):
+        path = self.root / "submission" / "checks.md"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
     def _audited_main(self):
         """The audited_inputs block for the current manuscript bytes."""
 
@@ -78,6 +84,99 @@ class ArgumentAuditTests(unittest.TestCase):
         problems, advisories = self._run()
 
         self.assertIn("proof-audit-missing", self._codes(problems))
+
+    def test_an_unqualified_human_verified_claim_in_a_summary_is_a_problem(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary("| Proof review | 7/7 human-verified |\n")
+
+        problems, _advisories = self._run()
+
+        self.assertIn("verification-overclaim", self._codes(problems))
+
+    def test_the_qualified_phrase_passes(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary(
+            "| Proof review | 7/7 under author self-review + machine-check "
+            "cross-checks |\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertNotIn("verification-overclaim", self._codes(problems))
+
+    def test_pending_wordings_are_not_claims(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary(
+            "The remaining blockers are the pending human-review ledgers "
+            "(proof 0/7); human recoding is still pending.\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertNotIn("verification-overclaim", self._codes(problems))
+
+    def test_a_chinese_verification_claim_needs_the_same_qualifier(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary("证明与引用已人工复核，可直接投稿。\n")
+
+        problems, _advisories = self._run()
+
+        self.assertIn("verification-overclaim", self._codes(problems))
+
+    def test_a_negated_claim_is_not_a_claim(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary(
+            "The numbers are machine-checked but not human-verified.\n"
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertNotIn("verification-overclaim", self._codes(problems))
+
+    def test_ledger_prose_values_are_scanned_too(self):
+        self._write_tex("\\section{Intro}\n")
+        (self.root / "data" / "scientific-acceptance.yaml").write_text(
+            "version: 1\n"
+            "status: accepted\n"
+            "note: human-verified by the authors\n",
+            encoding="utf-8",
+        )
+
+        problems, _advisories = self._run()
+
+        self.assertIn("verification-overclaim", self._codes(problems))
+
+    def test_the_manuscript_body_is_not_scanned(self):
+        self._write_tex("Related work compares against a human-verified dataset.\n")
+
+        problems, _advisories = self._run()
+
+        self.assertNotIn("verification-overclaim", self._codes(problems))
+
+    def test_scan_paths_extends_the_surface_list(self):
+        self._write_tex("\\section{Intro}\n")
+        extra = self.root / "reviews" / "handoff.md"
+        extra.parent.mkdir(exist_ok=True)
+        extra.write_text("All proofs human-reviewed.\n", encoding="utf-8")
+
+        problems, _advisories = check(
+            self.root,
+            scan_paths=[Path("reviews/handoff.md")],
+        )
+
+        self.assertIn("verification-overclaim", self._codes(problems))
+
+    def test_the_cli_reports_an_unqualified_claim(self):
+        self._write_tex("\\section{Intro}\n")
+        self._write_summary("All checks human-verified.\n")
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["argument-audit", "--paper-root", str(self.root)])
+
+        self.assertEqual(code, 1)
+        self.assertIn("verification-overclaim", stderr.getvalue())
 
     def test_valid_human_proof_review_passes(self):
         self._write_tex(

@@ -2714,3 +2714,44 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `tools.tests.test_experiment_audit (17 tests) + test_adversarial_review + test_readiness + test_compute + test_queue + test_test_impact 等 348 项聚焦批量 OK`
   - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
 
+## WC-20261006T175344Z-ddd30fa230 - 新增应用/工具/插件/skill 全量清单，并修复 Slurm 作业目录同秒碰撞
+
+- timestamp: `2026-10-06T17:53:44Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户要求整理科研工作流使用的全部应用、工具、插件与 skill 并识别缺口；在验证 Slurm 容器 E2E 时发现秒级 job_dir 会在同一秒提交时串扰，导致 budget-kill 被误报 completed，需一并修复
+- files:
+  - `docs/research-workflow-tooling-inventory-2026-10-07.md`
+  - `docs/scheduler-e2e-2026-10-07.md`
+  - `tools/ccfa/compute.py`
+  - `tools/tests/test_compute.py`
+- tests:
+  - `app unittest discover: Ran 268 tests in 43.001s, OK`
+  - `scripts/change-log.ps1 check --base origin/master: 0 problems before this entry`
+  - `scripts/doctor.ps1: 0 problems, 0 advisories; verifiers 9/9`
+  - `scripts/e2e-check.ps1 --paper-root papers/rag-attack-defense: ready=false, 23 gates/21 pass, 2 blocking, 0 env problems`
+  - `scripts/external-adapters.ps1 probe --functional: zotero-local/pubmed/openalex pass, huggingface fail (hf-mirror 200)`
+  - `targeted tests.test_docs_consistency + tests.test_github_workflows + tests.test_scripts: Ran 218 tests in 132.897s, OK`
+  - `tests.test_compute + tests.test_queue: Ran 156 tests, OK`
+  - `tests.test_compute_slurm_e2e with CCFA_SLURM_E2E=1 and CCFA_APK_MIRROR=mirrors.aliyun.com: Ran 3 tests in 24.126s, OK`
+  - `tools unittest discover after fix: Ran 2462 tests in 340.680s, OK (skipped=3)`
+  - `uvx pip-audit@2.10.1 tools/app locks: no known vulnerabilities`
+  - `uvx ruff@0.16.10 check tools app: All checks passed`
+
+## WC-20261006T181826Z-fae4f4284a - argument-audit 新增 verification-overclaim：汇总里的 human-verified / 人工已验证 必须带 author self-review + machine-check cross-checks 限定语
+
+- timestamp: `2026-10-06T18:18:26Z`
+- status: `complete`
+- author: `codex`
+- reason: 用户点名：等 7+6+1 填完，任何汇总若写 human-verified 必须限定成 author self-review + machine-check cross-checks，否则就是 prop:noncomp 那类过度陈述复发——错的不是结论，而是"机器核过"被读成"语义已证"。做法：argument-audit 扫描默认汇总面（submission/checks.md、reviews/readiness.md、PAPER-MANIFEST.md、README.md、ccfa.yaml 与 proof/citation/figure/scientific-acceptance/human-coding 台账）里的文字，散文按行、数据按字符串值匹配 verification claim；同一单元里没有 self-review 与 machine-check 两类限定语就报 problem，明确的否定（not human-verified / 未人工复核）直接放行，pending 类措辞本来就不含 claim 词所以不受影响；--scan 可追加扫描面。收窄到汇总面、不扫正文，避免把相关工作里引用的 human-verified 数据集误杀。
+- files:
+  - `README.md`
+  - `docs/workflow-guide.md`
+  - `tools/ccfa/argument_audit.py`
+  - `tools/tests/test_argument_audit.py`
+- tests:
+  - `argument_audit + readiness + docs_consistency + e2e_check + scripts (324 tests, OK)`
+  - `ccfa argument-audit --paper-root papers/rag-attack-defense -> exit 1（既有 14 条 pending），verification-overclaim 命中 0（现措辞无误报）`
+  - `tools.tests.test_argument_audit (36 tests, OK；含 9 项新扫描测试)`
+  - `uv tool run ruff==0.16.10 check tools app -> All checks passed`
+

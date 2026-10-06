@@ -13,9 +13,11 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
+from typing import Sequence
 
 import yaml
 
@@ -30,6 +32,59 @@ CITATION_LEDGER_RELATIVE_PATH = Path("data") / "citation-support.yaml"
 FIGURE_LEDGER_RELATIVE_PATH = Path("data") / "figure-support.yaml"
 FIGURE_MANIFEST_RELATIVE_PATH = Path("figures") / "manifest.yaml"
 NOVELTY_LEDGER_RELATIVE_PATH = Path("data") / "novelty-audit.yaml"
+# Summary surfaces: prose that says *how* the reviews were carried out. A
+# verification claim here is a claim about method, and "machine-checked" being
+# read as "semantically proven" is exactly the overstatement this gate exists
+# to stop. The scan is deliberately limited to summary/ledger text, not the
+# manuscript body: related-work prose legitimately quotes other people's
+# "human-verified" datasets.
+DEFAULT_CLAIM_SURFACES = (
+    Path("submission") / "checks.md",
+    Path("reviews") / "readiness.md",
+    Path("PAPER-MANIFEST.md"),
+    Path("README.md"),
+    Path("ccfa.yaml"),
+    Path("data") / "proof-audit.yaml",
+    Path("data") / "citation-support.yaml",
+    Path("data") / "figure-support.yaml",
+    Path("data") / "scientific-acceptance.yaml",
+    Path("data") / "human-coding-report.json",
+)
+VERIFICATION_CLAIM_PATTERNS = (
+    re.compile(r"human[\s-]verified", re.IGNORECASE),
+    re.compile(r"verified\s+by\s+(?:a\s+)?human", re.IGNORECASE),
+    re.compile(r"human[\s-]reviewed", re.IGNORECASE),
+    re.compile(r"human[\s-]checked", re.IGNORECASE),
+    re.compile(r"manually\s+verified", re.IGNORECASE),
+    re.compile(r"independently\s+verified", re.IGNORECASE),
+    re.compile(r"人工(?:已)?(?:验证|核验|复核)"),
+    re.compile(r"已(?:经)?人工(?:验证|核验|复核)"),
+    re.compile(r"独立人工(?:验证|核验|复核)"),
+)
+# A negation directly in front of the match is not a claim ("not
+# human-verified", "未人工复核"). Anything else must carry the qualifier.
+NEGATION_PATTERN = re.compile(
+    r"(?:not|never|no|未|未经|尚未|非|没有)\s*$",
+    re.IGNORECASE,
+)
+SELF_REVIEW_MARKERS = (
+    re.compile(r"author\s+self[\s-]review", re.IGNORECASE),
+    re.compile(r"self[\s-]review", re.IGNORECASE),
+    re.compile(r"作者自查"),
+    re.compile(r"自审"),
+    re.compile(r"自查"),
+)
+MACHINE_CHECK_MARKERS = (
+    re.compile(r"machine[\s-]check", re.IGNORECASE),
+    re.compile(r"machine[\s-]verified", re.IGNORECASE),
+    re.compile(r"确定性(?:检查|核验|校验|门)"),
+    re.compile(r"机器(?:核验|校验|检查)"),
+    re.compile(r"自动(?:核验|校验|检查)"),
+)
+REQUIRED_QUALIFIER = (
+    "author self-review + machine-check cross-checks"
+    "（作者自查 + 机器核验交叉检查）"
+)
 PROOF_METHODS = frozenset(
     {
         "line-by-line",
@@ -1328,6 +1383,105 @@ def _check_figure_support(
     }
 
 
+def _walk_strings(value: object) -> list[str]:
+    """Every string inside a parsed YAML/JSON document, keys included."""
+
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        found: list[str] = []
+        for key, item in value.items():
+            found.extend(_walk_strings(key))
+            found.extend(_walk_strings(item))
+        return found
+    if isinstance(value, (list, tuple)):
+        found = []
+        for item in value:
+            found.extend(_walk_strings(item))
+        return found
+    return []
+
+
+def _surface_strings(path: Path) -> list[tuple[int | None, str]]:
+    """Text units of one summary surface: lines for prose, values for data."""
+
+    suffix = path.suffix.casefold()
+    if suffix in {".yaml", ".yml"}:
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return []
+        return [(None, item) for item in _walk_strings(payload)]
+    if suffix == ".json":
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return [(None, item) for item in _walk_strings(payload)]
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    return [(index, line) for index, line in enumerate(lines, start=1)]
+
+
+def _verification_claim_problems(path: Path) -> list[Problem]:
+    """Flag unqualified verification claims in one summary surface.
+
+    A phrase like "human-verified" in a summary is read as "a person checked
+    the semantics". When what actually happened is the author reading it plus
+    deterministic gates, that reading is an overstatement — the ``prop:noncomp``
+    failure mode, where "machine-checked" was taken as "semantically proven".
+    So the claim has to carry the qualifier in the same line (prose) or the
+    same string (data), unless it is explicitly negated.
+    """
+
+    problems: list[Problem] = []
+    for line, text in _surface_strings(path):
+        for pattern in VERIFICATION_CLAIM_PATTERNS:
+            match = pattern.search(text)
+            if match is None:
+                continue
+            if NEGATION_PATTERN.search(text[: match.start()]):
+                break
+            qualified = any(
+                marker.search(text) for marker in SELF_REVIEW_MARKERS
+            ) and any(marker.search(text) for marker in MACHINE_CHECK_MARKERS)
+            if qualified:
+                break
+            problems.append(
+                _problem(
+                    "verification-overclaim",
+                    path,
+                    line,
+                    "验证措辞没有限定：写 human-verified / human-reviewed / 人工验证"
+                    f"时必须同时写明“{REQUIRED_QUALIFIER}”，否则读者会把机器核验"
+                    f"读成语义已证。原文: {text.strip()[:200]}",
+                )
+            )
+            break
+    return problems
+
+
+def _scan_verification_claims(
+    paper_root: Path,
+    extra: Sequence[Path] | None = None,
+) -> list[Problem]:
+    """Scan the default summary surfaces plus any caller-supplied paths."""
+
+    problems: list[Problem] = []
+    seen: set[Path] = set()
+    for candidate in (*DEFAULT_CLAIM_SURFACES, *(extra or ())):
+        path = Path(candidate)
+        if not path.is_absolute():
+            path = paper_root / path
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        problems.extend(_verification_claim_problems(path))
+    return problems
+
+
 def check(
     paper_root: Path,
     *,
@@ -1337,6 +1491,7 @@ def check(
     citation_ledger: Path | None = None,
     figure_ledger: Path | None = None,
     manifest: Path | None = None,
+    scan_paths: Sequence[Path] | None = None,
 ) -> tuple[list[Problem], list[Problem]]:
     paper_root = Path(paper_root)
     manuscript = Path(manuscript) if manuscript else paper_root / "manuscript"
@@ -1401,6 +1556,9 @@ def check(
         *proof_problems,
         *support_problems,
         *figure_problems,
+        # Method claims in summaries: "human-verified" without saying whose
+        # review it was reads as "a human checked the semantics".
+        *_scan_verification_claims(paper_root, scan_paths),
     ]
     advisories = [
         *proof_advisories,
@@ -1470,6 +1628,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--figure-ledger")
     parser.add_argument("--manifest")
     parser.add_argument(
+        "--scan",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help=(
+            "额外扫描的汇总文件（论文目录相对路径），用于默认清单之外的"
+            "总结性文字"
+        ),
+    )
+    parser.add_argument(
         "--stamp",
         action="append",
         default=[],
@@ -1495,6 +1663,7 @@ def main(argv: list[str]) -> int:
                 Path(args.figure_ledger) if args.figure_ledger else None
             ),
             manifest=Path(args.manifest) if args.manifest else None,
+            scan_paths=[Path(item) for item in args.scan],
         )
     except (OSError, ValueError) as exc:
         return tool_error(str(exc))

@@ -482,6 +482,16 @@ effective verdict 也会被检查器重算为 blocking。Rigor rubric 的六个�
 逐项绑定 claim、run id 或仓库内文件；模型可以写 `model-advisory`，但不能把
 rubric 标成 `complete`。
 
+等 7（证明）+ 6（引用语义）+ 1（图表语义）填完之后，任何汇总里若要写
+`human-verified` / `human-reviewed` / `人工已验证`，必须同时写明限定语
+**author self-review + machine-check cross-checks（作者自查 + 机器核验交叉检查）**。
+`argument-audit` 会扫 `submission/checks.md`、`reviews/readiness.md`、
+`PAPER-MANIFEST.md`、`README.md`、`ccfa.yaml` 与相关台账里的文字：同一行（散文）或
+同一字符串（数据）里没有这个限定语，就报 `verification-overclaim`；需要额外扫描
+别的汇总文件时加 `--scan <论文目录相对路径>`。理由是 `prop:noncomp` 那类过度陈述——
+错的不是结论，而是"机器核过"被读成了"语义已证"。写明 `pending human-review`、
+`human recoding pending` 或 `not human-verified` 这类**未完成/否定**措辞不受影响。
+
 `cross-review` 对模型的 pass 有三道机械否决，都不依赖人工判断：
 
 | 否决项 | 触发条件 | 结果 |

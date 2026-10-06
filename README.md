@@ -105,7 +105,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/milestones.py` | 读取 stage 并检查投稿倒排 checkpoint 与 gate 缺口 | `scripts/milestones.ps1` |
 | `tools/ccfa/cross_review.py` | 运行和检查跨模型评审矩阵；`run --model` 必填，同族评审即使 override 也不能开释为 pass；记录绑定输入哈希、指令摘要与真实 provider provenance | `scripts/cross-review.ps1` |
 | `tools/ccfa/review_loop.py` | 维护多轮 review loop、reviewer memory、append-only acquittal log，并可注入 fix/review 命令自动驱动轮次 | `scripts/review-loop.ps1` |
-| `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证 | `scripts/argument-audit.ps1` |
+| `tools/ccfa/argument_audit.py` | 审计人工证明复核、引用语义支持与图表语义支持台账，阻断未复核的论证；并扫描汇总文字里的验证措辞——同一行/同一字符串里出现 `human-verified` / `人工已验证` 却没有限定语 `author self-review + machine-check cross-checks` 时报 `verification-overclaim`（未完成/否定措辞不受影响，`--scan` 可扩展扫描面） | `scripts/argument-audit.ps1` |
 | `tools/ccfa/adversarial_review.py` | 两个只产出、永不开释的对抗角色：`claim-audit` 从原始数据重算正文数字（作者的推导按机械规则排除并记录），`kill-argument` 用两条互不可见的独立调用分别写最强拒稿备忘与逐点辩护；未解决的 finding 一律报 problem | `scripts/adversarial-review.ps1` |
 | `tools/ccfa/meta_apply.py` | 工作流自改动的唯一落地口：`stage` 把候选改动写进 `ccfa-workfiles/meta-apply/`，`review` 用跨族 jury 审 staged diff，`apply` 只有在哈希未漂移、≥2 个 gate-capable 通过、覆盖 ≥2 个模型族且含跨族评审时才落地，并先写字节级备份再记 append-only ledger；默认只允许改文档语料，改代码需 `--allow-code` | `scripts/meta-apply.ps1` |
 | `tools/ccfa/figure_spec.py` | 把声明式 figure spec 确定性地渲染成 SVG：形状感知裁边（矩形/椭圆/菱形）、自环、CJK 宽度按 `east_asian_width` 计、穿过无关节点的边自动绕行；同一份 spec 永远得到同样字节，`check` 报告文字溢出 | `scripts/figure-spec.ps1` |
