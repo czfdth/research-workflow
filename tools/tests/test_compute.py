@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,7 +15,10 @@ from ccfa.compute import (
     parse_nvidia_smi,
     plan,
     probe_local,
+    probe_remote,
     run_local,
+    run_remote,
+    validate_config,
 )
 
 
@@ -300,6 +304,349 @@ class ComputeCliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         probe.assert_called_once_with(root)
+
+
+def _write_config(root: Path, body: str) -> None:
+    (root / "data").mkdir(parents=True, exist_ok=True)
+    (root / "data" / "compute.yaml").write_text(body, encoding="utf-8")
+
+
+class _FakeProcess:
+    def __init__(self, returncode=0):
+        self.returncode = returncode
+
+    def communicate(self, timeout=None):
+        return "", ""
+
+    def kill(self):
+        pass
+
+
+class _TimeoutProcess:
+    returncode = -1
+
+    def __init__(self):
+        self._raised = False
+
+    def communicate(self, timeout=None):
+        if not self._raised:
+            self._raised = True
+            raise subprocess.TimeoutExpired(cmd="ssh", timeout=timeout)
+        return "", ""
+
+    def kill(self):
+        pass
+
+
+def _recording_popen(record, process=None):
+    def popen(argv, **kwargs):
+        record.append({"argv": list(argv), "kwargs": kwargs})
+        return process or _FakeProcess()
+
+    return popen
+
+
+class SshBackendTests(unittest.TestCase):
+    def test_ssh_backend_keeps_optional_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(
+                root,
+                "backends:\n"
+                "  - kind: ssh\n"
+                "    name: lab-gpu\n"
+                "    host: gpu.example.edu\n"
+                "    user: alice\n"
+                "    port: 2222\n"
+                "    workdir: /srv/runs\n"
+                "    gpus: 1\n",
+            )
+
+            backends = load_backends(root)
+
+        self.assertEqual(len(backends), 1)
+        self.assertEqual(backends[0].label, "lab-gpu")
+        self.assertEqual(backends[0].target, "alice@gpu.example.edu")
+        self.assertEqual(backends[0].port, 2222)
+        self.assertEqual(backends[0].workdir, "/srv/runs")
+        self.assertTrue(backends[0].executable)
+
+    def test_a_backend_without_a_name_falls_back_to_kind_and_target(self):
+        backend = RemoteBackend(kind="ssh", host="h.example", user="bob")
+
+        self.assertEqual(backend.label, "ssh:bob@h.example")
+
+    def test_probe_remote_ssh_reports_the_receipt_and_visible_gpus(self):
+        calls = []
+
+        def run(argv):
+            calls.append(list(argv))
+            return 0, "ccfa-ok\nGPU 0: NVIDIA A100-SXM4-80GB (UUID: GPU-1)\n"
+
+        result = probe_remote(
+            RemoteBackend(kind="ssh", host="gpu.example", user="alice", port=2222),
+            run=run,
+        )
+
+        argv = calls[0]
+        self.assertEqual(argv[0], "ssh")
+        self.assertIn("BatchMode=yes", argv)
+        self.assertEqual(argv[argv.index("-p") + 1], "2222")
+        self.assertEqual(argv[-2], "alice@gpu.example")
+        self.assertIn("ccfa-ok", argv[-1])
+        self.assertTrue(result["reachable"])
+        self.assertTrue(result["ccfa_ok"])
+        self.assertEqual(result["gpus_observed"], 1)
+
+    def test_probe_remote_ssh_without_the_receipt_is_not_ok(self):
+        result = probe_remote(
+            RemoteBackend(kind="ssh", host="gpu.example"),
+            run=lambda argv: (255, ""),
+        )
+
+        self.assertFalse(result["reachable"])
+        self.assertFalse(result["ccfa_ok"])
+        self.assertEqual(result["gpus_observed"], 0)
+
+    def test_run_remote_builds_one_ssh_call_with_port_and_workdir(self):
+        record = []
+        backend = RemoteBackend(
+            kind="ssh",
+            host="gpu.example",
+            user="alice",
+            port=2222,
+            workdir="/srv/runs",
+        )
+
+        attempt = run_remote(
+            backend,
+            ["python", "train.py", "--seed", "1"],
+            budget_minutes=5,
+            gpus_used=1,
+            popen=_recording_popen(record),
+        )
+
+        argv = record[0]["argv"]
+        self.assertEqual(argv[0], "ssh")
+        self.assertEqual(argv[argv.index("-p") + 1], "2222")
+        self.assertEqual(argv[-2], "alice@gpu.example")
+        self.assertEqual(argv[-1], "cd /srv/runs && python train.py --seed 1")
+        self.assertEqual(attempt.backend, "ssh:alice@gpu.example")
+        self.assertEqual(attempt.command, "cd /srv/runs && python train.py --seed 1")
+        self.assertEqual(attempt.gpus_used, 1)
+        self.assertFalse(attempt.timed_out)
+
+    def test_run_remote_that_overruns_the_budget_is_killed_and_flagged(self):
+        attempt = run_remote(
+            RemoteBackend(kind="ssh", host="gpu.example"),
+            ["sleep", "3600"],
+            budget_minutes=1,
+            popen=_recording_popen([], process=_TimeoutProcess()),
+        )
+
+        self.assertTrue(attempt.timed_out)
+        self.assertEqual(attempt.returncode, -1)
+
+    def test_run_remote_passes_identity_and_extra_options_before_the_target(self):
+        record = []
+        backend = RemoteBackend(
+            kind="ssh",
+            host="h.example",
+            user="u",
+            identity_file="/keys/id_ed25519",
+            options=("-o", "StrictHostKeyChecking=no"),
+        )
+
+        run_remote(
+            backend,
+            ["true"],
+            budget_minutes=1,
+            popen=_recording_popen(record),
+        )
+
+        argv = record[0]["argv"]
+        self.assertEqual(argv[argv.index("-i") + 1], "/keys/id_ed25519")
+        self.assertIn("StrictHostKeyChecking=no", argv)
+        # Options must precede the destination, otherwise ssh reads them as the
+        # remote command.
+        self.assertLess(
+            argv.index("StrictHostKeyChecking=no"),
+            argv.index("u@h.example"),
+        )
+
+    def test_run_remote_refuses_a_scheduler_backend(self):
+        with self.assertRaises(ValueError) as raised:
+            run_remote(
+                RemoteBackend(kind="slurm", host="cluster.example"),
+                ["true"],
+                budget_minutes=1,
+            )
+
+        self.assertIn("ssh", str(raised.exception))
+
+    def test_run_remote_rejects_a_nonpositive_budget(self):
+        with self.assertRaises(ValueError):
+            run_remote(
+                RemoteBackend(kind="ssh", host="h.example"),
+                ["true"],
+                budget_minutes=0,
+            )
+
+
+class ValidateConfigTests(unittest.TestCase):
+    def test_a_missing_file_has_no_problems(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backends, problems = validate_config(Path(tmp))
+
+        self.assertEqual(backends, [])
+        self.assertEqual(problems, [])
+
+    def test_broken_entries_are_reported_instead_of_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(
+                root,
+                "backends:\n"
+                "  - kind: kubernetes\n"
+                "    host: ignored\n"
+                "  - kind: ssh\n"
+                "  - kind: ssh\n"
+                "    host: bad-port\n"
+                "    port: 70000\n"
+                "  - kind: ssh\n"
+                "    host: dup-a\n"
+                "    name: gpu\n"
+                "  - kind: ssh\n"
+                "    host: dup-b\n"
+                "    name: gpu\n"
+                "  - kind: ssh\n"
+                "    host: good.example\n"
+                "    name: good\n",
+            )
+
+            backends, problems = validate_config(root)
+
+        # The first entry keeps the name; the later duplicate is dropped and
+        # reported instead of silently creating two backends with one label.
+        self.assertEqual([backend.label for backend in backends], ["gpu", "good"])
+        codes = {problem.code for problem in problems}
+        self.assertIn("compute-backend-unknown-kind", codes)
+        self.assertIn("compute-backend-missing-host", codes)
+        self.assertIn("compute-config-invalid", codes)
+        self.assertIn("compute-backend-duplicate-name", codes)
+
+    def test_malformed_yaml_is_a_problem_not_a_silent_empty_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(root, "backends: [")
+
+            backends, problems = validate_config(root)
+
+        self.assertEqual(backends, [])
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["compute-config-invalid"],
+        )
+
+    def test_options_must_be_a_string_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(
+                root,
+                "backends:\n"
+                "  - kind: ssh\n"
+                "    host: h.example\n"
+                "    options:\n"
+                "      key: value\n",
+            )
+
+            _backends, problems = validate_config(root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["compute-config-invalid"],
+        )
+
+    def test_check_environment_turns_a_broken_config_into_a_problem(self):
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(root, "backends:\n  - kind: nope\n    host: h\n")
+            with mock.patch.object(
+                compute,
+                "probe_local",
+                return_value=LocalResources(cpu_count=4, ram_gib=8.0),
+            ):
+                problems, _advisories = compute.check_environment(root)
+
+        self.assertEqual(
+            [problem.code for problem in problems],
+            ["compute-backend-unknown-kind"],
+        )
+
+
+class ComputeRemoteCliTests(unittest.TestCase):
+    def test_validate_reports_a_broken_config_with_exit_1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(root, "backends:\n  - kind: nope\n    host: h\n")
+
+            code = compute.main(
+                ["compute", "validate", "--paper-root", str(root)]
+            )
+
+        self.assertEqual(code, 1)
+
+    def test_run_with_an_unknown_backend_is_a_tool_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(root, "backends: []\n")
+
+            code = compute.main(
+                [
+                    "compute",
+                    "run",
+                    "--paper-root",
+                    str(root),
+                    "--minutes",
+                    "1",
+                    "--backend",
+                    "nope",
+                    "--",
+                    "true",
+                ]
+            )
+
+        self.assertEqual(code, 2)
+
+    def test_run_refuses_a_declared_scheduler_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_config(
+                root,
+                "backends:\n"
+                "  - kind: slurm\n"
+                "    host: cluster.example\n"
+                "    name: cluster\n",
+            )
+
+            code = compute.main(
+                [
+                    "compute",
+                    "run",
+                    "--paper-root",
+                    str(root),
+                    "--minutes",
+                    "1",
+                    "--backend",
+                    "cluster",
+                    "--",
+                    "true",
+                ]
+            )
+
+        self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":

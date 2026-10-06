@@ -98,7 +98,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 
 | 序号 | 差距 | ARIS | 你 |
 | --- | --- | --- | --- |
-| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | `data/compute.yaml` 存在但显式 `backends: []`；实际算力仍只有本机 + Docker |
+| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行（端口/私钥/额外 ssh 选项，墙钟预算 + compute ledger，已对真实 sshd 实测）；Slurm/PBS 只探测不提交；无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`；论文仍未声明远程后端 |
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | 只有 `meta_optimize`，无独立特权落地门 |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | 依赖外部 figure skill + `figure_manifest`，无内置确定性渲染器 |
@@ -113,6 +113,30 @@ kill-argument 落成两个只产出、永不开释的角色。`claim-audit` 按�
 文件并把排除集写入记录，评审进程指向的 staging 目录里不含这些文件；`kill-argument`
 用两次互不可见的独立子进程分别写最强拒稿备忘与逐点辩护。未解决的 finding 一律进入
 readiness 的 `adversarial-review` gate，无法靠不读它来消化。
+
+差距 1 部分收窄：`ccfa.compute` 新增 `kind: ssh` 通用远程后端，可真正在远端执行
+并记账；Slurm/PBS 仍只做可达性探测，`run --backend` 会明确拒绝。实测记录见下方
+“算力接口实测”。
+
+### 算力接口实测（2026-10-06）
+
+本机没有可用的远程主机或云 CLI（无 SSH 目标、无 `vastai`/`modal`/`sbatch`/`qsub`），
+因此用一个容器内的真实 SSH 服务器做端到端验证，而不是只跑 mock：
+
+* 服务器：`alpine:latest` + `openssh`，容器内 `/usr/sbin/sshd`，映射到 `127.0.0.1:2222`。
+* 客户端：Windows 自带 OpenSSH `9.5p2`，通过 `identity_file` + `options` 传私钥与
+  `StrictHostKeyChecking=no` / 临时 `UserKnownHostsFile`。
+* `compute validate` → 0 problem；`compute probe` → `reachable=true`、`ccfa_ok=true`
+  （回执字符串确实从远端返回，不是 TCP 通就算数）。
+* `compute run --backend live --minutes 1 -- sh -c "…"` → 远端真的执行了：容器里
+  留下了 `/tmp/ccfa-ran` 标记；ledger 记 `backend=ssh:root@127.0.0.1`、`wall_seconds=0.08`。
+* 预算：`--minutes 0.05` 跑 `sleep 120`，3.03 秒被杀死，ledger 记 `timed_out=true`、exit 1。
+* 超预算与调度器拒绝两条路径都不会写出「看起来成功」的记录。
+
+过程中踩过一个真实坑，值得记下来：用 `ssh-keygen -N '""'`（PowerShell 单引号）会生成
+**带口令 `""` 的私钥**，BatchMode 下无法解锁，表现为服务端已 `Accepted key` 然后
+连接被关闭。这正是 `options` / `identity_file` 字段值得存在的原因——真实集群会
+有各种 ssh 互操作差异。
 
 ### 本轮新发现的自身缺陷
 

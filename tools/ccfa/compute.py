@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -42,6 +43,19 @@ COMPUTE_CONFIG = Path("data/compute.yaml")
 COMPUTE_LEDGER = Path("experiments/log/compute-ledger.jsonl")
 
 _PROBE_TIMEOUT_S = 20
+# ``ssh`` is the universal remote: any host with an account, which covers a
+# lab box and the SSH endpoint a rented GPU (Vast.ai, Modal, RunPod) hands out.
+# ``slurm`` and ``pbs`` stay probe-only until a cluster is actually reachable.
+_REMOTE_KINDS = ("ssh", "slurm", "pbs")
+_EXECUTABLE_KINDS = ("ssh",)
+_SSH_BATCH_OPTIONS = ("-o", "BatchMode=yes", "-o", "ConnectTimeout=8")
+# One round trip that proves the account works and reports any visible GPU, so
+# a probe result can be audited instead of trusted.
+_SSH_PROBE_COMMAND = (
+    "printf 'ccfa-ok\\n'; "
+    "(command -v nvidia-smi >/dev/null 2>&1 && "
+    "nvidia-smi -L 2>/dev/null | head -n 8) || true"
+)
 
 
 def _now_iso() -> str:
@@ -196,54 +210,244 @@ class RemoteBackend:
     user: str = ""
     partition: str = ""
     gpus: int = 0
+    name: str = ""
+    port: int = 0
+    workdir: str = ""
+    identity_file: str = ""
+    options: tuple[str, ...] = ()
 
     @property
     def target(self) -> str:
         return f"{self.user}@{self.host}" if self.user else self.host
 
+    @property
+    def label(self) -> str:
+        return self.name or f"{self.kind}:{self.target}"
+
+    @property
+    def executable(self) -> bool:
+        return self.kind in _EXECUTABLE_KINDS
+
     def as_dict(self) -> dict:
         return {
+            "name": self.label,
             "kind": self.kind,
             "host": self.host,
             "user": self.user,
+            "port": self.port,
             "partition": self.partition,
             "gpus": self.gpus,
+            "workdir": self.workdir,
+            "executable": self.executable,
+            "identity_file": self.identity_file,
+            "options": list(self.options),
         }
 
 
-def load_backends(paper_root: Path) -> list[RemoteBackend]:
-    """Read ``data/compute.yaml``; an absent file means no remote compute."""
+def _parse_backends(paper_root: Path) -> tuple[list[RemoteBackend], list[Problem]]:
+    """Parse ``data/compute.yaml`` into backends plus structural problems."""
     path = Path(paper_root) / COMPUTE_CONFIG
     if not path.is_file():
-        return []
+        return [], []
     try:
         import yaml
 
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+    except Exception as exc:  # noqa: BLE001 - surfaced as a problem, not a crash
+        return [], [
+            Problem(
+                "compute-config-invalid",
+                str(path),
+                None,
+                f"data/compute.yaml 无法解析: {type(exc).__name__}",
+            )
+        ]
     if not isinstance(payload, dict):
-        return []
+        return [], [
+            Problem(
+                "compute-config-invalid",
+                str(path),
+                None,
+                "data/compute.yaml 顶层必须是映射",
+            )
+        ]
     entries = payload.get("backends")
+    if entries is None:
+        entries = []
+    if not isinstance(entries, list):
+        return [], [
+            Problem(
+                "compute-config-invalid",
+                str(path),
+                None,
+                "backends 必须是列表",
+            )
+        ]
     backends: list[RemoteBackend] = []
-    if isinstance(entries, list):
-        for item in entries:
-            if not isinstance(item, dict):
-                continue
-            kind = item.get("kind")
-            host = item.get("host")
-            if kind not in {"slurm", "pbs"} or not isinstance(host, str):
-                continue
-            backends.append(
-                RemoteBackend(
-                    kind=kind,
-                    host=host,
-                    user=str(item.get("user") or ""),
-                    partition=str(item.get("partition") or ""),
-                    gpus=int(item.get("gpus") or 0),
+    problems: list[Problem] = []
+    seen: dict[str, int] = {}
+    for index, item in enumerate(entries):
+        where = f"backends[{index}]"
+        if not isinstance(item, dict):
+            problems.append(
+                Problem(
+                    "compute-config-invalid",
+                    str(path),
+                    None,
+                    f"{where} 必须是映射",
                 )
             )
+            continue
+        kind = item.get("kind")
+        if kind not in _REMOTE_KINDS:
+            problems.append(
+                Problem(
+                    "compute-backend-unknown-kind",
+                    str(path),
+                    None,
+                    f"{where}.kind 非法: {kind!r}，"
+                    f"应为 {'/'.join(_REMOTE_KINDS)}",
+                )
+            )
+            continue
+        host = item.get("host")
+        if not isinstance(host, str) or not host.strip():
+            problems.append(
+                Problem(
+                    "compute-backend-missing-host",
+                    str(path),
+                    None,
+                    f"{where} 缺少 host",
+                )
+            )
+            continue
+        port = 0
+        raw_port = item.get("port")
+        if raw_port is not None:
+            if (
+                isinstance(raw_port, bool)
+                or not isinstance(raw_port, int)
+                or not 1 <= raw_port <= 65535
+            ):
+                problems.append(
+                    Problem(
+                        "compute-config-invalid",
+                        str(path),
+                        None,
+                        f"{where}.port 必须是 1..65535 的整数",
+                    )
+                )
+                continue
+            port = raw_port
+        gpus = 0
+        raw_gpus = item.get("gpus")
+        if raw_gpus is not None:
+            if (
+                isinstance(raw_gpus, bool)
+                or not isinstance(raw_gpus, int)
+                or raw_gpus < 0
+            ):
+                problems.append(
+                    Problem(
+                        "compute-config-invalid",
+                        str(path),
+                        None,
+                        f"{where}.gpus 必须是非负整数",
+                    )
+                )
+                continue
+            gpus = raw_gpus
+        raw_options = item.get("options")
+        options: tuple[str, ...] = ()
+        if raw_options is not None:
+            if not isinstance(raw_options, list) or not all(
+                isinstance(entry, str) for entry in raw_options
+            ):
+                problems.append(
+                    Problem(
+                        "compute-config-invalid",
+                        str(path),
+                        None,
+                        f"{where}.options 必须是字符串列表",
+                    )
+                )
+                continue
+            options = tuple(raw_options)
+        raw_identity = item.get("identity_file")
+        if raw_identity is not None and not isinstance(raw_identity, str):
+            problems.append(
+                Problem(
+                    "compute-config-invalid",
+                    str(path),
+                    None,
+                    f"{where}.identity_file 必须是字符串",
+                )
+            )
+            continue
+        backend = RemoteBackend(
+            kind=kind,
+            host=host.strip(),
+            user=str(item.get("user") or "").strip(),
+            partition=str(item.get("partition") or "").strip(),
+            gpus=gpus,
+            name=str(item.get("name") or "").strip(),
+            port=port,
+            workdir=str(item.get("workdir") or "").strip(),
+            identity_file=str(raw_identity or "").strip(),
+            options=options,
+        )
+        if backend.label in seen:
+            problems.append(
+                Problem(
+                    "compute-backend-duplicate-name",
+                    str(path),
+                    None,
+                    f"{where} 与 backends[{seen[backend.label]}] 重名: "
+                    f"{backend.label}",
+                )
+            )
+            continue
+        seen[backend.label] = index
+        backends.append(backend)
+    return backends, problems
+
+
+def load_backends(paper_root: Path) -> list[RemoteBackend]:
+    """Read the valid backends from ``data/compute.yaml``.
+
+    Invalid entries are skipped so a single typo cannot take down ``plan``.
+    :func:`validate_config` reports them, and ``check`` treats them as
+    blocking, so the loose read never hides a broken declaration.
+    """
+
+    backends, _problems = _parse_backends(paper_root)
     return backends
+
+
+def validate_config(
+    paper_root: Path,
+) -> tuple[list[RemoteBackend], list[Problem]]:
+    """Parse ``data/compute.yaml`` and return its structural problems."""
+
+    return _parse_backends(paper_root)
+
+
+def _ssh_argv(backend: RemoteBackend, remote_command: str) -> list[str]:
+    argv = ["ssh", *_SSH_BATCH_OPTIONS]
+    if backend.port:
+        argv += ["-p", str(backend.port)]
+    if backend.identity_file:
+        argv += ["-i", backend.identity_file]
+    argv += list(backend.options)
+    argv += [backend.target, remote_command]
+    return argv
+
+
+def _ssh_remote_command(backend: RemoteBackend, command: Sequence[str]) -> str:
+    joined = " ".join(shlex.quote(str(part)) for part in command)
+    if backend.workdir:
+        return f"cd {shlex.quote(backend.workdir)} && {joined}"
+    return joined
 
 
 def probe_remote(
@@ -251,17 +455,30 @@ def probe_remote(
     *,
     run: Callable[[Sequence[str]], tuple[int, str]] | None = None,
 ) -> dict:
-    """Check that SSH reaches *host* and the scheduler command exists."""
+    """Check that SSH reaches *host* and the backend's tools answer."""
     run = run or _default_run
-    command = "sbatch --version" if backend.kind == "slurm" else "qstat --version"
-    code, output = run(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", backend.target, command]
-    )
-    return {
+    if backend.kind == "ssh":
+        command = _SSH_PROBE_COMMAND
+    elif backend.kind == "slurm":
+        command = "sbatch --version"
+    else:
+        command = "qstat --version"
+    code, output = run(_ssh_argv(backend, command))
+    result = {
         **backend.as_dict(),
         "reachable": code == 0,
         "detail": output.strip()[:200] if code == 0 else "SSH 或调度器不可用",
     }
+    if backend.kind == "ssh":
+        # The probe prints a known token; its presence is the receipt that the
+        # account really ran something, not just that TCP answered.
+        result["ccfa_ok"] = code == 0 and "ccfa-ok" in output
+        result["gpus_observed"] = sum(
+            1
+            for line in output.splitlines()
+            if line.strip().startswith("GPU ")
+        )
+    return result
 
 
 @dataclass
@@ -291,22 +508,21 @@ class Attempt:
         }
 
 
-def run_local(
-    command: Sequence[str],
+def _execute(
+    argv: Sequence[str],
     *,
     budget_minutes: float,
-    gpus_used: int = 0,
+    gpus_used: int,
+    backend: str,
+    command_text: str,
     cwd: Path | None = None,
     popen: Callable[..., subprocess.Popen] | None = None,
 ) -> Attempt:
-    """Run *command* under a wall-clock budget and return measured cost."""
-    if budget_minutes <= 0:
-        raise ValueError("budget_minutes 必须为正数")
     runner = popen or subprocess.Popen
     started = time.monotonic()
     timed_out = False
     process = runner(
-        list(command),
+        list(argv),
         cwd=str(cwd) if cwd else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -322,13 +538,68 @@ def run_local(
         process.communicate()
     wall = time.monotonic() - started
     return Attempt(
-        command=" ".join(command),
-        backend="local",
+        command=command_text,
+        backend=backend,
         budget_minutes=budget_minutes,
         wall_seconds=wall,
         returncode=process.returncode if process.returncode is not None else -1,
         gpus_used=gpus_used,
         timed_out=timed_out,
+    )
+
+
+def run_local(
+    command: Sequence[str],
+    *,
+    budget_minutes: float,
+    gpus_used: int = 0,
+    cwd: Path | None = None,
+    popen: Callable[..., subprocess.Popen] | None = None,
+) -> Attempt:
+    """Run *command* under a wall-clock budget and return measured cost."""
+    if budget_minutes <= 0:
+        raise ValueError("budget_minutes 必须为正数")
+    return _execute(
+        list(command),
+        budget_minutes=budget_minutes,
+        gpus_used=gpus_used,
+        backend="local",
+        command_text=" ".join(str(part) for part in command),
+        cwd=cwd,
+        popen=popen,
+    )
+
+
+def run_remote(
+    backend: RemoteBackend,
+    command: Sequence[str],
+    *,
+    budget_minutes: float,
+    gpus_used: int = 0,
+    popen: Callable[..., subprocess.Popen] | None = None,
+) -> Attempt:
+    """Run *command* on a remote backend under a wall-clock budget.
+
+    Only ``ssh`` executes today. A scheduler host is refused rather than
+    silently treated as a login box: the probe still reports whether it is
+    reachable, but nothing pretends a Slurm/PBS job was submitted.
+    """
+    if budget_minutes <= 0:
+        raise ValueError("budget_minutes 必须为正数")
+    if backend.kind not in _EXECUTABLE_KINDS:
+        raise ValueError(
+            f"后端 {backend.label!r} 的类型 {backend.kind!r} 暂不支持直接执行："
+            "调度器提交尚未验证；请声明一个 kind: ssh 的主机，"
+            "或在该集群上手动提交"
+        )
+    remote = _ssh_remote_command(backend, command)
+    return _execute(
+        _ssh_argv(backend, remote),
+        budget_minutes=budget_minutes,
+        gpus_used=gpus_used,
+        backend=f"ssh:{backend.target}",
+        command_text=remote,
+        popen=popen,
     )
 
 
@@ -350,7 +621,10 @@ def plan(
 ) -> dict:
     """Decide which backends can serve a pilot, without overstating reach."""
     resources = resources or probe_local()
-    backends = backends if backends is not None else load_backends(paper_root)
+    if backends is None:
+        backends, config_problems = validate_config(paper_root)
+    else:
+        config_problems = []
     local_ok = not needs_gpu or resources.gpu_count > 0
     return {
         "budget_minutes": budget_minutes,
@@ -365,6 +639,8 @@ def plan(
         },
         "remote": [backend.as_dict() for backend in backends],
         "remote_configured": bool(backends),
+        "executable_remote": any(backend.executable for backend in backends),
+        "config_problems": [problem._asdict() for problem in config_problems],
         "recommendation": (
             "local" if local_ok and not backends else ("remote" if backends else "blocked")
         ),
@@ -374,8 +650,8 @@ def plan(
 def check_environment(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
     """Report compute capability as problems (blocking) and advisories."""
     resources = probe_local()
-    backends = load_backends(paper_root)
-    problems: list[Problem] = []
+    backends, config_problems = validate_config(paper_root)
+    problems: list[Problem] = list(config_problems)
     advisories: list[Problem] = []
     path = Path(paper_root) / COMPUTE_CONFIG
     if not resources.gpu_count and not backends:
@@ -387,13 +663,14 @@ def check_environment(paper_root: Path) -> tuple[list[Problem], list[Problem]]:
                 "本机无 GPU 且未配置远程算力：experiment-loop 的 pilot 受限",
             )
         )
-    if not backends:
+    if not any(backend.executable for backend in backends):
         advisories.append(
             Problem(
                 "compute-remote-unconfigured",
                 str(path),
                 None,
-                "未配置 Slurm/PBS 远程后端（data/compute.yaml 缺失或为空）",
+                "未配置可执行远程后端（kind: ssh；Slurm/PBS 目前只能探测，"
+                "不能提交）",
             )
         )
     return problems, advisories
@@ -415,10 +692,21 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--minutes", type=float, required=True)
     plan_parser.add_argument("--needs-gpu", action="store_true")
 
+    validate_parser = sub.add_parser(
+        "validate",
+        help="校验 data/compute.yaml 的后端声明",
+    )
+    validate_parser.add_argument("--paper-root", default=".")
+
     run_parser = sub.add_parser("run", help="在墙钟预算内执行命令并记账")
     run_parser.add_argument("--paper-root", default=".")
     run_parser.add_argument("--minutes", type=float, required=True)
     run_parser.add_argument("--gpus", type=int, default=0)
+    run_parser.add_argument(
+        "--backend",
+        default=None,
+        help="data/compute.yaml 里声明的后端名；省略则在本机执行",
+    )
     run_parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -439,6 +727,9 @@ def main(argv: list[str]) -> int:
         if args.command == "check":
             problems, advisories = check_environment(Path(args.paper_root))
             return emit(problems, advisories)
+        if args.command == "validate":
+            _backends, problems = validate_config(Path(args.paper_root))
+            return emit(problems, [])
         if args.command == "plan":
             payload = plan(
                 Path(args.paper_root),
@@ -456,11 +747,29 @@ def main(argv: list[str]) -> int:
         command = [item for item in args.command if item != "--"]
         if not command:
             return tool_error("run 需要一条命令")
-        attempt = run_local(
-            command,
-            budget_minutes=args.minutes,
-            gpus_used=args.gpus,
-        )
+        if args.backend:
+            backends = load_backends(Path(args.paper_root))
+            match = next(
+                (item for item in backends if item.label == args.backend),
+                None,
+            )
+            if match is None:
+                return tool_error(
+                    f"未找到后端 {args.backend!r}；"
+                    "先在 data/compute.yaml 声明"
+                )
+            attempt = run_remote(
+                match,
+                command,
+                budget_minutes=args.minutes,
+                gpus_used=args.gpus,
+            )
+        else:
+            attempt = run_local(
+                command,
+                budget_minutes=args.minutes,
+                gpus_used=args.gpus,
+            )
         path = append_attempt(Path(args.paper_root), attempt)
         print(json.dumps(attempt.as_dict(), ensure_ascii=False))
         print(f"已记录到 {path}", file=sys.stderr)

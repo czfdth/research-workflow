@@ -1800,3 +1800,18 @@ rewrite historical entries.
   - `tools.tests.test_docs_consistency (17 tests)`
 - notes: Also records the flagship paper's current blocking set (review-prompt-drift, review-blocking, review-stale-finding) and that reviews/adversarial-review.json has not been produced yet.
 
+## WC-20261006T075458Z-ee38167af5 - Add an executable ssh compute backend and fail-closed config validation
+
+- timestamp: `2026-10-06T07:54:58Z`
+- status: `complete`
+- author: `codex`
+- reason: ARIS reaches five compute backends; this workflow had probes for Slurm/PBS but no way to actually run anything remotely, so the only real capacity was the local box. compute.py now accepts kind: ssh with port/identity_file/workdir/options, executes over SSH under the same wall-clock budget as the local path, and records backend/wall_seconds/gpu_minutes in the compute ledger. probe_remote for ssh returns a ccfa-ok receipt plus the visible GPU count instead of treating a TCP connect as reachability. Slurm/PBS stay probe-only and run --backend refuses them rather than pretending a job was submitted. load_backends stays lenient so one typo cannot take down plan, while a new validate_config surfaces unknown kinds, missing hosts, bad port/gpus/options and duplicate names as blocking problems in check and a compute validate subcommand. Verified live against a containerised sshd: probe reached=true/ccfa_ok=true, a remote command left a marker inside the container, and a 3s budget killed a sleep 120 at 3.03s with timed_out=true.
+- files:
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `tools/ccfa/compute.py`
+  - `tools/tests/test_compute.py`
+- tests:
+  - `tools.tests.test_compute`
+  - `tools.tests.test_docs_consistency`
+

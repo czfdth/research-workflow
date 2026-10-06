@@ -140,7 +140,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/test_impact.py` | 按 git diff 选择最小相关测试集；未知路径或共享核心模块自动回退全量测试 | `scripts/test-impact.ps1` |
 | `tools/ccfa/change_log.py` | 强制记录每次工作流修改；append-only JSONL + 生成 Markdown + fail-closed 覆盖检查 | `scripts/change-log.ps1` |
 | `tools/ccfa/archive_client.py` | Zenodo/OSF/ORCID 归档薄客户端；内置 DNS-over-HTTPS 绕行，只有拿到 DOI 才报告 published | `scripts/archive.ps1` |
-| `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程 Slurm/PBS 后端，在墙钟预算内执行 pilot 并记录 `wall_seconds`/`gpu_minutes` | `scripts/compute.ps1` |
+| `tools/ccfa/compute.py` | 探测本机 CPU/内存/GPU/Docker 与远程后端；`kind: ssh` 走通用 SSH 执行（端口/私钥/额外 ssh 选项，墙钟预算 + ledger），Slurm/PBS 目前只探测不提交；`validate` 对 `data/compute.yaml` fail-closed | `scripts/compute.ps1` |
 
 ## 阶段到命令速查
 
@@ -345,6 +345,20 @@ scripts/archive.ps1 probe
 ```
 
 给 `scripts/doctor.ps1` 加 `--strict` 会把缺失的可选依赖也判为 problem，是"一次装齐"的验收口径；`compute.ps1 probe` 报告本机与远程算力，`archive.ps1 probe` 报告 Zenodo/OSF/ORCID 的传输可达性。
+
+声明一个真正可跑的远程后端，只需在 `data/compute.yaml` 里加一条 SSH 记录，
+`compute.ps1 probe` 会真的登录，并把 `ccfa-ok` 回执与可见 GPU 写进输出：
+
+```powershell
+scripts/compute.ps1 validate --paper-root <paper-root>
+scripts/compute.ps1 probe --paper-root <paper-root>
+scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20 -- python train.py --seed 1
+```
+
+`kind: ssh` 支持 `port`、`identity_file`、`workdir` 与额外 `options`（例如
+`StrictHostKeyChecking`、`ProxyJump`），执行受墙钟预算约束，并把 `wall_seconds`
+与 `gpu_minutes` 记进 compute ledger。Slurm/PBS 目前只做可达性探测；对它们用
+`run --backend` 会被明确拒绝，而不是把"没有提交"当成"提交成功"。
 
 ## 跑测试
 
