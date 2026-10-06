@@ -1719,3 +1719,15 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_cross_review`
 
+## WC-20261006T064706Z-2240fa3ea3 - Reject a review that restates a superseded review's conclusion
+
+- timestamp: `2026-10-06T06:47:06Z`
+- status: `complete`
+- author: `codex`
+- reason: The regenerated cross-review.json was internally inconsistent: its own review_tier was gate-capable, yet its blocking list carried a bare 'review-advisory-only' item quoting the previous local-qwen review. The item slipped through because the evidence really was quoted from an input file (the old record). The prompt now states that this review supersedes the previous record and reserves the three workflow finding prefixes, and the auditor rejects any model-authored blocking title whose stem is one of those reserved codes. Verified on the real record: it now reports review-stale-finding against blocking[3].
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `tools.tests.test_cross_review`
+

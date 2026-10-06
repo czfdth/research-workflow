@@ -910,6 +910,51 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertIn("review-advisory-only", codes)
 
+    def test_model_restating_a_reserved_conclusion_is_flagged(self):
+        # A model that carries a superseded review's tier conclusion forward --
+        # a bare "review-advisory-only" with no harness suffix -- must be
+        # rejected rather than repeated into the blocking list.
+        payload = self._payload(
+            verdict="blocking",
+            blocking=[
+                {
+                    "title": "review-advisory-only",
+                    "evidence": "reviews/cross-review.json: advisory-only",
+                }
+            ],
+        )
+        self._run(self._runner(payload=payload))
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        self.assertIn("review-stale-finding", codes)
+
+    def test_harness_injected_reserved_items_are_not_stale_findings(self):
+        payload = self._payload(
+            verdict="blocking",
+            blocking=[
+                {
+                    "title": "review-advisory-only: local-qwen",
+                    "evidence": "data/proof-audit.yaml: pending",
+                }
+            ],
+        )
+        self._run(self._runner(payload=payload))
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        self.assertNotIn("review-stale-finding", codes)
+
+    def test_prompt_declares_the_previous_review_superseded(self):
+        prompt = build_prompt(
+            self.paper_root,
+            "internal-review",
+            [self.input_path],
+        )
+
+        self.assertIn("取代", prompt)
+        self.assertIn("review-advisory-only", prompt)
+
     def test_contradiction_downgrade_is_accepted_by_the_auditor(self):
         runner = self._runner(payload=self._payload())
         self._run(

@@ -185,6 +185,12 @@ _DETERMINISTIC_ITEM_PREFIXES = (
     "review-advisory-only:",
     "review-unevidenced-pass:",
 )
+# The bare stems are reserved too: a model that writes "review-advisory-only"
+# without the harness suffix is restating a superseded review's conclusion
+# rather than reporting something it verified in this run.
+_RESERVED_ITEM_STEMS = tuple(
+    prefix.rstrip(":") for prefix in _DETERMINISTIC_ITEM_PREFIXES
+)
 
 
 def _review_tier(model: str, provider: str | None) -> str:
@@ -400,6 +406,12 @@ def _render_prompt(mode: str, stage: str, relative_paths: list[str]) -> str:
                 "blocking 记录，而把这一事实本身判为 blocking。"
                 "请只依据给定的稿件和核验报告，独立判断引用、数字、图表三项核验"
                 "是否通过，以及稿件是否存在实质性的科学或完整性问题。",
+                "本次评审取代输入里 reviews/cross-review.json 的上一版记录："
+                "不要把上一版的 review_tier、verdict 或 blocking 结论当作本次"
+                "的证据搬进来，那些结论只能由工作流的确定性检查给出。"
+                "review-contradiction / review-advisory-only / "
+                "review-unevidenced-pass 这三个标题前缀保留给工作流，"
+                "你自己不得使用。",
             ]
         )
     lines.extend(
@@ -1326,6 +1338,18 @@ def check_review(
                 # These items are copied from the deterministic gates, not
                 # produced by the model, so the "evidence must be a verbatim
                 # quote from the review inputs" rule does not apply.
+                continue
+            stem = item["title"].split(":", 1)[0].strip()
+            if stem in _RESERVED_ITEM_STEMS:
+                problems.append(
+                    Problem(
+                        "review-stale-finding",
+                        str(path),
+                        None,
+                        f"blocking[{index}] {item['title']!r} 复述了只由工作流"
+                        "给出的结论；本次评审不得搬用上一版评审的 tier/verdict",
+                    )
+                )
                 continue
             evidence = _normalize_whitespace(item["evidence"])
             if not _quote_is_cited(evidence, corpus):
