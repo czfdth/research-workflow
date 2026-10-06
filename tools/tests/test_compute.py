@@ -492,6 +492,45 @@ class SshBackendTests(unittest.TestCase):
                 budget_minutes=0,
             )
 
+    def test_remote_argv_overrides_the_backend_workdir(self):
+        backend = RemoteBackend(
+            kind="ssh",
+            host="h.example",
+            user="u",
+            workdir="/base",
+        )
+
+        argv = compute.remote_argv(
+            backend,
+            ["python", "train.py"],
+            workdir="/other",
+        )
+
+        self.assertEqual(argv[-1], "cd /other && python train.py")
+
+    def test_remote_argv_refuses_a_scheduler_backend(self):
+        with self.assertRaisesRegex(ValueError, "kind: ssh"):
+            compute.remote_argv(
+                RemoteBackend(kind="pbs", host="cluster.example"),
+                ["true"],
+            )
+
+    def test_load_backend_file_reads_an_explicit_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "cluster-compute.yaml"
+            config.write_text(
+                "backends:\n"
+                "  - kind: ssh\n"
+                "    name: box\n"
+                "    host: box.example\n",
+                encoding="utf-8",
+            )
+
+            backends, problems = compute.load_backend_file(config)
+
+        self.assertEqual([backend.label for backend in backends], ["box"])
+        self.assertEqual(problems, [])
+
 
 class ValidateConfigTests(unittest.TestCase):
     def test_a_missing_file_has_no_problems(self):

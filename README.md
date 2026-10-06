@@ -104,7 +104,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/governance_map.py` | 校验 risk→control→evidence status→residual gap，以及 machine-readable data flows 和明文凭据 | `scripts/governance-map.ps1` |
 | `tools/ccfa/repro_env.py` | 检查 requirements、lockfile 哈希、系统工具版本与证据 | `scripts/repro-env.ps1` |
 | `tools/ccfa/watch.py` | 增量扫描外部文献源，只报告未见过的 ID | `scripts/watch.ps1` |
-| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试与失败停止规则 | `scripts/queue.ps1` |
+| `tools/ccfa/queue.py` | 顺序运行实验队列并执行预算、重试、stall 看门狗与失败停止规则；`backend` 可指向 `data/compute.yaml` 的 `kind: ssh` 后端，让整条队列在远端执行（超时/重试/流式输出照旧；远端 GPU 计量未支持，会拒绝 `gpu_budget_s`） | `scripts/queue.ps1` |
 | `tools/ccfa/validate.py` | 校验 `ccfa.yaml` 的结构、stage 与 gate 状态 | `scripts/validate.ps1` |
 | `tools/ccfa/state.py` | 写回 stage/gate/updated_at，并追加 advance/rollback 审计记录 | `scripts/state.ps1` |
 | `tools/ccfa/stages.py` | stage/gate 状态机的唯一来源；CLI 把整表以 JSON 输出，供工作台等外部消费者读取而不必 import `ccfa` | `scripts/stages.ps1` |
@@ -359,6 +359,12 @@ scripts/compute.ps1 run --paper-root <paper-root> --backend lab-gpu --minutes 20
 `StrictHostKeyChecking`、`ProxyJump`），执行受墙钟预算约束，并把 `wall_seconds`
 与 `gpu_minutes` 记进 compute ledger。Slurm/PBS 目前只做可达性探测；对它们用
 `run --backend` 会被明确拒绝，而不是把"没有提交"当成"提交成功"。
+
+整条队列也可以放到远端：在清单里写 `backend: lab-gpu`，或用
+`scripts/queue.ps1` 的 `--backend lab-gpu` 覆盖。超时、stall 看门狗、重试与流式
+输出语义不变，run-log 的 `policy.backend` 会记下它跑在哪个后端；远端 GPU 计量
+尚未实现，所以 `gpu_budget_s` 与远端后端同时出现会被拒绝，而不是拿本机
+`nvidia-smi` 冒充远端用量。
 
 ## 跑测试
 

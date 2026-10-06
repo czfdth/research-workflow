@@ -50,6 +50,7 @@ try:
 except ImportError:  # pragma: no cover - POSIX
     msvcrt = None
 
+from ccfa import compute
 from ccfa.cli import tool_error
 from ccfa.run_log import log_metrics, log_resource_usage, run_command
 
@@ -147,6 +148,31 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
     if sandbox == "docker" and docker_image is None:
         raise ValueError("sandbox=docker 需要队列 docker_image")
 
+    backend = payload.get("backend")
+    if backend is not None and (
+        not isinstance(backend, str) or not backend.strip()
+    ):
+        raise ValueError(
+            "队列 backend 必须是非空字符串（data/compute.yaml 里的后端名）"
+        )
+    compute_config = payload.get("compute_config")
+    if compute_config is not None:
+        if not isinstance(compute_config, str) or not compute_config.strip():
+            raise ValueError("队列 compute_config 必须是非空相对路径")
+        config_parts = Path(compute_config).parts
+        if (
+            Path(compute_config).is_absolute()
+            or Path(compute_config).root
+            or Path(compute_config).drive
+            or ".." in config_parts
+        ):
+            raise ValueError("队列 compute_config 必须是队列根内的相对路径")
+    if sandbox == "docker" and backend:
+        raise ValueError(
+            "队列不能同时声明 sandbox=docker 与 backend："
+            "远程后端在远端执行，本机容器沙箱无从施加"
+        )
+
     items = None
     for key in ("queue", "items", "runs"):
         if key in payload:
@@ -226,6 +252,12 @@ def _load_queue_document(path: Path) -> tuple[list[dict], dict]:
         "docker_network": docker_network,
         "docker_gpus": docker_gpus,
         "docker_output": docker_output,
+        "backend": backend.strip() if isinstance(backend, str) else None,
+        "compute_config": (
+            compute_config.strip()
+            if isinstance(compute_config, str)
+            else None
+        ),
     }
     return normalized, options
 
@@ -697,6 +729,8 @@ def run_queue(
     gpu_budget_s: float | None = None,
     gpu_meter_factory=None,
     sandbox: str | None = None,
+    backend: str | None = None,
+    compute_config: Path | str | None = None,
     allow_sandbox_downgrade: bool = False,
     allow_injected_runner: bool = False,
 ) -> dict:
@@ -751,6 +785,55 @@ def run_queue(
         if not docker_image:
             raise ValueError("sandbox=docker 需要队列 docker_image")
         _docker_available()
+
+    backend_name = backend if backend is not None else options["backend"]
+    if backend_name is not None:
+        if not isinstance(backend_name, str) or not backend_name.strip():
+            raise ValueError("backend 必须是非空字符串")
+        backend_name = backend_name.strip()
+        if sandbox_mode == "docker":
+            raise ValueError(
+                "sandbox=docker 与 backend 互斥：远程后端在远端执行，"
+                "本机容器沙箱无从施加"
+            )
+        if compute_config is None:
+            relative = (
+                options["compute_config"] or compute.COMPUTE_CONFIG.as_posix()
+            )
+            config_path = (queue_root / relative).resolve()
+        else:
+            config_path = Path(compute_config)
+            if not config_path.is_absolute():
+                config_path = (queue_root / config_path).resolve()
+        backends, config_problems = compute.load_backend_file(config_path)
+        if config_problems:
+            first = config_problems[0]
+            raise ValueError(
+                f"compute 配置有 {len(config_problems)} 个问题，"
+                f"先修 {config_path}：{first.code} {first.message}"
+            )
+        remote_backend = next(
+            (entry for entry in backends if entry.label == backend_name),
+            None,
+        )
+        if remote_backend is None:
+            available = ", ".join(entry.label for entry in backends) or "（无）"
+            raise ValueError(
+                f"队列 backend {backend_name!r} 不在 {config_path}；"
+                f"可用: {available}"
+            )
+        if not remote_backend.executable:
+            raise ValueError(
+                f"队列 backend {backend_name!r} 的类型 "
+                f"{remote_backend.kind!r} 不能执行：目前只支持 kind: ssh"
+            )
+    else:
+        remote_backend = None
+    if remote_backend is not None and gpu_budget_s is not None:
+        raise ValueError(
+            "远程 backend 暂不支持 gpu_budget_s：本机 nvidia-smi 测不到远端 GPU；"
+            "请用 timeout_s 限制，或在远端实现计量"
+        )
 
     default_runner = runner is None or runner is _default_runner
     if (
@@ -807,24 +890,45 @@ def run_queue(
                 stopped = "budget"
                 break
 
-            cwd = _item_cwd(
-                queue_root,
-                item,
-                sandbox=sandbox_mode in ("policy", "docker"),
-            )
-            sandbox_env = _sandbox_env() if sandbox_mode == "policy" else None
-            policy_record = None
-            if sandbox_mode == "policy":
-                policy_record = {"sandbox": "policy"}
-            elif sandbox_mode == "docker":
+            remote_item_argv = None
+            if remote_backend is not None:
+                # A remote cwd is a path on the other machine, so it must not
+                # be resolved against the local queue root.
+                cwd = queue_root
+                sandbox_env = None
+                remote_item_argv = compute.remote_argv(
+                    remote_backend,
+                    item["command"],
+                    workdir=item.get("cwd") or None,
+                )
                 policy_record = {
-                    "sandbox": "docker",
-                    "image": docker_image,
-                    "network": docker_network,
-                    "gpus": docker_gpus,
-                    "output": docker_output,
-                    "workdir": _docker_workdir(queue_root, item),
+                    "backend": remote_backend.label,
+                    "kind": remote_backend.kind,
+                    "target": remote_backend.target,
+                    "port": remote_backend.port,
+                    "workdir": item.get("cwd") or remote_backend.workdir,
                 }
+            else:
+                cwd = _item_cwd(
+                    queue_root,
+                    item,
+                    sandbox=sandbox_mode in ("policy", "docker"),
+                )
+                sandbox_env = (
+                    _sandbox_env() if sandbox_mode == "policy" else None
+                )
+                policy_record = None
+                if sandbox_mode == "policy":
+                    policy_record = {"sandbox": "policy"}
+                elif sandbox_mode == "docker":
+                    policy_record = {
+                        "sandbox": "docker",
+                        "image": docker_image,
+                        "network": docker_network,
+                        "gpus": docker_gpus,
+                        "output": docker_output,
+                        "workdir": _docker_workdir(queue_root, item),
+                    }
             attempts = 0
             status = "failed"
             gpu_exhausted = False
@@ -859,7 +963,11 @@ def run_queue(
                 def attempt_runner(argv, attempt_cwd):
                     nonlocal timed_out, stalled
                     effective_argv = (
-                        docker_argv if docker_argv is not None else argv
+                        docker_argv
+                        if docker_argv is not None
+                        else remote_item_argv
+                        if remote_item_argv is not None
+                        else argv
                     )
                     try:
                         return (
@@ -993,6 +1101,14 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--gpu-budget-seconds", type=float)
     run.add_argument("--sandbox", choices=SANDBOX_MODES)
     run.add_argument(
+        "--backend",
+        help="data/compute.yaml 里的远程后端名；覆盖清单里的 backend",
+    )
+    run.add_argument(
+        "--compute-config",
+        help="compute 配置路径；默认 <队列根>/data/compute.yaml",
+    )
+    run.add_argument(
         "--allow-sandbox-downgrade",
         action="store_true",
         help="显式允许 CLI 覆盖清单里的 docker 沙箱；默认拒绝",
@@ -1009,6 +1125,8 @@ def main(argv: list[str]) -> int:
             budget_s=args.budget_seconds,
             gpu_budget_s=args.gpu_budget_seconds,
             sandbox=args.sandbox,
+            backend=args.backend,
+            compute_config=args.compute_config,
             allow_sandbox_downgrade=args.allow_sandbox_downgrade,
         )
     except (OSError, ValueError) as exc:

@@ -244,9 +244,9 @@ class RemoteBackend:
         }
 
 
-def _parse_backends(paper_root: Path) -> tuple[list[RemoteBackend], list[Problem]]:
-    """Parse ``data/compute.yaml`` into backends plus structural problems."""
-    path = Path(paper_root) / COMPUTE_CONFIG
+def _parse_backends_at(path: Path) -> tuple[list[RemoteBackend], list[Problem]]:
+    """Parse one compute config file into backends plus structural problems."""
+    path = Path(path)
     if not path.is_file():
         return [], []
     try:
@@ -412,6 +412,14 @@ def _parse_backends(paper_root: Path) -> tuple[list[RemoteBackend], list[Problem
     return backends, problems
 
 
+def _parse_backends(
+    paper_root: Path,
+) -> tuple[list[RemoteBackend], list[Problem]]:
+    """Parse the conventional ``<paper-root>/data/compute.yaml``."""
+
+    return _parse_backends_at(Path(paper_root) / COMPUTE_CONFIG)
+
+
 def load_backends(paper_root: Path) -> list[RemoteBackend]:
     """Read the valid backends from ``data/compute.yaml``.
 
@@ -432,6 +440,18 @@ def validate_config(
     return _parse_backends(paper_root)
 
 
+def load_backend_file(
+    path: Path,
+) -> tuple[list[RemoteBackend], list[Problem]]:
+    """Parse a compute config at an explicit path.
+
+    The queue knows exactly which file its manifest points at, so it does not
+    go through the ``<paper-root>/data/compute.yaml`` convention.
+    """
+
+    return _parse_backends_at(path)
+
+
 def _ssh_argv(backend: RemoteBackend, remote_command: str) -> list[str]:
     argv = ["ssh", *_SSH_BATCH_OPTIONS]
     if backend.port:
@@ -443,11 +463,42 @@ def _ssh_argv(backend: RemoteBackend, remote_command: str) -> list[str]:
     return argv
 
 
-def _ssh_remote_command(backend: RemoteBackend, command: Sequence[str]) -> str:
+def _ssh_remote_command(
+    backend: RemoteBackend,
+    command: Sequence[str],
+    *,
+    workdir: str | None = None,
+) -> str:
     joined = " ".join(shlex.quote(str(part)) for part in command)
-    if backend.workdir:
-        return f"cd {shlex.quote(backend.workdir)} && {joined}"
+    directory = backend.workdir if workdir is None else workdir
+    if directory:
+        return f"cd {shlex.quote(directory)} && {joined}"
     return joined
+
+
+def remote_argv(
+    backend: RemoteBackend,
+    command: Sequence[str],
+    *,
+    workdir: str | None = None,
+) -> list[str]:
+    """Build the argv that runs *command* on *backend*.
+
+    Refuses kinds that cannot execute, so a scheduler host is never silently
+    treated as a login box. ``workdir`` overrides the backend default, which is
+    how a queue item asks to run somewhere other than the backend root.
+    """
+
+    if backend.kind not in _EXECUTABLE_KINDS:
+        raise ValueError(
+            f"后端 {backend.label!r} 的类型 {backend.kind!r} 暂不支持直接执行："
+            "调度器提交尚未验证；请声明一个 kind: ssh 的主机，"
+            "或在该集群上手动提交"
+        )
+    return _ssh_argv(
+        backend,
+        _ssh_remote_command(backend, command, workdir=workdir),
+    )
 
 
 def probe_remote(
@@ -586,19 +637,13 @@ def run_remote(
     """
     if budget_minutes <= 0:
         raise ValueError("budget_minutes 必须为正数")
-    if backend.kind not in _EXECUTABLE_KINDS:
-        raise ValueError(
-            f"后端 {backend.label!r} 的类型 {backend.kind!r} 暂不支持直接执行："
-            "调度器提交尚未验证；请声明一个 kind: ssh 的主机，"
-            "或在该集群上手动提交"
-        )
-    remote = _ssh_remote_command(backend, command)
+    argv = remote_argv(backend, command)
     return _execute(
-        _ssh_argv(backend, remote),
+        argv,
         budget_minutes=budget_minutes,
         gpus_used=gpus_used,
         backend=f"ssh:{backend.target}",
-        command_text=remote,
+        command_text=argv[-1],
         popen=popen,
     )
 

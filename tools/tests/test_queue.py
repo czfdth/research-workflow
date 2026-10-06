@@ -137,6 +137,8 @@ class QueueTests(unittest.TestCase):
         gpu_budget_s=None,
         gpu_meter_factory=None,
         sandbox=None,
+        backend=None,
+        compute_config=None,
         allow_sandbox_downgrade=False,
         allow_injected_runner=False,
     ):
@@ -149,6 +151,8 @@ class QueueTests(unittest.TestCase):
             gpu_budget_s=gpu_budget_s,
             gpu_meter_factory=gpu_meter_factory,
             sandbox=sandbox,
+            backend=backend,
+            compute_config=compute_config,
             allow_sandbox_downgrade=allow_sandbox_downgrade,
             allow_injected_runner=allow_injected_runner,
         )
@@ -1412,6 +1416,164 @@ class TestMain(QueueTests):
                 ),
                 2,
             )
+
+
+class RemoteBackendQueueTests(QueueTests):
+    def _write_compute(self, body, *, relative="data/compute.yaml"):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def _ssh_config(self, *, name="lab", workdir="/srv/runs"):
+        return (
+            "backends:\n"
+            "  - kind: ssh\n"
+            f"    name: {name}\n"
+            "    host: gpu.example\n"
+            "    user: alice\n"
+            "    port: 2222\n"
+            f"    workdir: {workdir}\n"
+        )
+
+    def test_items_run_over_ssh_when_a_backend_is_named(self):
+        self._write_queue(
+            [self._item(name="train", command=["python", "train.py"])],
+            backend="lab",
+        )
+        self._write_compute(self._ssh_config())
+        runner = RecordingRunner([0])
+
+        result = self._run(runner)
+
+        self.assertEqual(
+            result["runs"],
+            [{"name": "train", "attempts": 1, "status": "complete"}],
+        )
+        argv = runner.calls[0]["argv"]
+        self.assertEqual(argv[0], "ssh")
+        self.assertEqual(argv[argv.index("-p") + 1], "2222")
+        self.assertEqual(argv[-2], "alice@gpu.example")
+        self.assertEqual(argv[-1], "cd /srv/runs && python train.py")
+        # The run-log keeps the logical command and records where it ran.
+        record = self._records()[0]
+        self.assertEqual(record["command"], ["python", "train.py"])
+        self.assertEqual(record["policy"]["backend"], "lab")
+        self.assertEqual(record["policy"]["kind"], "ssh")
+        self.assertEqual(record["policy"]["target"], "alice@gpu.example")
+        self.assertEqual(record["policy"]["workdir"], "/srv/runs")
+
+    def test_an_item_cwd_overrides_the_backend_workdir(self):
+        self._write_queue(
+            [
+                self._item(
+                    name="train",
+                    command=["python", "train.py"],
+                    cwd="/srv/other",
+                )
+            ],
+            backend="lab",
+        )
+        self._write_compute(self._ssh_config())
+        runner = RecordingRunner([0])
+
+        self._run(runner)
+
+        self.assertEqual(
+            runner.calls[0]["argv"][-1],
+            "cd /srv/other && python train.py",
+        )
+        self.assertEqual(self._records()[0]["policy"]["workdir"], "/srv/other")
+
+    def test_a_backend_name_is_required_to_exist(self):
+        self._write_queue([self._item()], backend="missing")
+        self._write_compute(self._ssh_config())
+
+        with self.assertRaisesRegex(ValueError, "可用: lab"):
+            self._run(RecordingRunner([0]))
+
+    def test_a_scheduler_backend_cannot_be_executed(self):
+        self._write_queue([self._item()], backend="cluster")
+        self._write_compute(
+            "backends:\n"
+            "  - kind: slurm\n"
+            "    name: cluster\n"
+            "    host: cluster.example\n"
+            "    partition: gpu\n"
+        )
+
+        with self.assertRaisesRegex(ValueError, "只支持 kind: ssh"):
+            self._run(RecordingRunner([0]))
+
+    def test_a_broken_compute_config_is_rejected_before_anything_runs(self):
+        self._write_queue([self._item()], backend="lab")
+        self._write_compute("backends:\n  - kind: nope\n    host: h\n")
+        runner = RecordingRunner([0])
+
+        with self.assertRaisesRegex(ValueError, "compute 配置有 1 个问题"):
+            self._run(runner)
+
+        self.assertEqual(runner.calls, [])
+
+    def test_a_remote_backend_rejects_a_local_gpu_budget(self):
+        self._write_queue([self._item()], backend="lab")
+        self._write_compute(self._ssh_config())
+
+        with self.assertRaisesRegex(ValueError, "gpu_budget_s"):
+            self._run(RecordingRunner([0]), gpu_budget_s=60)
+
+    def test_docker_sandbox_and_a_backend_are_mutually_exclusive(self):
+        self._write_queue(
+            [self._item()],
+            backend="lab",
+            sandbox="docker",
+            docker_image="python:3.12-slim",
+        )
+
+        with self.assertRaisesRegex(ValueError, "不能同时声明"):
+            load_queue(self.queue_path)
+
+    def test_compute_config_must_stay_inside_the_queue_root(self):
+        self._write_queue([self._item()], backend="lab", compute_config="../x.yaml")
+
+        with self.assertRaisesRegex(ValueError, "队列根内"):
+            load_queue(self.queue_path)
+
+    def test_a_cli_backend_override_wins_over_the_manifest(self):
+        self._write_queue([self._item()], backend="other")
+        self._write_compute(self._ssh_config())
+        runner = RecordingRunner([0])
+
+        result = self._run(runner, backend="lab")
+
+        self.assertEqual(result["runs"][0]["status"], "complete")
+        self.assertEqual(self._records()[0]["policy"]["backend"], "lab")
+
+    def test_cli_passes_backend_and_compute_config_through(self):
+        self._write_queue([self._item()])
+        argv = [
+            "queue",
+            "run",
+            "--queue",
+            str(self.queue_path),
+            "--log-dir",
+            str(self.log_dir),
+            "--backend",
+            "lab",
+            "--compute-config",
+            "data/compute.yaml",
+        ]
+
+        with mock.patch("ccfa.queue.run_queue", return_value={"runs": []}) as run:
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                code = main(argv)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_args.kwargs["backend"], "lab")
+        self.assertEqual(
+            run.call_args.kwargs["compute_config"],
+            "data/compute.yaml",
+        )
 
 
 if __name__ == "__main__":

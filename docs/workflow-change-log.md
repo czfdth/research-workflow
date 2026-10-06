@@ -1826,3 +1826,21 @@ rewrite historical entries.
 - tests:
   - `tools.tests.test_docs_consistency`
 
+## WC-20261006T080459Z-6f14d48ade - Let the experiment queue dispatch a whole run to a remote ssh backend
+
+- timestamp: `2026-10-06T08:04:59Z`
+- status: `complete`
+- author: `codex`
+- reason: compute.py could execute over ssh but the queue could only run locally, so a multi-item experiment still had to be babysat item by item. A queue manifest now takes backend: <name> plus an optional compute_config path, and run_queue swaps each item's argv for the ssh argv built by the new compute.remote_argv, keeping timeout, stall watchdog, retry and streamed output identical. The backend is persisted in every run-log record as policy.backend/kind/target/workdir, so 'where it ran' is a checkable field rather than a claim. Fail-closed choices: a missing or non-executable backend is rejected before anything runs, sandbox=docker and a remote backend are mutually exclusive, and gpu_budget_s with a remote backend is refused because local nvidia-smi cannot measure remote GPU time. compute also gains load_backend_file so the queue reads the exact file its manifest names instead of the paper-root convention. Verified live against a containerised sshd: a 3-item queue ran wholly on the remote, the retry item went FIRST(exit 7) then SECOND(exit 0), and the 3s timeout item was killed at exit 124.
+- files:
+  - `README.md`
+  - `docs/aris-comparison-2026-10-06.md`
+  - `tools/ccfa/compute.py`
+  - `tools/ccfa/queue.py`
+  - `tools/tests/test_compute.py`
+  - `tools/tests/test_queue.py`
+- tests:
+  - `tools.tests.test_compute`
+  - `tools.tests.test_docs_consistency`
+  - `tools.tests.test_queue`
+

@@ -98,7 +98,7 @@ ARIS 宽在执行与产出，你深在证据与可验证性；**ARIS 的 skill �
 
 | 序号 | 差距 | ARIS | 你 |
 | --- | --- | --- | --- |
-| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行（端口/私钥/额外 ssh 选项，墙钟预算 + compute ledger，已对真实 sshd 实测）；Slurm/PBS 只探测不提交；无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`；论文仍未声明远程后端 |
+| 1 | 算力接入面 | 本机 / SSH / Vast.ai / Modal / 启智，队列带 OOM 重试、wave gating、crash-safe state，另有 W&B 训练监控与 `/system-profile` 剖析 | 本机（CPU/GPU + Docker GPU 沙箱）+ `kind: ssh` 通用远程执行，且**整条队列可下发到该后端**（超时/stall/重试/流式输出语义照旧，已实测）；Slurm/PBS 只探测不提交；仍无 Vast.ai/Modal API、无 W&B 监控、无 `/system-profile`、无 wave gating 与可续跑的队列状态；远端 GPU 计量未实现（`gpu_budget_s` 会被拒绝）；论文仍未声明远程后端 |
 | 2 | 对抗评审角色细度 | 8 个专门角色：`/experiment-audit` 抓假 ground truth 与分数归一化作弊、`/paper-claim-audit` 零上下文复核数字、`/kill-argument` 双线对抗、`/proof-checker` 20 类分型 + 反例红队、`/integrity-forensics` 46 模式 | 6 个：`cross_review`、`review_loop`、`argument_audit`、`formal_check`，以及 `adversarial_review`（`claim-audit` 零上下文复核数字 + `kill-argument` 双线拒稿/辩护，只产出不开释） |
 | 3 | 自演化落地门 | `/meta-optimize`（只读产出）→ `/meta-apply`（唯一特权落地点 + staged diff 跨模型 jury） | 只有 `meta_optimize`，无独立特权落地门 |
 | 4 | 图件生成 | `/figure-spec` 确定性 JSON→SVG（形状感知裁边、自环、CJK 宽度）、illustration、mermaid、poster HTML | 依赖外部 figure skill + `figure_manifest`，无内置确定性渲染器 |
@@ -132,6 +132,10 @@ readiness 的 `adversarial-review` gate，无法靠不读它来消化。
   留下了 `/tmp/ccfa-ran` 标记；ledger 记 `backend=ssh:root@127.0.0.1`、`wall_seconds=0.08`。
 * 预算：`--minutes 0.05` 跑 `sleep 120`，3.03 秒被杀死，ledger 记 `timed_out=true`、exit 1。
 * 超预算与调度器拒绝两条路径都不会写出「看起来成功」的记录。
+* 队列远端化：清单写 `backend: live` 后，3 个队列项都在容器里执行——成功项留下
+  `/tmp/ccfa-q-ran` 标记；重试项 `FIRST`(exit 7) → `SECOND`(exit 0) 两次尝试后
+  `complete`；`timeout_s: 3` 的项在 3 秒被杀、记 exit 124。每条 run-log 都带
+  `policy.backend=live` 与 `workdir`，所以"跑在远端"是可核对的字段，不是口头声明。
 
 过程中踩过一个真实坑，值得记下来：用 `ssh-keygen -N '""'`（PowerShell 单引号）会生成
 **带口令 `""` 的私钥**，客户端在 BatchMode 下无法解锁，表现为服务端日志已经是
