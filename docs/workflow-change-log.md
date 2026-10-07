@@ -2845,3 +2845,15 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `python -m unittest tests.test_cross_review (99 tests, OK)`
 
+## WC-20261007T144233Z-425860cd9a - Make the cross-review sandbox mode explicit and recorded
+
+- timestamp: `2026-10-07T14:42:33Z`
+- status: `complete`
+- author: `codex`
+- reason: After the Codex v0.162 alpha update the read-only sandbox helper fails to start on this host (helper_unknown_error: setup refresh had errors), so the reviewer could not read any input; the run command now accepts --sandbox (default read-only) and records the chosen mode.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/tests/test_cross_review.py`
+- tests:
+  - `python -m unittest tests.test_cross_review (101 tests, OK)`
+

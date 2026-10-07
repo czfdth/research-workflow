@@ -241,6 +241,21 @@ class TestPromptAndArgv(CrossReviewTests):
         self.assertIn("mcp_servers={}", argv)
         self.assertIn("禁止修改任何文件", runner.calls[0]["prompt"])
 
+    def test_sandbox_mode_is_passed_and_recorded(self):
+        runner = self._runner(payload=self._payload())
+
+        record = self._run(runner, sandbox="danger-full-access")
+
+        argv = runner.calls[0]["argv"]
+        self.assertEqual(argv[argv.index("-s") + 1], "danger-full-access")
+        self.assertEqual(record["sandbox"], "danger-full-access")
+
+    def test_invalid_sandbox_mode_is_rejected(self):
+        runner = self._runner(payload=self._payload())
+
+        with self.assertRaises(ValueError):
+            self._run(runner, sandbox="not-a-mode")
+
     def test_review_schema_is_strict(self):
         self.assertEqual(REVIEW_SCHEMA["properties"]["verdict"]["enum"], ["pass", "blocking"])
         self.assertEqual(

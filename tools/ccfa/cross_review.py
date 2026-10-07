@@ -142,6 +142,7 @@ _TEXT_SUFFIXES = frozenset(
     }
 )
 _REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
+_SANDBOX_MODES = ("read-only", "workspace-write", "danger-full-access")
 
 
 def _now_iso() -> str:
@@ -763,6 +764,7 @@ def run_review(
     model: str | None = None,
     provider: str | None = None,
     reasoning_effort: str | None = None,
+    sandbox: str = "read-only",
     allow_same_family: bool = False,
     override_reason: str | None = None,
     stage: str,
@@ -793,6 +795,10 @@ def run_review(
                 f"reasoning_effort 非法: {reasoning_effort!r}，"
                 f"应为 {' / '.join(_REASONING_EFFORTS)}"
             )
+    if sandbox not in _SANDBOX_MODES:
+        raise ValueError(
+            f"sandbox 非法: {sandbox!r}，应为 {' / '.join(sorted(_SANDBOX_MODES))}"
+        )
     provenance = _load_model_provenance(
         codex_config or (Path.home() / ".codex" / "config.toml"),
         provider,
@@ -849,7 +855,7 @@ def run_review(
         "-m",
         model,
         "-s",
-        "read-only",
+        sandbox,
         "--ephemeral",
         "--skip-git-repo-check",
         "-C",
@@ -887,6 +893,7 @@ def run_review(
             "started_at": started_at,
             "duration_s": duration_s,
             "stage": stage,
+            "sandbox": sandbox,
             "exit_code": int(exit_code),
             "stderr": _bounded_stderr(stderr),
         }
@@ -1001,6 +1008,7 @@ def run_review(
         "started_at": started_at,
         "duration_s": duration_s,
         "stage": stage,
+        "sandbox": sandbox,
         "exit_code": 0,
         "stderr": _bounded_stderr(stderr),
     }
@@ -1443,6 +1451,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=_REASONING_EFFORTS,
         help="传给 codex exec 的 model_reasoning_effort；非 thinking 本地模型用 none",
     )
+    run.add_argument(
+        "--sandbox",
+        choices=_SANDBOX_MODES,
+        default="read-only",
+        help=(
+            "传给 codex exec 的 sandbox 模式；默认 read-only。"
+            "当本机 read-only helper 无法启动时可显式改用 danger-full-access，"
+            "该取值会写入评审记录。"
+        ),
+    )
     run.add_argument("--allow-same-family", action="store_true")
     run.add_argument(
         "--override-reason",
@@ -1490,6 +1508,7 @@ def main(argv: list[str]) -> int:
             model=args.model,
             provider=args.provider,
             reasoning_effort=args.reasoning_effort,
+            sandbox=args.sandbox,
             allow_same_family=args.allow_same_family,
             override_reason=args.override_reason,
             stage=args.stage,
