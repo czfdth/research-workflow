@@ -20,4 +20,4 @@ python-pptx==1.0.2
 # same engine the reference ARIS paper-poster-html style_check.py uses; the gate
 # drives an already-installed Edge/Chrome channel (BROWSER_CHANNELS), so CI
 # needs no `playwright install` browser download.
-playwright==1.63.0
+playwright==1.64.0
