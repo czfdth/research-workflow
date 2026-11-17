@@ -1397,10 +1397,32 @@ def check_review(
                         "逐字出现在评审输入文件中",
                     )
                 )
+    # The stored review_tier is attacker-controlled: editing the JSON used to
+    # wash an advisory-only pass into a gate-capable one. Recompute it from the
+    # model/provider recorded at run time (the provider is independently bound
+    # to the Codex config by the provenance drift check above), then require
+    # the two to agree. Either value being advisory-only blocks a pass.
+    stored_tier = record.get("review_tier")
+    provider_value = record.get("provider")
+    recomputed_tier: str | None = None
+    if isinstance(model, str) and isinstance(provider_value, str):
+        recomputed_tier = _review_tier(model, provider_value)
     if (
-        record.get("review_tier") == "advisory-only"
-        and payload["verdict"] == "pass"
+        isinstance(stored_tier, str)
+        and recomputed_tier is not None
+        and stored_tier != recomputed_tier
     ):
+        problems.append(
+            Problem(
+                "review-tier-mismatch",
+                str(path),
+                None,
+                f"评审记录的 review_tier={stored_tier!r} 与 "
+                f"model/provider 重算值 {recomputed_tier!r} 不一致；"
+                "不得手工改 tier，必须重跑评审",
+            )
+        )
+    if "advisory-only" in {stored_tier, recomputed_tier} and payload["verdict"] == "pass":
         problems.append(
             Problem(
                 "review-advisory-only",

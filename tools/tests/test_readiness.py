@@ -503,6 +503,49 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(report["audit_profile"], "standard")
         self.assertEqual(report["human_review"]["status"], "not-required")
 
+    def test_assurance_draft_downgrade_is_explicit_and_blocks_ready(self):
+        # A high-assurance label with draft assurance used to report ready=true
+        # without running any high-assurance gate. The downgrade must be a
+        # first-class field and must block readiness.
+        self._touch_ledgers(["novelty"])
+        self._write_state(
+            "workflow:\n  profile: high-assurance\n  assurance: draft\n"
+        )
+
+        report = build_report(self.paper_root)
+
+        self.assertIsNotNone(report["audit_downgrade"])
+        self.assertEqual(
+            report["audit_downgrade"]["declared_profile"], "high-assurance"
+        )
+        self.assertEqual(
+            report["audit_downgrade"]["effective_audit_profile"], "standard"
+        )
+        self.assertFalse(report["ready"])
+        self.assertTrue(
+            any("downgraded by assurance=draft" in b for b in report["blocking"])
+        )
+        self.assertIn("audit downgrade", render_markdown(report))
+
+    def test_skipped_gates_are_exposed_in_report(self):
+        # Gates whose evidence ledger is absent used to vanish with no trace.
+        # They are now listed so a report cannot read as "all pass" while
+        # gates were silently never registered. Under high-assurance every
+        # ledger is required; under standard, experiment-audit is optional.
+        report = build_report(self.paper_root, profile="high-assurance")
+
+        skipped = report["skipped_gates"]
+        self.assertTrue(skipped)
+        by_gate = {item["gate"]: item for item in skipped}
+        self.assertIn("argument-audit", by_gate)
+        self.assertTrue(by_gate["argument-audit"]["required"])
+        self.assertIn("## Skipped gates", render_markdown(report))
+
+        standard = build_report(self.paper_root, profile="standard")
+        std_by_gate = {item["gate"]: item for item in standard["skipped_gates"]}
+        self.assertIn("experiment-audit", std_by_gate)
+        self.assertFalse(std_by_gate["experiment-audit"]["required"])
+
     def test_standard_gate_failures_still_expose_human_checkpoints(self):
         human = readiness._human_review_status(
             self.paper_root,

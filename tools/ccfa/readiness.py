@@ -598,7 +598,16 @@ def _gate_specs(
     *,
     state_stage: object = None,
     mode: str = "conference",
+    skipped: list[dict] | None = None,
 ) -> list[tuple[str, object]]:
+    """Build the gate list.
+
+    ``skipped``, when provided, collects every gate that was left unregistered
+    because its evidence ledger is absent. Formerly these disappeared without
+    a trace, so a readiness report could read as "all gates pass" when several
+    had simply never been wired in. Required ledgers are already surfaced via
+    ``missing_required``; this records the optional ones so nothing is silent.
+    """
     specs: dict[str, object] = {
         "schema-valid": lambda: _schema_gate(paper_root),
     }
@@ -632,10 +641,21 @@ def _gate_specs(
             require_verified=profile == "high-assurance",
         ),
     }
+    required_ledgers = set(PROFILE_REQUIRED_LEDGERS[profile])
     for ledger in dict.fromkeys(
         (*PROFILE_REQUIRED_LEDGERS[profile], *OPTIONAL_GATED_LEDGERS)
     ):
         if not (paper_root / EVIDENCE_LEDGER_PATHS[ledger]).is_file():
+            gate_name = LEDGER_GATE_NAMES.get(ledger)
+            if skipped is not None and gate_name is not None:
+                skipped.append(
+                    {
+                        "gate": gate_name,
+                        "ledger": ledger,
+                        "path": EVIDENCE_LEDGER_PATHS[ledger].as_posix(),
+                        "required": ledger in required_ledgers,
+                    }
+                )
             continue
         gate_name = LEDGER_GATE_NAMES.get(ledger)
         if gate_name is not None:
@@ -773,6 +793,7 @@ def _run_gates(
     *,
     state_stage: object = None,
     mode: str = "conference",
+    skipped: list[dict] | None = None,
 ) -> list[dict]:
     return [
         _run_gate(name, runner)
@@ -781,6 +802,7 @@ def _run_gates(
             profile,
             state_stage=state_stage,
             mode=mode,
+            skipped=skipped,
         )
     ]
 
@@ -1139,11 +1161,13 @@ def build_report(
     ledgers = _ledger_status(paper_root, audit_profile)
     git = _git_summary(paper_root)
     scientific = _scientific_status(paper_root)
+    skipped_gates: list[dict] = []
     gate_results = _run_gates(
         paper_root,
         audit_profile,
         state_stage=stage,
         mode=mode,
+        skipped=skipped_gates,
     )
     human_review = _human_review_status(paper_root, audit_profile, gate_results)
     executed_gates = [result["name"] for result in gate_results]
@@ -1183,6 +1207,28 @@ def build_report(
         and human_review["status"] == "pending-human-review"
     ):
         blocking.append("required human review is incomplete")
+
+    # A project can declare profile=high-assurance while assurance=draft
+    # quietly downgrades the audit chain to standard. That used to let a
+    # paper report ready=true without ever running the high-assurance gates
+    # or the mandatory human sign-off. Record the downgrade explicitly and
+    # block readiness: declare profile=standard if the audits are only draft.
+    audit_downgrade = None
+    if selected_profile == "high-assurance" and audit_profile != selected_profile:
+        audit_downgrade = {
+            "declared_profile": selected_profile,
+            "assurance": assurance or _default_assurance(selected_profile),
+            "effective_audit_profile": audit_profile,
+            "note": (
+                f"assurance={assurance or _default_assurance(selected_profile)} "
+                f"把 {selected_profile} 审计链降级为 {audit_profile}；"
+                "高保障 gate 与强制人工签字未执行，不能作为 high-assurance ready"
+            ),
+        }
+        blocking.append(
+            "high-assurance audit chain downgraded by assurance=draft; "
+            "set workflow.assurance: submission to run high-assurance gates"
+        )
 
     review_status = "independent-evidence-present"
     if audit_profile == "minimal":
@@ -1224,6 +1270,7 @@ def build_report(
         "profile": selected_profile,
         "assurance": assurance or _default_assurance(selected_profile),
         "audit_profile": audit_profile,
+        "audit_downgrade": audit_downgrade,
         "stage": {
             **stage,
             "gate_criterion": gate.criterion,
@@ -1246,6 +1293,7 @@ def build_report(
         },
         "gate_results": gate_results,
         "verdicts": verdicts,
+        "skipped_gates": skipped_gates,
         "git": {
             "present": git.present,
             "dirty": git.dirty,
@@ -1280,6 +1328,15 @@ def render_markdown(report: dict) -> str:
         f"- profile: `{report['profile']}`",
         f"- assurance: `{report.get('assurance')}` "
         f"(audit chain `{report.get('audit_profile')}`)",
+        *(
+            [
+                "- **audit downgrade**: "
+                + str(report["audit_downgrade"]["note"])
+                + " — 如需高保障请设 `workflow.assurance: submission`"
+            ]
+            if report.get("audit_downgrade")
+            else []
+        ),
         f"- stage: `{report['stage']['current']}` / gate `{report['stage']['gate']}`",
         f"- ready: `{str(report['ready']).lower()}`",
         "",
@@ -1314,6 +1371,16 @@ def render_markdown(report: dict) -> str:
     lines.extend(["", "## Blocking", ""])
     if report["blocking"]:
         lines.extend(f"- {item}" for item in report["blocking"])
+    else:
+        lines.append("- none")
+    skipped_gates = report.get("skipped_gates") or []
+    lines.extend(["", "## Skipped gates (evidence ledger absent)", ""])
+    if skipped_gates:
+        for item in skipped_gates:
+            need = "required" if item.get("required") else "optional"
+            lines.append(
+                f"- `{item['gate']}` skipped: `{item['path']}` absent ({need})"
+            )
     else:
         lines.append("- none")
     lines.extend(["", "## Human Checkpoints", ""])

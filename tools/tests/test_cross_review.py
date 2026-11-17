@@ -941,6 +941,39 @@ class TestCheckReview(CrossReviewTests):
 
         self.assertIn("review-advisory-only", codes)
 
+    def test_tampered_review_tier_is_detected_by_recomputation(self):
+        # A pass record whose stored tier is edited must not be trusted: check
+        # recomputes the tier from the provenance-bound model/provider and
+        # reports the disagreement.
+        self._run(self._runner(payload=self._payload()))
+        record_path = self._record_path()
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["review_tier"], "gate-capable")
+        record["review_tier"] = "advisory-only"
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        self.assertIn("review-tier-mismatch", codes)
+
+    def test_advisory_model_cannot_be_washed_by_editing_stored_tier(self):
+        # An advisory-only reviewer already had its pass downgraded to
+        # blocking at run time. Flipping the stored tier to gate-capable used
+        # to make check treat the record as a clean pass; recomputation must
+        # catch the edit so the record can never be washed into an acquittal.
+        self._run(self._runner(payload=self._payload()), model="qwen3:30b")
+        record_path = self._record_path()
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["verdict"], "blocking")
+        self.assertEqual(record["review_tier"], "advisory-only")
+        record["review_tier"] = "gate-capable"
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+
+        codes = [problem.code for problem in check_review(self.paper_root)]
+
+        self.assertIn("review-tier-mismatch", codes)
+        self.assertIn("review-blocking", codes)
+
     def test_model_restating_a_reserved_conclusion_is_flagged(self):
         # A model that carries a superseded review's tier conclusion forward --
         # a bare "review-advisory-only" with no harness suffix -- must be
