@@ -6,13 +6,23 @@ exists because a model typed it". A ``verified`` record must carry fetched
 evidence; the loader never crashes on a missing or malformed evidence block,
 it records the reason on the entry so ``citation_guard`` can report it.
 
-``evidence.body_sha256`` is the sha256 of the raw response bytes: it proves a
-fetch happened, but without the stored body it cannot be recomputed offline,
-so the anti-forgery boundary is incomplete.
+``evidence.body_sha256`` is the sha256 of the raw response bytes, and
+``evidence.body_b64`` archives those bytes (base64). Storing the body makes the
+digest re-computable offline and binds the recorded title to the actual
+response, so a hand-written ledger with a plausible hash but no real body is
+detected. This is an internal-consistency and content-binding check, not
+cryptographic proof: someone who fabricates a whole body and recomputes its
+hash can still pass, but the body is archived for audit.
+
+Ledgers written before ``body_b64`` existed load fine; those records get a
+non-blocking advisory that the body is not stored.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -20,6 +30,7 @@ from typing import NamedTuple
 
 from ccfa.bib import normalize_doi
 from ccfa.cli import save_text_atomically
+from ccfa.doi_lookup import normalize_title
 
 VALID_STATUSES = ("verified", "unverified", "failed")
 
@@ -32,6 +43,16 @@ class LedgerEvidence(NamedTuple):
     retrieved_at: str
     matched_title: str
     source: str
+    # base64 of the raw response bytes. Empty means a legacy record written
+    # before the body was archived: the digest cannot be recomputed offline.
+    body_b64: str = ""
+
+
+class BodyCheck(NamedTuple):
+    """Result of re-deriving an evidence body's digest offline."""
+
+    verdict: str  # "verified" | "recompute-mismatch" | "body-invalid" | "body-absent"
+    detail: str
 
 
 class LedgerRecord(NamedTuple):
@@ -57,12 +78,52 @@ def _parse_evidence(value: object) -> LedgerEvidence:
         raise ValueError(
             "evidence.body_sha256 必须是 sha256:<64 位小写十六进制>"
         )
+    body_b64 = value.get("body_b64", "")
+    if not isinstance(body_b64, str):
+        raise ValueError("evidence.body_b64 必须是字符串")
     return LedgerEvidence(
         body_sha256=body_sha256,
         retrieved_at=value["retrieved_at"].strip(),
         matched_title=value["matched_title"].strip(),
         source=value["source"].strip(),
+        body_b64=body_b64.strip(),
     )
+
+
+def verify_evidence_body(evidence: LedgerEvidence | None) -> BodyCheck:
+    """Re-derive the stored body's digest and check the title is bound to it.
+
+    * ``body-absent``: a legacy record with no archived body. Non-blocking;
+      the digest cannot be recomputed offline.
+    * ``body-invalid``: ``body_b64`` is not valid base64.
+    * ``recompute-mismatch``: the bytes hash to something other than the
+      declared ``body_sha256`` — the ledger was edited or corrupted.
+    * ``title-unbound``: the body is intact but its text does not contain the
+      recorded ``matched_title`` — evidence copied from a different response.
+    * ``verified``: digest matches and the title is present in the body.
+    """
+    if evidence is None or not evidence.body_b64:
+        return BodyCheck("body-absent", "证据未归档响应体，无法离线重算哈希")
+    try:
+        raw = base64.b64decode(evidence.body_b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        return BodyCheck("body-invalid", f"body_b64 不是合法 base64: {exc}")
+    recomputed = "sha256:" + hashlib.sha256(raw).hexdigest()
+    if recomputed != evidence.body_sha256:
+        return BodyCheck(
+            "recompute-mismatch",
+            f"响应体重算哈希 {recomputed} 与台账声明 "
+            f"{evidence.body_sha256} 不一致",
+        )
+    text = raw.decode("utf-8", errors="replace")
+    normalized_body = normalize_title(text)
+    normalized_title = normalize_title(evidence.matched_title)
+    if not normalized_title or normalized_title not in normalized_body:
+        return BodyCheck(
+            "title-unbound",
+            "响应体中存在但找不到声明的匹配标题，证据可能被替换",
+        )
+    return BodyCheck("verified", "响应体哈希重算一致且标题绑定")
 
 
 def load_ledger(path: Path) -> dict[str, LedgerRecord]:
@@ -139,7 +200,11 @@ def save_ledger(path: Path, records: dict[str, LedgerRecord]) -> None:
             "source": record.source,
         }
         if record.evidence is not None:
-            entry["evidence"] = dict(record.evidence._asdict())
+            evidence = dict(record.evidence._asdict())
+            # Keep legacy ledgers byte-compatible: omit an empty body field.
+            if not evidence.get("body_b64"):
+                evidence.pop("body_b64", None)
+            entry["evidence"] = evidence
         if record.detail:
             entry["detail"] = record.detail
         entries[key] = entry

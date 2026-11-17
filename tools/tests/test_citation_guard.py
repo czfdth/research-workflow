@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import io
 import json
@@ -17,11 +18,21 @@ BIB = r"""
 """
 
 
-def _evidence(sha=None):
+def _evidence(sha=None, title="Sample Title", body=False):
+    """Build evidence; when body=True the hash/title are self-consistent."""
+    if body:
+        raw = json.dumps({"title": title, "DOI": "10.1/ok"}).encode("utf-8")
+        return {
+            "body_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "retrieved_at": "2026-10-04T00:00:00Z",
+            "matched_title": title,
+            "source": "crossref",
+            "body_b64": base64.b64encode(raw).decode("ascii"),
+        }
     return {
         "body_sha256": "sha256:" + (sha or "a" * 64),
         "retrieved_at": "2026-10-04T00:00:00Z",
-        "matched_title": "Sample Title",
+        "matched_title": title,
         "source": "crossref",
     }
 
@@ -32,23 +43,23 @@ LEDGER = {
         "good": {
             "status": "verified",
             "doi": "10.1/ok",
-            "evidence": _evidence(),
+            "evidence": _evidence(body=True),
         },
         "unverified": {"status": "unverified", "doi": "10.1/unverified"},
         "orphan": {
             "status": "verified",
             "doi": "10.1/orphan",
-            "evidence": _evidence(),
+            "evidence": _evidence(body=True),
         },
         "dupa": {
             "status": "verified",
             "doi": "10.1/same",
-            "evidence": _evidence(),
+            "evidence": _evidence(body=True),
         },
         "dupb": {
             "status": "verified",
             "doi": "10.1/same",
-            "evidence": _evidence(),
+            "evidence": _evidence(body=True),
         },
     },
 }
@@ -86,7 +97,7 @@ class TestCheck(BaseCase):
                     "entries": {
                         "good": {
                             "status": "verified",
-                            "evidence": _evidence(),
+                            "evidence": _evidence(body=True),
                         }
                     },
                 }
@@ -197,7 +208,7 @@ class TestMain(BaseCase):
                     "entries": {
                         "good": {
                             "status": "verified",
-                            "evidence": _evidence(),
+                            "evidence": _evidence(body=True),
                         }
                     },
                 }
@@ -651,6 +662,7 @@ class TestVerifyTitlesOnline(BaseCase):
 
     def test_exact_title_match_becomes_verified_with_evidence(self):
         from ccfa.citation_ledger import load_ledger
+        from ccfa.citation_ledger import verify_evidence_body
 
         problems, _ = self._run(self._fetch())
         self.assertNotIn("unverified-entry", self.codes(problems))
@@ -660,6 +672,9 @@ class TestVerifyTitlesOnline(BaseCase):
         self.assertTrue(record.evidence.body_sha256.startswith("sha256:"))
         self.assertEqual(record.evidence.matched_title, self.TITLE)
         self.assertEqual(record.source, "openalex")
+        # The archived body is re-derivable offline.
+        self.assertTrue(record.evidence.body_b64)
+        self.assertEqual(verify_evidence_body(record.evidence).verdict, "verified")
 
     def test_weak_title_match_stays_unverified_with_advisory(self):
         from ccfa.citation_ledger import load_ledger
@@ -763,6 +778,7 @@ class TestVerifyArxivId(BaseCase):
 
     def test_arxiv_id_verifies_with_evidence_and_no_title_search(self):
         from ccfa.citation_ledger import load_ledger
+        from ccfa.citation_ledger import verify_evidence_body
 
         problems, _ = self._run(lambda url, timeout: (200, self.ATOM))
         self.assertNotIn("unverified-entry", self.codes(problems))
@@ -772,6 +788,8 @@ class TestVerifyArxivId(BaseCase):
         self.assertIsNotNone(record.evidence)
         self.assertEqual(record.evidence.matched_title, self.TITLE)
         self.assertTrue(record.evidence.body_sha256.startswith("sha256:"))
+        self.assertTrue(record.evidence.body_b64)
+        self.assertEqual(verify_evidence_body(record.evidence).verdict, "verified")
 
     def test_arxiv_http_error_falls_through_to_title_search(self):
         from ccfa.citation_ledger import load_ledger
@@ -822,3 +840,109 @@ class TestVerifyArxivId(BaseCase):
         self.assertIn("unverified-entry", self.codes(problems))
         self.assertIn("arxiv-id-lookup-unresolved", [a.code for a in advisories])
         self.assertEqual(load_ledger(self.ledger)["arx"].status, "unverified")
+
+
+class TestEvidenceBodyGate(BaseCase):
+    """The final check re-derives digests from archived bodies."""
+
+    def _setup_bib(self):
+        self.bib.write_text("@misc{k, title = {Real Paper}}\n", encoding="utf-8")
+        self.cite(r"\cite{k}")
+
+    def _write_evidence(self, evidence):
+        self.ledger.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {"k": {"status": "verified", "evidence": evidence}},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_legacy_ledger_without_body_is_advisory_not_blocking(self):
+        self._setup_bib()
+        self._write_evidence(
+            {
+                "body_sha256": "sha256:" + "a" * 64,
+                "retrieved_at": "x",
+                "matched_title": "Real Paper",
+                "source": "crossref",
+            }
+        )
+        problems, advisories = self.run_check()
+        self.assertEqual(problems, [], problems)
+        self.assertIn("evidence-body-not-stored", [a.code for a in advisories])
+
+    def test_hand_written_fake_hash_with_real_body_blocks(self):
+        self._setup_bib()
+        raw = json.dumps({"title": "Real Paper"}).encode("utf-8")
+        self._write_evidence(
+            {
+                "body_sha256": "sha256:" + "b" * 64,  # fake, does not match body
+                "retrieved_at": "x",
+                "matched_title": "Real Paper",
+                "source": "crossref",
+                "body_b64": base64.b64encode(raw).decode("ascii"),
+            }
+        )
+        problems, _ = self.run_check()
+        self.assertIn("evidence-body-tampered", self.codes(problems))
+        # Must not be downgraded to unverified-entry / advisory only.
+        self.assertNotIn("unverified-entry", self.codes(problems))
+
+    def test_body_from_another_paper_blocks(self):
+        self._setup_bib()
+        raw = json.dumps({"title": "An Entirely Different Paper"}).encode("utf-8")
+        self._write_evidence(
+            {
+                "body_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                "retrieved_at": "x",
+                "matched_title": "Real Paper",  # claims a title not in the body
+                "source": "crossref",
+                "body_b64": base64.b64encode(raw).decode("ascii"),
+            }
+        )
+        problems, _ = self.run_check()
+        self.assertIn("evidence-body-tampered", self.codes(problems))
+
+    def test_consistent_body_passes_clean(self):
+        self._setup_bib()
+        raw = json.dumps({"title": "Real Paper"}).encode("utf-8")
+        self._write_evidence(
+            {
+                "body_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                "retrieved_at": "x",
+                "matched_title": "Real Paper",
+                "source": "crossref",
+                "body_b64": base64.b64encode(raw).decode("ascii"),
+            }
+        )
+        problems, advisories = self.run_check()
+        self.assertEqual(problems, [], problems)
+        self.assertEqual(advisories, [])
+
+    def test_online_doi_write_persists_body_b64(self):
+        from ccfa.citation_ledger import load_ledger
+
+        self.bib.write_text("@misc{k, doi = {10.1/ok}, title = {Real Paper}}\n", encoding="utf-8")
+        self.cite(r"\cite{k}")
+        self.ledger.write_text(
+            json.dumps({"version": 1, "entries": {}}), encoding="utf-8"
+        )
+
+        raw = json.dumps(
+            {"message": {"DOI": "10.1/ok", "title": ["Real Paper"]}}
+        ).encode("utf-8")
+        check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_online=True,
+            fetch=lambda url, timeout: (200, raw),
+        )
+        record = load_ledger(self.ledger)["k"]
+        self.assertTrue(record.evidence.body_b64)
+        from ccfa.citation_ledger import verify_evidence_body
+
+        self.assertEqual(verify_evidence_body(record.evidence).verdict, "verified")

@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -8,6 +10,18 @@ from pathlib import Path
 
 TOOLS_ROOT = Path(__file__).resolve().parents[1]
 GUARD = TOOLS_ROOT / "ccfa" / "citation_guard.py"
+
+
+def _archived_evidence():
+    """A self-consistent evidence body so the clean fixture has no advisory."""
+    raw = json.dumps({"title": "Sample Title"}).encode("utf-8")
+    return {
+        "body_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "retrieved_at": "2026-10-04T00:00:00Z",
+        "matched_title": "Sample Title",
+        "source": "crossref",
+        "body_b64": base64.b64encode(raw).decode("ascii"),
+    }
 
 
 class TestCitationGuardEndToEnd(unittest.TestCase):
@@ -46,12 +60,7 @@ class TestCitationGuardEndToEnd(unittest.TestCase):
                     "entries": {
                         "good": {
                             "status": "verified",
-                            "evidence": {
-                                "body_sha256": "sha256:" + "a" * 64,
-                                "retrieved_at": "2026-10-04T00:00:00Z",
-                                "matched_title": "Sample Title",
-                                "source": "crossref",
-                            },
+                            "evidence": _archived_evidence(),
                         }
                     },
                 }

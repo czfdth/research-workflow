@@ -7,8 +7,8 @@ similar after normalization. A successful lookup reuses ``doi_lookup``'s
 :class:`LookupEvidence` / :class:`LookupResult` so a ledger entry written from
 an arXiv id has the same shape as one written from a DOI.
 
-As with ``doi_lookup``, ``body_sha256`` proves a fetch happened but is not a
-complete anti-forgery boundary without the stored body.
+The raw body is archived as base64 so ``body_sha256`` can be recomputed
+offline by :func:`ccfa.citation_ledger.verify_evidence_body`.
 
 Network access is opt-in at the caller level: nothing here runs unless
 lookup() is called explicitly. ``fetch`` is injectable so tests stay offline.
@@ -16,6 +16,7 @@ lookup() is called explicitly. ``fetch`` is injectable so tests stay offline.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import urllib.error
 import urllib.parse
@@ -136,6 +137,7 @@ def lookup(
         retrieved_at=_utc_now(),
         matched_title=title,
         source="arxiv",
+        body_b64=base64.b64encode(raw).decode("ascii"),
     )
     return LookupResult(
         doi=normalized,

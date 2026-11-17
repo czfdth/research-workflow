@@ -16,6 +16,7 @@ body must parse and contain a usable title).
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import sys
@@ -56,6 +57,9 @@ class Candidate(NamedTuple):
     url: str
     body_sha256: str
     retrieved_at: str
+    # base64 of the raw provider response, archived so the ledger can
+    # recompute body_sha256 offline and bind matched_title to the bytes.
+    body_b64: str = ""
 
 
 class SearchResult(NamedTuple):
@@ -270,6 +274,9 @@ def search_provider(
             Problem("literature-search-malformed", url, None, f"检索响应无法解析: {exc}"),
             True,
         )
+    raw_bytes = raw if isinstance(raw, bytes) else raw.encode("utf-8")
+    encoded = base64.b64encode(raw_bytes).decode("ascii")
+    candidates = [candidate._replace(body_b64=encoded) for candidate in candidates]
     return SearchResult(provider, candidates, None, True)
 
 

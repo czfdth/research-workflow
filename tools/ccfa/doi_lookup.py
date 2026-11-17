@@ -19,6 +19,7 @@ lookup() is called explicitly.
 
 from __future__ import annotations
 
+import base64
 import difflib
 import hashlib
 import json
@@ -51,15 +52,16 @@ _TITLE_SEPARATORS = re.compile(r"[^0-9a-z\u4e00-\u9fff]+")
 class LookupEvidence(NamedTuple):
     """Fetched-body evidence.
 
-    ``body_sha256`` is computed over the raw response bytes. It proves that a
-    fetch happened, but it cannot be recomputed offline when the body was not
-    stored, so the anti-forgery boundary is incomplete.
+    ``body_sha256`` is computed over the raw response bytes and ``body_b64``
+    archives those bytes so the digest can be recomputed offline by
+    :func:`ccfa.citation_ledger.verify_evidence_body`.
     """
 
     body_sha256: str
     retrieved_at: str
     matched_title: str
     source: str
+    body_b64: str = ""
 
 
 class LookupResult(NamedTuple):
@@ -238,6 +240,7 @@ def lookup(
             retrieved_at=_utc_now(),
             matched_title=matched_title.strip(),
             source=source,
+            body_b64=base64.b64encode(raw).decode("ascii"),
         )
         return LookupResult(
             normalized,

@@ -120,6 +120,14 @@
 2. **传输韧性**（`tools/ccfa/literature_transport.py`）：给文献检索默认 fetch 加指数退避 + 抖动、`Retry-After` 处理（>300s 直接放弃）、连续 429 断路器（CLOSED/OPEN/HALF_OPEN）、URL 密钥脱敏、polite-pool `mailto`。全 stdlib；状态在实例上而非模块全局；注入的 fetch 完全绕过传输层，测试仍全离线。
 3. **git 身份**：仓库级配置 `WorkBuddy <workbuddy@localhost>`，后续提交不再需要临时 `-c`。
 
-### 仍未闭合的缺口（需单独一轮，改动较深）
+### 第三轮：闭合证据体反伪造边界（2026-11-18）
 
-`evidence.body_sha256` 目前只证明「发生过一次 fetch」：响应体不落盘，无法离线重算哈希，因此检测不出手写的伪台账条目。闭合它需要跨模块改动（三个 lookup 返回原始响应体 → 台账证据结构增加 body 引用 → 校验时重算哈希 → 旧台账的向后兼容降级），影响面覆盖 17 处测试夹具。这不是 bug 而是已知边界，代码注释（`citation_ledger.py` / `doi_lookup.py` / `arxiv_lookup.py`）均已如实标注；建议作为独立一轮实现，不与本次加固混在一起。
+上一轮延后的缺口已闭合。原状态是「`body_sha256` 只证明发生过 fetch，响应体不落盘无法离线重算」。现在：
+
+- `LedgerEvidence` 新增 `body_b64`：三个 lookup（DOI / arXiv / 标题反查）成功时把原始响应字节 base64 归档进台账；`save_ledger` 对旧记录省略该字段以保持字节兼容。
+- `citation_ledger.verify_evidence_body()` 离线重算 sha256 并做标题绑定（响应体文本须含 `matched_title`），返回 `verified / body-absent / body-invalid / recompute-mismatch / title-unbound`。
+- `citation_guard` 校验循环据此分流：手写伪台账（哈希对不上、体被替换、内容绑定失败）报阻塞 problem `evidence-body-tampered`；旧台账无 body 时只给非阻塞 advisory `evidence-body-not-stored`，不破坏既有语料。
+
+**能力边界（如实说明）**：这是「内部一致性 + 内容绑定 + 离线可重算」，不是密码学防伪造。有人若整份伪造响应体并重算哈希仍可通过，但响应体已归档可人工审计，且伪造门槛从「编一个哈希串」提高到「构造内容自洽的整份假响应」。
+
+- 测试：`TestEvidenceBodyVerification`（7 项，含哈希篡改 / base64 非法 / 异文绑定 / 往返 / 旧台账兼容）、`TestEvidenceBodyGate`（5 项，含手写伪哈希阻塞 / 异文阻塞 / 旧台账降级 / 在线写入持久化），以及标题与 arXiv 路径的 body_b64 断言。

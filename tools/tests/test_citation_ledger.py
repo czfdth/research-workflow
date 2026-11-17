@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import tempfile
 import unittest
@@ -9,6 +11,7 @@ from ccfa.citation_ledger import (
     LedgerRecord,
     load_ledger,
     save_ledger,
+    verify_evidence_body,
 )
 
 
@@ -216,3 +219,99 @@ class TestLoadLedger(unittest.TestCase):
         }
 
         self.assertEqual(load_ledger(_ledger(payload))["k"].detail, "")
+
+
+class TestEvidenceBodyVerification(unittest.TestCase):
+    """Offline re-derivation of the archived response body."""
+
+    @staticmethod
+    def _consistent(title="Attention Is All You Need"):
+        raw = json.dumps({"title": title}).encode("utf-8")
+        return LedgerEvidence(
+            body_sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+            retrieved_at="2026-11-18T00:00:00Z",
+            matched_title=title,
+            source="crossref",
+            body_b64=base64.b64encode(raw).decode("ascii"),
+        )
+
+    def test_consistent_body_verifies(self):
+        check = verify_evidence_body(self._consistent())
+        self.assertEqual(check.verdict, "verified")
+
+    def test_missing_body_is_absent_not_forgery(self):
+        evidence = LedgerEvidence(
+            body_sha256="sha256:" + "a" * 64,
+            retrieved_at="x",
+            matched_title="Sample Title",
+            source="crossref",
+        )
+        self.assertEqual(verify_evidence_body(evidence).verdict, "body-absent")
+        self.assertEqual(verify_evidence_body(None).verdict, "body-absent")
+
+    def test_tampered_hash_is_detected(self):
+        evidence = self._consistent()._replace(body_sha256="sha256:" + "b" * 64)
+        self.assertEqual(
+            verify_evidence_body(evidence).verdict, "recompute-mismatch"
+        )
+
+    def test_invalid_base64_is_detected(self):
+        evidence = self._consistent()._replace(body_b64="!!!not base64!!!")
+        self.assertEqual(verify_evidence_body(evidence).verdict, "body-invalid")
+
+    def test_body_from_a_different_paper_is_unbound(self):
+        # Hash is internally consistent, but the body's title differs from the
+        # title the ledger claims — evidence copied from another response.
+        raw = json.dumps({"title": "A Totally Different Paper"}).encode("utf-8")
+        evidence = LedgerEvidence(
+            body_sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+            retrieved_at="x",
+            matched_title="Attention Is All You Need",
+            source="crossref",
+            body_b64=base64.b64encode(raw).decode("ascii"),
+        )
+        self.assertEqual(verify_evidence_body(evidence).verdict, "title-unbound")
+
+    def test_body_b64_round_trips_through_save_and_load(self):
+        path = _ledger({"version": 1, "entries": {}})
+        evidence = self._consistent()
+        save_ledger(
+            path,
+            {
+                "k": LedgerRecord(
+                    key="k",
+                    doi=None,
+                    status="verified",
+                    verified_at=evidence.retrieved_at,
+                    source=evidence.source,
+                    evidence=evidence,
+                )
+            },
+        )
+        reloaded = load_ledger(path)["k"]
+        self.assertEqual(reloaded.evidence.body_b64, evidence.body_b64)
+        self.assertEqual(verify_evidence_body(reloaded.evidence).verdict, "verified")
+
+    def test_legacy_evidence_serializes_without_body_field(self):
+        path = _ledger({"version": 1, "entries": {}})
+        evidence = LedgerEvidence(
+            body_sha256="sha256:" + "a" * 64,
+            retrieved_at="x",
+            matched_title="Sample Title",
+            source="crossref",
+        )
+        save_ledger(
+            path,
+            {
+                "k": LedgerRecord(
+                    key="k",
+                    doi=None,
+                    status="verified",
+                    verified_at="x",
+                    source="crossref",
+                    evidence=evidence,
+                )
+            },
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertNotIn("body_b64", payload["entries"]["k"]["evidence"])

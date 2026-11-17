@@ -17,6 +17,7 @@ from ccfa.citation_ledger import (
     LedgerRecord,
     load_ledger,
     save_ledger,
+    verify_evidence_body,
 )
 from ccfa.cli import Problem, emit, tool_error
 from ccfa.doi_lookup import lookup
@@ -225,6 +226,7 @@ def check(
                     retrieved_at=best["retrieved_at"],
                     matched_title=best["title"],
                     source=best["provider"],
+                    body_b64=best.get("body_b64", ""),
                 ),
                 evidence_error="",
                 detail=f"title-match similarity={similarity:.2f}",
@@ -267,6 +269,32 @@ def check(
                     f"（{reason}）；请运行 citation_guard --verify-online 重新核验",
                 )
             )
+        else:
+            # Re-derive the digest from the archived body. A hand-written
+            # ledger with a plausible hash but no real body fails here; a
+            # legacy record without a stored body only gets an advisory.
+            body_check = verify_evidence_body(record.evidence)
+            if body_check.verdict == "body-absent":
+                advisories.append(
+                    Problem(
+                        "evidence-body-not-stored",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的证据未归档响应体，无法离线重算哈希；"
+                        "请重新联网核验以写入 body_b64",
+                    )
+                )
+            elif body_check.verdict != "verified":
+                problems.append(
+                    Problem(
+                        "evidence-body-tampered",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的证据体校验失败"
+                        f"（{body_check.verdict}: {body_check.detail}）；"
+                        "台账可能被手写篡改或损坏，请重新联网核验",
+                    )
+                )
 
     by_doi: dict[str, list[str]] = {}
     for key, entry in entries.items():

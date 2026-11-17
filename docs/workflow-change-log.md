@@ -2923,3 +2923,27 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `python -m unittest tests.test_docs_consistency tests.test_scripts (201 tests, OK)`
   - `python -m unittest tests.test_literature_transport tests.test_literature_search tests.test_citation_guard (59 tests, OK)`
 
+## WC-20261117T163526Z-89f4a3d756 - Archive evidence bodies and close the anti-forgery gap
+
+- timestamp: `2026-11-17T16:35:26Z`
+- status: `complete`
+- author: `workbuddy`
+- reason: The body_sha256 in a citation ledger could not be recomputed offline because the response body was discarded, so a hand-written ledger with a plausible hash passed. All three lookup paths (DOI, arXiv, title search) now archive the raw response as base64 in LedgerEvidence.body_b64, serialized only when present so legacy ledgers stay byte-compatible. citation_ledger.verify_evidence_body() re-derives the digest and checks the recorded title is bound to the body text; citation_guard now reports evidence-body-tampered as a blocking problem for mismatched/invalid/unbound bodies and evidence-body-not-stored as a non-blocking advisory for legacy records. This is internal-consistency plus content-binding, not cryptographic proof: a fully fabricated body with a recomputed hash still passes but is archived for audit.
+- files:
+  - `docs/external-integration-plan-2026-11-17.md`
+  - `tools/ccfa/arxiv_lookup.py`
+  - `tools/ccfa/citation_guard.py`
+  - `tools/ccfa/citation_ledger.py`
+  - `tools/ccfa/doi_lookup.py`
+  - `tools/ccfa/literature_search.py`
+  - `tools/tests/test_citation_guard.py`
+  - `tools/tests/test_citation_guard_e2e.py`
+  - `tools/tests/test_citation_ledger.py`
+  - `tools/tests/test_doi_lookup.py`
+- tests:
+  - `end-to-end Crossref body archive/recompute round trip (verified)`
+  - `python -m unittest discover -s tools/tests -t tools (2542 tests, OK, skipped=8)`
+  - `python -m unittest tests.test_citation_guard_e2e (6 tests, OK)`
+  - `python -m unittest tests.test_citation_ledger tests.test_doi_lookup tests.test_arxiv_lookup tests.test_literature_search tests.test_citation_guard (110 tests, OK)`
+  - `python -m unittest tests.test_citation_ledger.TestEvidenceBodyVerification tests.test_citation_guard.TestEvidenceBodyGate (12 tests, OK)`
+
