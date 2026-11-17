@@ -2857,3 +2857,45 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
 - tests:
   - `python -m unittest tests.test_cross_review (101 tests, OK)`
 
+## WC-20261117T151514Z-3securityfix - Close three fail-open gaps in cross-review tier and readiness gates
+
+- timestamp: `2026-11-17T15:15:14Z`
+- status: `complete`
+- author: `workbuddy`
+- reason: Close three fail-open holes found in source audit: (1) cross-review check trusted the stored review_tier, so editing the JSON could wash an advisory-only pass into a gate-capable one; it now recomputes the tier from the provenance-bound model/provider and reports review-tier-mismatch on disagreement. (2) profile=high-assurance with assurance=draft silently downgraded the audit chain to standard and could report ready=true without high-assurance gates or human sign-off; the downgrade is now a first-class report field and blocks readiness. (3) gates skipped because an evidence ledger was absent vanished without a trace; skipped gates are now listed in the report and markdown.
+- files:
+  - `tools/ccfa/cross_review.py`
+  - `tools/ccfa/readiness.py`
+  - `tools/tests/test_cross_review.py`
+  - `tools/tests/test_readiness.py`
+- tests:
+  - `python -m unittest discover -s tools/tests -t tools (2480 tests, OK, skipped=8)`
+  - `python -m unittest tests.test_cross_review tests.test_readiness (180 tests, OK) before adding new cases`
+  - `4 new negative tests: tier tampering detected, advisory tier cannot be edited away, draft downgrade blocks ready, skipped gates exposed`
+
+## WC-20261117T154710Z-8702dd9b5d - Add offline-first literature search and no-DOI title verification
+
+- timestamp: `2026-11-17T15:47:10Z`
+- status: `complete`
+- author: `workbuddy`
+- reason: Integrate the useful ideas from comparable open-source research workflows without copying their code or licenses: (A) add ccfa literature-search, an explicit-online, evidence-binding OpenAlex/arXiv/Semantic Scholar CLI with injectable fetch and fail-closed parsing; (B) document a read-only MCP contract so generative frontends can call the existing gates without gaining write/clearing powers; (C) extend citation_guard with --verify-titles-online so no-DOI entries are reverse-resolved by title, with weak, ambiguous, no-result and HTTP-error cases kept unverified; (D) record the integration plan and its invariants. Provider/parse failures now return exit code 1 to match ccfa.cli.emit instead of reporting success with zero hits. All new network paths are opt-in and offline by default.
+- files:
+  - `.github/workflows/tests.yml`
+  - `README.md`
+  - `docs/external-integration-plan-2026-11-17.md`
+  - `docs/integrating-generating-agents.md`
+  - `scripts/literature-search.ps1`
+  - `tools/ccfa/citation_guard.py`
+  - `tools/ccfa/dispatch.py`
+  - `tools/ccfa/literature_search.py`
+  - `tools/ccfa/test_impact.py`
+  - `tools/tests/test_citation_guard.py`
+  - `tools/tests/test_docs_consistency.py`
+  - `tools/tests/test_literature_search.py`
+  - `tools/tests/test_scripts.py`
+- tests:
+  - `14 literature-search tests (providers, parsers, HTTP/parse/fetch failures, offline default, title-hint ordering, append-only --write-bib)`
+  - `7 no-DOI title verification tests (verified with evidence, weak/ambiguous/no-result/error stay unverified, flag off by default)`
+  - `python -m unittest discover -s tools/tests -t tools (2503 tests, OK, skipped=8)`
+  - `python -m unittest tests.test_literature_search tests.test_citation_guard (43 tests, OK)`
+

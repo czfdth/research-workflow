@@ -575,3 +575,145 @@ class TestVerifyOnline(BaseCase):
             if item.code == "doi-lookup-failed"
         )
         self.assertIn("doi mismatch", message)
+
+
+class TestVerifyTitlesOnline(BaseCase):
+    """A no-DOI entry resolved by title search, with fail-closed evidence."""
+
+    TITLE = "Attention Is All You Need"
+
+    def setUp(self):
+        super().setUp()
+        self.bib.write_text(
+            f'@misc{{nodoipaper, title = {{{self.TITLE}}}}}\n',
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {
+                        "nodoipaper": {"status": "unverified", "doi": None}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{nodoipaper}")
+
+    @staticmethod
+    def _openalex_body(titles):
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "display_name": title,
+                        "publication_year": 2017,
+                        "doi": "https://doi.org/10.1/titlematch",
+                        "authorships": [{"author": {"display_name": "A. Author"}}],
+                    }
+                    for title in titles
+                ]
+            }
+        )
+
+    def _fetch(self, titles=None, status=200):
+        titles = titles or [self.TITLE]
+        openalex = self._openalex_body(titles)
+        s2 = json.dumps(
+            {
+                "data": [
+                    {
+                        "title": title,
+                        "year": 2017,
+                        "authors": [{"name": "A. Author"}],
+                        "externalIds": {"DOI": "10.1/titlematch"},
+                        "url": "https://example.test/paper",
+                    }
+                    for title in titles
+                ]
+            }
+        )
+
+        def getter(url, timeout):
+            return status, s2 if "semanticscholar" in url else openalex
+
+        return getter
+
+    def _run(self, title_fetch):
+        return check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_titles_online=True,
+            title_fetch=title_fetch,
+        )
+
+    def test_exact_title_match_becomes_verified_with_evidence(self):
+        from ccfa.citation_ledger import load_ledger
+
+        problems, _ = self._run(self._fetch())
+        self.assertNotIn("unverified-entry", self.codes(problems))
+        record = load_ledger(self.ledger)["nodoipaper"]
+        self.assertEqual(record.status, "verified")
+        self.assertIsNotNone(record.evidence)
+        self.assertTrue(record.evidence.body_sha256.startswith("sha256:"))
+        self.assertEqual(record.evidence.matched_title, self.TITLE)
+        self.assertEqual(record.source, "openalex")
+
+    def test_weak_title_match_stays_unverified_with_advisory(self):
+        from ccfa.citation_ledger import load_ledger
+
+        problems, advisories = self._run(
+            self._fetch(["A Completely Unrelated Document"])
+        )
+        self.assertIn("unverified-entry", self.codes(problems))
+        self.assertIn("title-weak-match", [a.code for a in advisories])
+        self.assertEqual(load_ledger(self.ledger)["nodoipaper"].status, "unverified")
+
+    def test_ambiguous_high_similarity_stays_unverified(self):
+        # Two different titles that are both >= TITLE_MATCH_THRESHOLD similar
+        # to the query: a near-twin with a short suffix. The suffix must be
+        # short enough to stay above 0.9 (e.g. " extended version" only scores
+        # ~0.75 and would be treated as a weak, non-ambiguous hit). Cross-source
+        # duplicates of the *same* title are corroboration, not ambiguity.
+        near_twin = self.TITLE + " 2"  # normalized similarity ~= 0.96
+        problems, advisories = self._run(self._fetch([self.TITLE, near_twin]))
+        self.assertIn("unverified-entry", self.codes(problems))
+        self.assertIn("title-ambiguous-match", [a.code for a in advisories])
+
+    def test_cross_source_same_title_is_verified_not_ambiguous(self):
+        from ccfa.citation_ledger import load_ledger
+
+        problems, advisories = self._run(self._fetch([self.TITLE, self.TITLE]))
+        self.assertNotIn("title-ambiguous-match", [a.code for a in advisories])
+        self.assertNotIn("unverified-entry", self.codes(problems))
+        self.assertEqual(load_ledger(self.ledger)["nodoipaper"].status, "verified")
+
+    def test_http_error_is_a_problem_and_never_verifies(self):
+        from ccfa.citation_ledger import load_ledger
+
+        problems, _ = self._run(self._fetch(status=503))
+        self.assertIn("title-lookup-failed", self.codes(problems))
+        self.assertIn("unverified-entry", self.codes(problems))
+        self.assertEqual(load_ledger(self.ledger)["nodoipaper"].status, "unverified")
+
+    def test_no_results_is_advisory_not_verified(self):
+        def empty(url, timeout):
+            return 200, json.dumps({"results": []})
+
+        problems, advisories = self._run(empty)
+        self.assertIn("unverified-entry", self.codes(problems))
+        self.assertIn("title-no-match", [a.code for a in advisories])
+
+    def test_flag_off_by_default_never_touches_network(self):
+        def explode(url, timeout):
+            raise AssertionError("no network without --verify-titles-online")
+
+        problems, _ = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            title_fetch=explode,
+        )
+        self.assertIn("unverified-entry", self.codes(problems))

@@ -170,6 +170,7 @@ python -m ccfa readiness --paper-root $paper  # 任意平台，无需 PowerShell
 | `tools/ccfa/new_module.py` | 新增模块的一体化脚手架与清单审计：`create` 一次写模块、PowerShell 包装器、测试存根与六份清单（dispatch / wrapper manifest / docs manifest / CI py_compile / test-impact / README），任一锚点缺失即整体拒写；`audit` 只读报告磁盘与六份清单之间的双向漂移 | `scripts/new-module.ps1` |
 | `tools/ccfa/cost_metrics.py` | 把成本与吞吐指标接到真实产物：derive 从 stage 时间戳、run-log 与 compute-ledger 推出 time_to_first_attempt 与 cost_per_attempt，缺证据时 fail closed 而不是给估计值；check 对台账做双向漂移校验，并按 `data/cost-ledger.yaml` 的 `budgets`（`default` + 按 stage 覆盖）报 `cost-budget-exceeded`（problem）与 `cost-budget-unmeasured`（advisory） | `scripts/cost-metrics.ps1` |
 | `tools/ccfa/experiment_audit.py` | 实证论文的实验审计台账：查假 ground truth（自产标签、模型产出却无人工抽检、抽检样本/一致率不足）、分数归一化与选择泄漏（fit_on/selection_on=test）、幽灵结果（无 run／失败 run／build run／产物不在磁盘上）、范围膨胀（limits 为空、种子少于 3 个是 advisory）；`data/experiment-audit.yaml` 存在时接进 readiness（standard 与 high-assurance 都跑，只有 high-assurance 要求必须有），台账形状见 `docs/examples/experiment-audit.example.yaml`，模型侧对应 `adversarial-review --role experiment-audit` | `scripts/experiment-audit.ps1` |
+| `tools/ccfa/literature_search.py` | 按标题/关键词从 OpenAlex、arXiv、Semantic Scholar 检索候选文献（只读、显式联网、可注入 fetch） | `scripts/literature-search.ps1` |
 
 ## 阶段到命令速查
 

@@ -29,8 +29,16 @@ def check(
     ledger_path: Path,
     verify_online: bool = False,
     fetch=None,
+    verify_titles_online: bool = False,
+    title_fetch=None,
 ) -> tuple[list[Problem], list[Problem]]:
-    """Check citations; ``fetch`` is an injection point for offline tests."""
+    """Check citations; the ``fetch`` arguments are offline test injection points.
+
+    ``verify_titles_online`` resolves entries that have no DOI by searching
+    external indexes by title. It is opt-in and fails closed: only a high
+    title-similarity match with a fetched-body evidence record is accepted; a
+    weak or ambiguous match stays unverified and is reported as an advisory.
+    """
     manuscript = Path(manuscript)
     if not manuscript.is_dir():
         raise ValueError(f"手稿目录不存在或不是目录: {manuscript}")
@@ -93,6 +101,99 @@ def check(
                         message,
                     )
                 )
+        save_ledger(Path(ledger_path), refreshed)
+        ledger = refreshed
+
+    if verify_titles_online:
+        from ccfa import literature_search
+        from ccfa.doi_lookup import TITLE_MATCH_THRESHOLD, title_similarity
+
+        refreshed = dict(ledger)
+        for key in sorted(entries):
+            entry = entries[key]
+            if entry.doi:
+                continue
+            title = (entry.title or "").strip()
+            if not title:
+                continue
+            result = literature_search.search(
+                title,
+                providers=("openalex", "semanticscholar"),
+                online=True,
+                fetch=title_fetch,
+                title_hint=title,
+            )
+            for search_problem in result.get("problems", []):
+                problems.append(
+                    Problem(
+                        "title-lookup-failed",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的标题反查失败（{search_problem['code']}）",
+                    )
+                )
+            candidates = result.get("candidates", [])
+            if not candidates:
+                advisories.append(
+                    Problem(
+                        "title-no-match",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 无 DOI 且标题反查没有返回候选: {title}",
+                    )
+                )
+                continue
+            from ccfa.doi_lookup import normalize_title
+
+            best = candidates[0]
+            similarity = title_similarity(title, best["title"])
+            best_normalized = normalize_title(best["title"])
+            # A second hit with the same normalized title is cross-source
+            # corroboration, not ambiguity. Only a *different* high-similarity
+            # title makes the match ambiguous.
+            conflicting = any(
+                title_similarity(title, item["title"]) >= TITLE_MATCH_THRESHOLD
+                and normalize_title(item["title"]) != best_normalized
+                for item in candidates[1:]
+            )
+            if similarity < TITLE_MATCH_THRESHOLD:
+                advisories.append(
+                    Problem(
+                        "title-weak-match",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 标题反查最高相似度 {similarity:.2f} "
+                        f"低于阈值 {TITLE_MATCH_THRESHOLD}；"
+                        f"保持未核验，候选: {best['title']}",
+                    )
+                )
+                continue
+            if conflicting:
+                advisories.append(
+                    Problem(
+                        "title-ambiguous-match",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 标题反查有多个高相似候选，"
+                        "无法机械判定，保持未核验；需人工选择",
+                    )
+                )
+                continue
+            refreshed[key] = LedgerRecord(
+                key=key,
+                doi=best.get("doi") or None,
+                status="verified",
+                verified_at=best["retrieved_at"],
+                source=best["provider"],
+                evidence=LedgerEvidence(
+                    body_sha256=best["body_sha256"],
+                    retrieved_at=best["retrieved_at"],
+                    matched_title=best["title"],
+                    source=best["provider"],
+                ),
+                evidence_error="",
+                detail=f"title-match similarity={similarity:.2f}",
+            )
         save_ledger(Path(ledger_path), refreshed)
         ledger = refreshed
 
@@ -175,6 +276,15 @@ def main(argv: list[str]) -> int:
             "但未存响应体时无法离线复算，防伪造边界不完整"
         ),
     )
+    parser.add_argument(
+        "--verify-titles-online",
+        action="store_true",
+        help=(
+            "对没有 DOI 的条目按标题从 OpenAlex/arXiv/Semantic Scholar 反查；"
+            "只有高相似度且带响应体证据的命中才会写成 verified，"
+            "弱匹配/歧义保持未核验并给出 advisory；会改写台账文件"
+        ),
+    )
     args = parser.parse_args(argv[1:])
 
     try:
@@ -183,6 +293,7 @@ def main(argv: list[str]) -> int:
             Path(args.bib),
             Path(args.ledger),
             verify_online=args.verify_online,
+            verify_titles_online=args.verify_titles_online,
         )
     except ValueError as exc:
         return tool_error(str(exc))

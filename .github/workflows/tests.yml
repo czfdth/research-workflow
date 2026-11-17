@@ -160,6 +160,7 @@ jobs:
         run: |
           $env:PYTHONPATH = "tools"
           tools/.venv/Scripts/python.exe -m py_compile `
+            tools/ccfa/literature_search.py `
             tools/ccfa/experiment_audit.py `
             tools/ccfa/cost_metrics.py `
             tools/ccfa/new_module.py `

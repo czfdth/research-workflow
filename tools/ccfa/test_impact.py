@@ -93,6 +93,11 @@ def requires_latex_engine(selection: Selection) -> bool:
 
 
 _TOOLS_EXACT = {
+    "tools/ccfa/literature_search.py": (
+        "tools.tests.test_literature_search",
+        "tools.tests.test_docs_consistency",
+        "tools.tests.test_scripts",
+    ),
     "tools/ccfa/experiment_audit.py": (
         "tools.tests.test_experiment_audit",
         "tools.tests.test_docs_consistency",
