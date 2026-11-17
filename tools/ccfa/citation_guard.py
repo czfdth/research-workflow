@@ -31,13 +31,16 @@ def check(
     fetch=None,
     verify_titles_online: bool = False,
     title_fetch=None,
+    arxiv_fetch=None,
 ) -> tuple[list[Problem], list[Problem]]:
     """Check citations; the ``fetch`` arguments are offline test injection points.
 
-    ``verify_titles_online`` resolves entries that have no DOI by searching
-    external indexes by title. It is opt-in and fails closed: only a high
-    title-similarity match with a fetched-body evidence record is accepted; a
-    weak or ambiguous match stays unverified and is reported as an advisory.
+    ``verify_titles_online`` resolves entries that have no DOI. An entry with
+    an arXiv ``eprint`` is verified by ID first (stronger than a fuzzy title
+    hit); otherwise the indexes are searched by title. Both are opt-in and
+    fail closed: only a high-similarity match with a fetched-body evidence
+    record is accepted; weak, ambiguous or errored lookups stay unverified and
+    are reported as a problem or advisory.
     """
     manuscript = Path(manuscript)
     if not manuscript.is_dir():
@@ -105,7 +108,7 @@ def check(
         ledger = refreshed
 
     if verify_titles_online:
-        from ccfa import literature_search
+        from ccfa import arxiv_lookup, literature_search
         from ccfa.doi_lookup import TITLE_MATCH_THRESHOLD, title_similarity
 
         refreshed = dict(ledger)
@@ -116,6 +119,38 @@ def check(
             title = (entry.title or "").strip()
             if not title:
                 continue
+
+            # An arXiv eprint is stronger evidence than a fuzzy title hit:
+            # resolve by ID first, binding the same fetched-body evidence as
+            # the DOI path. A failed ID lookup falls through to title search.
+            if entry.eprint:
+                arx = arxiv_lookup.lookup(
+                    entry.eprint,
+                    fetch=arxiv_fetch,
+                    expected_title=title or None,
+                )
+                if arx.found and arx.evidence is not None:
+                    refreshed[key] = LedgerRecord(
+                        key=key,
+                        doi=arx.doi or None,
+                        status="verified",
+                        verified_at=arx.evidence.retrieved_at,
+                        source=arx.evidence.source,
+                        evidence=LedgerEvidence(**arx.evidence._asdict()),
+                        evidence_error="",
+                        detail=f"arxiv-id match: {entry.eprint}",
+                    )
+                    continue
+                advisories.append(
+                    Problem(
+                        "arxiv-id-lookup-unresolved",
+                        str(bib_path),
+                        None,
+                        f"条目 {key} 的 arXiv ID {entry.eprint} 未能核验"
+                        f"（{arx.detail}）；转为标题反查",
+                    )
+                )
+
             result = literature_search.search(
                 title,
                 providers=("openalex", "semanticscholar"),

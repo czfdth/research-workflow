@@ -1,7 +1,9 @@
 """Load a BibTeX file into a key -> entry mapping.
 
 DOI values are normalized: a URL prefix is stripped and the result is
-lowercased, so the same DOI written two ways compares equal.
+lowercased, so the same DOI written two ways compares equal. arXiv identifiers
+in ``eprint`` are normalized too (URL / ``arXiv:`` prefix / version suffix
+removed) so an entry can be verified by ID when it has no DOI.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ class BibEntry(NamedTuple):
     key: str
     doi: str | None
     title: str | None
+    eprint: str | None = None
 
 
 class BibRecord(NamedTuple):
@@ -28,6 +31,7 @@ class BibRecord(NamedTuple):
     venue: str | None
     abstract: str | None
     doi: str | None
+    eprint: str | None = None
 
 
 class BibFile(NamedTuple):
@@ -37,6 +41,13 @@ class BibFile(NamedTuple):
 
 _DOI_URL_PREFIX = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
 _BRACES = re.compile(r"[{}]")
+_ARXIV_URL = re.compile(r"arxiv\.org/(?:abs|pdf)/([^\s?#]+)", re.IGNORECASE)
+_ARXIV_PREFIX = re.compile(r"^arxiv:\s*", re.IGNORECASE)
+_ARXIV_VERSION = re.compile(r"v\d+$", re.IGNORECASE)
+# New style 1706.03762; old style cs/0501001 or math.GT/0309136.
+_ARXIV_ID = re.compile(
+    r"^(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*(?:\.[A-Z]{2})?/\d{7})$"
+)
 
 
 def normalize_doi(value: str | None) -> str | None:
@@ -45,6 +56,24 @@ def normalize_doi(value: str | None) -> str | None:
     doi = value.strip()
     doi = _DOI_URL_PREFIX.sub("", doi)
     return doi.lower() or None
+
+
+def normalize_arxiv_id(value: str | None) -> str | None:
+    """Normalize an arXiv identifier to ``1706.03762`` / ``cs/0501001``.
+
+    Strips an ``arxiv.org/abs|pdf/`` URL, an ``arXiv:`` prefix and a trailing
+    version suffix. Returns ``None`` for anything that is not a recognizable
+    arXiv id, so callers never query the API with free text.
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    match = _ARXIV_URL.search(text)
+    if match:
+        text = match.group(1)
+    text = _ARXIV_PREFIX.sub("", text).strip()
+    text = _ARXIV_VERSION.sub("", text)
+    return text if _ARXIV_ID.match(text) else None
 
 
 def _clean(value: str | None) -> str | None:
@@ -83,6 +112,7 @@ def load_records(path: Path) -> BibFile:
         fields = entry.fields_dict
         doi = _field_value(fields, "doi")
         venue = _field_value(fields, "journal") or _field_value(fields, "booktitle")
+        eprint = _field_value(fields, "eprint")
         records[entry.key] = BibRecord(
             key=entry.key,
             title=_field_value(fields, "title"),
@@ -91,6 +121,7 @@ def load_records(path: Path) -> BibFile:
             venue=venue,
             abstract=_field_value(fields, "abstract"),
             doi=normalize_doi(doi),
+            eprint=normalize_arxiv_id(eprint),
         )
     return BibFile(records=records, duplicate_keys=duplicate_keys)
 
@@ -104,5 +135,10 @@ def load_entries(path: Path) -> dict[str, BibEntry]:
 
     entries: dict[str, BibEntry] = {}
     for key, record in parsed.records.items():
-        entries[key] = BibEntry(key=key, doi=record.doi, title=record.title)
+        entries[key] = BibEntry(
+            key=key,
+            doi=record.doi,
+            title=record.title,
+            eprint=record.eprint,
+        )
     return entries

@@ -107,7 +107,12 @@ class TestLoadEntriesCompatibility(LibraryTests):
         self.assertEqual(set(entries), {"sample", "chinese"})
         self.assertEqual(entries["sample"].title, "Sample GPU Paper")
         self.assertEqual(entries["sample"].doi, "10.1/abc")
-        self.assertEqual(entries["sample"]._fields, ("key", "doi", "title"))
+        # eprint is appended so the original three fields keep their positions;
+        # all construction in the codebase uses keyword arguments.
+        self.assertEqual(
+            entries["sample"]._fields[:3], ("key", "doi", "title")
+        )
+        self.assertEqual(entries["sample"].eprint, None)
 
     def test_load_entries_still_rejects_duplicate_keys(self):
         path = self._write_bib("@misc{dup, title={First}}\n@misc{dup, title={Second}}\n")

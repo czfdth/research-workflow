@@ -2899,3 +2899,27 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `python -m unittest discover -s tools/tests -t tools (2503 tests, OK, skipped=8)`
   - `python -m unittest tests.test_literature_search tests.test_citation_guard (43 tests, OK)`
 
+## WC-20261117T161525Z-ed8ec0464b - Verify no-DOI entries by arXiv ID and harden literature transport
+
+- timestamp: `2026-11-17T16:15:25Z`
+- status: `complete`
+- author: `workbuddy`
+- reason: Follow-up audit of the external integration found three remaining gaps. (1) No-DOI entries were only resolvable by fuzzy title search; bib.py now exposes a normalized eprint field and the new arxiv_lookup.py verifies by arXiv Atom id first (title confirmation required, response-body evidence bound, all failures fail closed) before falling back to title search. (2) literature_search's default fetch had no resilience; the new literature_transport.py adds instance-scoped exponential backoff with jitter, Retry-After handling with a 300s ceiling, a CLOSED/OPEN/HALF_OPEN circuit breaker for repeated 429s, credential redaction and polite-pool mailto, all stdlib with injectable fetch/sleep/clock so tests stay offline. (3) git identity is now set repo-locally instead of per-commit -c. The evidence-body anti-forgery boundary remains a documented known limit; closing it needs a cross-module ledger schema change and is deliberately deferred to its own pass.
+- files:
+  - `docs/external-integration-plan-2026-11-17.md`
+  - `tools/ccfa/arxiv_lookup.py`
+  - `tools/ccfa/bib.py`
+  - `tools/ccfa/citation_guard.py`
+  - `tools/ccfa/literature_search.py`
+  - `tools/ccfa/literature_transport.py`
+  - `tools/tests/test_arxiv_lookup.py`
+  - `tools/tests/test_citation_guard.py`
+  - `tools/tests/test_library.py`
+  - `tools/tests/test_literature_transport.py`
+- tests:
+  - `ccfa new-module audit (0 problems)`
+  - `python -m unittest discover -s tools/tests -t tools (2530 tests, OK, skipped=8)`
+  - `python -m unittest tests.test_arxiv_lookup tests.test_library tests.test_citation_guard (108 tests, OK)`
+  - `python -m unittest tests.test_docs_consistency tests.test_scripts (201 tests, OK)`
+  - `python -m unittest tests.test_literature_transport tests.test_literature_search tests.test_citation_guard (59 tests, OK)`
+

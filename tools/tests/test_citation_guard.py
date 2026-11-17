@@ -717,3 +717,108 @@ class TestVerifyTitlesOnline(BaseCase):
             title_fetch=explode,
         )
         self.assertIn("unverified-entry", self.codes(problems))
+
+
+class TestVerifyArxivId(BaseCase):
+    """No-DOI entries with an eprint are verified by arXiv ID first."""
+
+    TITLE = "Attention Is All You Need"
+    ATOM = (
+        '<?xml version="1.0"?>'
+        '<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+        "<id>http://arxiv.org/abs/1706.03762v7</id>"
+        f"<title>{TITLE}</title>"
+        "</entry></feed>"
+    )
+
+    def setUp(self):
+        super().setUp()
+        self.bib.write_text(
+            f'@misc{{arx, title = {{{self.TITLE}}}, eprint = {{arXiv:1706.03762v7}}}}\n',
+            encoding="utf-8",
+        )
+        self.ledger.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": {"arx": {"status": "unverified", "doi": None}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.cite(r"\cite{arx}")
+
+    def _run(self, arxiv_fetch):
+        def title_explode(url, timeout):
+            raise AssertionError("arXiv ID match must not fall through to title search")
+
+        return check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_titles_online=True,
+            arxiv_fetch=arxiv_fetch,
+            title_fetch=title_explode,
+        )
+
+    def test_arxiv_id_verifies_with_evidence_and_no_title_search(self):
+        from ccfa.citation_ledger import load_ledger
+
+        problems, _ = self._run(lambda url, timeout: (200, self.ATOM))
+        self.assertNotIn("unverified-entry", self.codes(problems))
+        record = load_ledger(self.ledger)["arx"]
+        self.assertEqual(record.status, "verified")
+        self.assertEqual(record.source, "arxiv")
+        self.assertIsNotNone(record.evidence)
+        self.assertEqual(record.evidence.matched_title, self.TITLE)
+        self.assertTrue(record.evidence.body_sha256.startswith("sha256:"))
+
+    def test_arxiv_http_error_falls_through_to_title_search(self):
+        from ccfa.citation_ledger import load_ledger
+
+        def title_ok(url, timeout):
+            return 200, json.dumps(
+                {
+                    "results": [
+                        {
+                            "display_name": self.TITLE,
+                            "publication_year": 2017,
+                            "doi": "https://doi.org/10.1/titlematch",
+                            "authorships": [],
+                        }
+                    ]
+                }
+            )
+
+        problems, advisories = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_titles_online=True,
+            arxiv_fetch=lambda url, timeout: (503, "down"),
+            title_fetch=title_ok,
+        )
+        self.assertNotIn("unverified-entry", self.codes(problems))
+        self.assertIn("arxiv-id-lookup-unresolved", [a.code for a in advisories])
+        self.assertEqual(load_ledger(self.ledger)["arx"].status, "verified")
+        self.assertEqual(load_ledger(self.ledger)["arx"].source, "openalex")
+
+    def test_arxiv_mismatch_never_verifies(self):
+        from ccfa.citation_ledger import load_ledger
+
+        wrong = self.ATOM.replace("1706.03762v7", "1706.99999v1")
+
+        def no_candidates(url, timeout):
+            return 200, json.dumps({"results": []})
+
+        problems, advisories = check(
+            self.root / "manuscript",
+            self.bib,
+            self.ledger,
+            verify_titles_online=True,
+            arxiv_fetch=lambda url, timeout: (200, wrong),
+            title_fetch=no_candidates,
+        )
+        self.assertIn("unverified-entry", self.codes(problems))
+        self.assertIn("arxiv-id-lookup-unresolved", [a.code for a in advisories])
+        self.assertEqual(load_ledger(self.ledger)["arx"].status, "unverified")

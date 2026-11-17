@@ -111,3 +111,15 @@
 - 不改 `argument_audit` / `cross_review` / `readiness` 的判定语义。
 - 不拷贝任何外部仓库的源码文件；不把外部 LICENSE 带进本仓库。
 - 不做生成型流水线（那是 ARC/EvoScientist 的领域，本仓库是验证层）。
+
+## 6. 后续加固（第二轮，2026-11-17）
+
+整合完成后再次审计，补了三处短板：
+
+1. **arXiv ID 核验**（`tools/ccfa/arxiv_lookup.py` + `bib.py` 暴露 `eprint`）：无 DOI 条目若有 `eprint`，先用 arXiv Atom API 按 ID 核验，再回退到标题反查。按 ID 匹配比模糊标题命中更可靠，且沿用 `doi_lookup` 的证据契约（响应体 sha256 + `retrieved_at` + 匹配标题）。失败一律 fail-closed：HTTP 错误 / Atom 解析失败 / entry 的 ID 不匹配 / 标题不匹配都不写 verified。
+2. **传输韧性**（`tools/ccfa/literature_transport.py`）：给文献检索默认 fetch 加指数退避 + 抖动、`Retry-After` 处理（>300s 直接放弃）、连续 429 断路器（CLOSED/OPEN/HALF_OPEN）、URL 密钥脱敏、polite-pool `mailto`。全 stdlib；状态在实例上而非模块全局；注入的 fetch 完全绕过传输层，测试仍全离线。
+3. **git 身份**：仓库级配置 `WorkBuddy <workbuddy@localhost>`，后续提交不再需要临时 `-c`。
+
+### 仍未闭合的缺口（需单独一轮，改动较深）
+
+`evidence.body_sha256` 目前只证明「发生过一次 fetch」：响应体不落盘，无法离线重算哈希，因此检测不出手写的伪台账条目。闭合它需要跨模块改动（三个 lookup 返回原始响应体 → 台账证据结构增加 body 引用 → 校验时重算哈希 → 旧台账的向后兼容降级），影响面覆盖 17 处测试夹具。这不是 bug 而是已知边界，代码注释（`citation_ledger.py` / `doi_lookup.py` / `arxiv_lookup.py`）均已如实标注；建议作为独立一轮实现，不与本次加固混在一起。

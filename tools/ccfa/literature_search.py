@@ -28,6 +28,7 @@ from typing import Any, Callable, NamedTuple
 
 from ccfa.cli import Problem, tool_error
 from ccfa.doi_lookup import normalize_title, title_similarity
+from ccfa.literature_transport import make_default_fetcher
 
 Fetcher = Callable[[str, float], "tuple[int, str | bytes]"]
 
@@ -75,9 +76,12 @@ def _body_sha256(raw: bytes) -> str:
 
 
 def _default_fetch(url: str, timeout: float) -> tuple[int, str | bytes]:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.status, response.read()
+    # Shared resilient transport (retry/backoff/429/circuit breaker). An
+    # injected ``fetch`` still bypasses this entirely, so tests stay offline.
+    return _DEFAULT_TRANSPORT(url, timeout)
+
+
+_DEFAULT_TRANSPORT = make_default_fetcher()
 
 
 def _decode(raw: str | bytes) -> str:
