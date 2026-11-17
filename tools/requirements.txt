@@ -21,3 +21,9 @@ python-pptx==1.0.2
 # drives an already-installed Edge/Chrome channel (BROWSER_CHANNELS), so CI
 # needs no `playwright install` browser download.
 playwright==1.63.0
+
+# Security override: pillow 12.3.0 accumulated known vulnerabilities
+# (pip-audit fails CI). Pillow is a transitive dep of python-pptx; pinning it
+# directly keeps the lockfile from resolving back to a vulnerable build.
+# 13.0.0 verified: pptx_export Image.open path tests pass.
+pillow==13.0.0

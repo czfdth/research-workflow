@@ -2947,3 +2947,22 @@ Verified with the selector itself: plan --suite tools --base origin/master now r
   - `python -m unittest tests.test_citation_ledger tests.test_doi_lookup tests.test_arxiv_lookup tests.test_literature_search tests.test_citation_guard (110 tests, OK)`
   - `python -m unittest tests.test_citation_ledger.TestEvidenceBodyVerification tests.test_citation_guard.TestEvidenceBodyGate (12 tests, OK)`
 
+## WC-20261117T164734Z-4958afc9cd - Patch vulnerable transitive deps flagged by CI pip-audit
+
+- timestamp: `2026-11-17T16:47:34Z`
+- status: `complete`
+- author: `workbuddy`
+- reason: GitHub Actions quality job failed at 'Dependency vulnerability audit' (exit 1) on commit b059261: pip-audit reported 42 known vulnerabilities in tools' transitive pillow 12.3.0 and one in app's transitive certifi 2026.7.22. These are upstream CVEs disclosed after the lockfiles were last generated, not caused by the feature commits. Pinned the fixed versions directly in requirements.txt with explanatory comments (pillow 13.0.0, certifi 2026.10.18) and regenerated both lockfiles with the documented uv pip compile command. uv also refreshed a few other unpinned transitive deps to current patch versions (pycparser, xlsxwriter, anyio, more-itertools). Verified both locks now report no known vulnerabilities, are byte-reproducible via the documented compile command, install cleanly into fresh venvs, and the Pillow 13 Image.open path used by pptx_export passes its 13 tests.
+- files:
+  - `app/requirements.lock`
+  - `app/requirements.txt`
+  - `tools/requirements.lock`
+  - `tools/requirements.txt`
+- tests:
+  - `clean venv install from both locks + imports + doctor --imports-only (ok)`
+  - `pip-audit -r app/requirements.lock --disable-pip (no known vulnerabilities)`
+  - `pip-audit -r tools/requirements.lock --disable-pip (no known vulnerabilities)`
+  - `python -m unittest tests.test_pptx_export (13 tests, OK) under Pillow 13.0.0`
+  - `python -m unittest tests.test_repro_env tests.test_packaging tests.test_docs_consistency tests.test_github_workflows (59 tests, OK)`
+  - `uv pip compile regenerated both locks byte-identically`
+
