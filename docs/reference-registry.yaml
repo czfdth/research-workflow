@@ -20,7 +20,7 @@ projects:
     note: ARA artifact layout and expert rubric reference
   - id: open-science
     repository: aipoch/open-science
-    pinned_commit: 28dcea7229efea8e9768c1edabf8fc40fcd25ba8
+    pinned_commit: e8b85b426f0397f1f091ac8f3298198c11e1ebb2
     source_doc: docs/research-workflow-reference-audit-2026-10-05.md
     note: local-first immutable artifact and replay reference
     drift_review: docs/reference-drift-2026-11-18.md

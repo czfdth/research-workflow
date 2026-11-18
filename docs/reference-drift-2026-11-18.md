@@ -76,3 +76,20 @@ our documented claims", not "all upstream behaviour is now implemented here".
 The scheduled audit is intentionally fail-closed: it will fail again whenever
 one of these repositories publishes a new default-branch commit, and a human
 must repeat this classification before re-pinning.
+
+## Same-day repeat: open-science
+
+- Previous pin: `28dcea7229efea8e9768c1edabf8fc40fcd25ba8`
+- New pin: `e8b85b426f0397f1f091ac8f3298198c11e1ebb2`
+- Changed: 1 commit, 7 files.
+- Material change: none for our claims. The commit only avoids redundant
+  journal replay and history scans inside the upstream desktop session
+  persistence layer; it changes no provenance, artifact, MCP surface or CLI
+  behaviour that this project references.
+
+Decision: re-pin and keep the fail-closed check unchanged. Note that this
+repository is exceptionally active, so a monthly default-branch comparison
+will keep producing routine drift failures. If that churn becomes undesirable,
+the design question to decide separately is whether active references should
+track a released tag instead of the moving default branch; changing the check
+to advisory-only is not an acceptable substitute.

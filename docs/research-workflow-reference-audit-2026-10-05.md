@@ -25,7 +25,8 @@
 以 `docs/reference-registry.yaml` 为准；每次漂移复核的结论、分类和边界写在
 `docs/reference-drift-2026-10-06.md` 与 `docs/reference-drift-2026-11-18.md`。
 2026-11-18 复核后，academic-research-skills、open-science 与 ARIS 的 pin 已
-更新到 `c70feb7ab432`、`28dcea7229ef`、`9f30e834d24a`。
+更新到 `c70feb7ab432`、`e8b85b426f03`、`9f30e834d24a`。open-science 当天
+又发生一次 1 commit 的小漂移，复核结论见同一份 drift 文档。
 
 本轮状态：AI-Research-SKILLs 的 `research-state.yaml` 已完成第一切片；
 ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片；
