@@ -1,6 +1,9 @@
 version: 1
 # Source-level references audited in docs/research-workflow-reference-audit-2026-10-05.md.
-# A scheduled workflow compares these pins with each repository's latest commit.
+# A scheduled workflow compares each pin with its repository's latest commit,
+# or, when track_tag is set, with the commit that release tag currently names.
+# track_tag is for exceptionally active upstreams: a human still reviews every
+# new release, but unrelated default-branch commits no longer raise drift.
 projects:
   - id: ai-research-skills
     repository: Orchestra-Research/AI-Research-SKILLs
@@ -20,7 +23,8 @@ projects:
     note: ARA artifact layout and expert rubric reference
   - id: open-science
     repository: aipoch/open-science
-    pinned_commit: e8b85b426f0397f1f091ac8f3298198c11e1ebb2
+    pinned_commit: dfb7b5923cbbb6294b1f775e51533afee209ccae
+    track_tag: v1.2.2
     source_doc: docs/research-workflow-reference-audit-2026-10-05.md
     note: local-first immutable artifact and replay reference
     drift_review: docs/reference-drift-2026-11-18.md

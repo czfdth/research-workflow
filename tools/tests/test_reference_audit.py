@@ -82,6 +82,76 @@ class ReferenceAuditTests(unittest.TestCase):
         self.assertEqual(report["problems"], [])
         self.assertTrue(report["projects"][0]["checked"])
 
+    def _set_track_tag(self, tag):
+        path = self.root / "docs" / "reference-registry.yaml"
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        payload["projects"][0]["track_tag"] = tag
+        path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    def test_track_tag_uses_tag_fetch_not_default_branch(self):
+        self._set_track_tag("v1.2.2")
+
+        def forbidden_default_fetch(repository, token=None):
+            self.fail("tracked tag must not use the default-branch fetch")
+
+        report = reference_audit.audit(
+            self.root,
+            fetch=forbidden_default_fetch,
+            tag_fetch=lambda repository, tag, token=None: PINNED,
+        )
+
+        self.assertEqual(report["problems"], [])
+        self.assertTrue(report["projects"][0]["checked"])
+        self.assertEqual(report["projects"][0]["track_tag"], "v1.2.2")
+
+    def test_track_tag_release_change_is_still_a_problem(self):
+        self._set_track_tag("v1.2.2")
+        report = reference_audit.audit(
+            self.root,
+            tag_fetch=lambda repository, tag, token=None: LATEST,
+        )
+
+        self.assertIn(
+            "reference-audit-stale",
+            [problem.code for problem in report["problems"]],
+        )
+
+    def test_fetch_tagged_commit_follows_annotated_tag(self):
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if "/git/ref/tags/" in request.full_url:
+                return _Response({"object": {"type": "tag", "sha": LATEST}})
+            return _Response({"object": {"type": "commit", "sha": LATEST}})
+
+        sha = reference_audit.fetch_tagged_commit(
+            "owner/demo", "v1.2.2", opener=opener
+        )
+
+        self.assertEqual(sha, LATEST)
+        self.assertTrue(calls[0].endswith("/git/ref/tags/v1.2.2"))
+        self.assertIn("/git/tags/", calls[1])
+
+    def test_fetch_tagged_commit_accepts_lightweight_tag(self):
+        def opener(request, timeout):
+            self.assertIn("/git/ref/tags/v1.2.2", request.full_url)
+            return _Response({"object": {"type": "commit", "sha": LATEST}})
+
+        sha = reference_audit.fetch_tagged_commit(
+            "owner/demo", "v1.2.2", opener=opener
+        )
+
+        self.assertEqual(sha, LATEST)
+
+    def test_invalid_track_tag_is_registry_problem(self):
+        self._set_track_tag("bad tag!")
+        _projects, problems = reference_audit.load_registry(self.root)
+        self.assertIn(
+            "reference-registry-invalid",
+            [problem.code for problem in problems],
+        )
+
     def test_fetch_latest_commit_parses_github_response(self):
         def opener(request, timeout):
             self.assertIn("owner/demo/commits", request.full_url)

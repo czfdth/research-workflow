@@ -93,3 +93,21 @@ will keep producing routine drift failures. If that churn becomes undesirable,
 the design question to decide separately is whether active references should
 track a released tag instead of the moving default branch; changing the check
 to advisory-only is not an acceptable substitute.
+
+## Switching open-science to release-tag tracking
+
+- Previous pin: `e8b85b426f0397f1f091ac8f3298198c11e1ebb2` (default branch).
+- New pin: `dfb7b5923cbbb6294b1f775e51533afee209ccae`, the commit named by the
+  annotated tag `v1.2.2` (tag object `8f59ee435f9fc16100fb50d62ed4b3268994bf02`).
+- Verified: `v1.2.2` is an ancestor of the previously reviewed snapshot
+  (compare `ahead_by=53`, `behind_by=0`), so every artifact and capability
+  reviewed at `e8b85b426f03` is already present in the release snapshot.
+- The registry now carries `track_tag: v1.2.2`. `reference_audit` resolves that
+  tag through the GitHub API (following annotated tags to their commit) and
+  compares the pin with the tag's current commit instead of the moving default
+  branch. Other references keep default-branch comparison; no gate was
+  downgraded and a new release still fails closed until reviewed and re-pinned.
+
+This is a change in *what is watched*, not in *how drift is judged*: an active
+repository's unrelated daily commits no longer generate a monthly false alarm,
+while every published release still requires a human classification.

@@ -24,6 +24,7 @@ from ccfa.cli import Problem, emit, tool_error
 REGISTRY = Path("docs/reference-registry.yaml")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REPOSITORY_RE = re.compile(r"^[^/\s]+/[^/\s]+$")
+TRACK_TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 REQUIRED_FIELDS = ("id", "repository", "pinned_commit", "source_doc")
 
 
@@ -121,6 +122,19 @@ def load_registry(repo_root: Path) -> tuple[list[dict], list[Problem]]:
                 )
             )
             continue
+        track_tag = item.get("track_tag")
+        if track_tag is not None and (
+            not isinstance(track_tag, str) or not TRACK_TAG_RE.match(track_tag)
+        ):
+            problems.append(
+                Problem(
+                    "reference-registry-invalid",
+                    str(path),
+                    None,
+                    f"{project_id}: track_tag 必须是安全的 tag 名称",
+                )
+            )
+            continue
         try:
             (root / source_doc).resolve().relative_to(root)
         except ValueError:
@@ -150,6 +164,7 @@ def load_registry(repo_root: Path) -> tuple[list[dict], list[Problem]]:
                 "pinned_commit": pinned,
                 "source_doc": source_doc,
                 "note": str(item.get("note") or ""),
+                "track_tag": track_tag,
             }
         )
     return normalized, problems
@@ -196,24 +211,94 @@ def fetch_latest_commit(
     return latest
 
 
+def fetch_tagged_commit(
+    repository: str,
+    tag: str,
+    *,
+    token: str | None = None,
+    opener=None,
+    timeout: float = 20.0,
+) -> str:
+    """Resolve a release tag to a commit SHA, following annotated tags.
+
+    Active upstreams publish many commits between releases. Tracking a tag
+    keeps the audit meaningful (a human reviews each new release) without
+    turning every unrelated upstream commit into a drift alarm.
+    """
+    if not TRACK_TAG_RE.match(tag):
+        raise ValueError(f"非法 tag 名称: {repository}:{tag}")
+    opener = opener or urllib.request.urlopen
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "ccfa-reference-audit",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    def get_object(path: str) -> dict:
+        request = urllib.request.Request(
+            f"https://api.github.com/repos/{repository}{path}", headers=headers
+        )
+        try:
+            with opener(request, timeout=timeout) as response:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = response.getcode()
+                raw = response.read()
+        except (OSError, urllib.error.URLError) as exc:
+            raise ValueError(f"无法访问 GitHub API: {repository}:{tag}: {exc}") from exc
+        if status != 200:
+            raise ValueError(f"GitHub API 返回 {status}: {repository}:{tag}")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"GitHub API 响应不是 JSON: {repository}:{tag}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"GitHub API 响应不是对象: {repository}:{tag}")
+        return payload
+
+    ref_object = get_object(f"/git/ref/tags/{tag}").get("object")
+    if not isinstance(ref_object, dict):
+        raise ValueError(f"tag 无 object 字段: {repository}:{tag}")
+    kind = ref_object.get("type")
+    sha = ref_object.get("sha")
+    if kind == "tag":
+        annotated = get_object(f"/git/tags/{sha}").get("object")
+        if not isinstance(annotated, dict):
+            raise ValueError(f"annotated tag 无 object 字段: {repository}:{tag}")
+        kind = annotated.get("type")
+        sha = annotated.get("sha")
+    if kind != "commit" or not isinstance(sha, str) or not SHA_RE.match(sha):
+        raise ValueError(f"tag 未指向合法 commit: {repository}:{tag}")
+    return sha
+
+
 def audit(
     repo_root: Path,
     *,
     token: str | None = None,
     offline: bool = False,
     fetch=None,
+    tag_fetch=None,
 ) -> dict:
     repo_root = Path(repo_root).resolve()
     projects, problems = load_registry(repo_root)
     if problems:
         return {"projects": [], "problems": problems}
     fetch = fetch or fetch_latest_commit
+    tag_fetch = tag_fetch or fetch_tagged_commit
     rows: list[dict] = []
     for project in projects:
         latest = None
         if not offline:
             try:
-                latest = fetch(project["repository"], token=token)
+                if project.get("track_tag"):
+                    latest = tag_fetch(
+                        project["repository"], project["track_tag"], token=token
+                    )
+                else:
+                    latest = fetch(project["repository"], token=token)
             except (OSError, ValueError) as exc:
                 problems.append(
                     Problem(
@@ -268,9 +353,12 @@ def main(argv: list[str]) -> int:
             if problems:
                 return emit(problems, [])
             for project in projects:
+                tracked = (
+                    f" tag={project['track_tag']}" if project.get("track_tag") else ""
+                )
                 print(
                     f"{project['id']} {project['repository']} "
-                    f"{project['pinned_commit']}"
+                    f"{project['pinned_commit']}{tracked}"
                 )
             return 0
 
