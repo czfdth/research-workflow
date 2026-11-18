@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -83,6 +85,31 @@ def _container_argv(
     ]
 
 
+def _make_workspace_writable(root: Path) -> None:
+    """Grant write bits to the copied bundle, not just to its host owner.
+
+    The container is started with ``--cap-drop ALL``, so its root user cannot
+    rely on CAP_DAC_OVERRIDE to bypass host mode bits. A checkout-derived
+    bundle is typically 0644 and owned by the runner user: the container can
+    read it but cannot rewrite an existing output such as a generated CSV.
+    Adding write bits to the disposable copy keeps the source bundle untouched
+    while making the documented "writable workspace" true.
+    """
+    for current, _dirnames, filenames in os.walk(root):
+        directory = Path(current)
+        os.chmod(
+            directory,
+            directory.stat().st_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+            | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
+        )
+        for name in filenames:
+            path = directory / name
+            os.chmod(
+                path,
+                path.stat().st_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH,
+            )
+
+
 def _default_runner(
     argv: list[str],
     *,
@@ -138,8 +165,10 @@ def verify_container(
     temp_dir: Path | None = None
     try:
         temp_dir = Path(tempfile.mkdtemp(prefix="ccfa-repro-container-"))
-        shutil.copytree(bundle_dir / FILES_DIR_NAME, temp_dir / FILES_DIR_NAME)
-        argv = _container_argv(temp_dir / FILES_DIR_NAME, image, command)
+        workspace = temp_dir / FILES_DIR_NAME
+        shutil.copytree(bundle_dir / FILES_DIR_NAME, workspace)
+        _make_workspace_writable(workspace)
+        argv = _container_argv(workspace, image, command)
         runner = runner or _default_runner
         exit_code, stdout, stderr = runner(argv, timeout=timeout)
     finally:
