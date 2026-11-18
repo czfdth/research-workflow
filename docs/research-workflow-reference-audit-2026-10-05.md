@@ -21,6 +21,12 @@
 路径差异：报告里的 `wanshuiyin/ARIS` 当前不存在。实际对应项目名是
 `wanshuiyin/Auto-claude-code-research-in-sleep`。
 
+上表记录的是 2026-10-05 原始审计快照，不随后续复核改写。当前钉住的 commit
+以 `docs/reference-registry.yaml` 为准；每次漂移复核的结论、分类和边界写在
+`docs/reference-drift-2026-10-06.md` 与 `docs/reference-drift-2026-11-18.md`。
+2026-11-18 复核后，academic-research-skills、open-science 与 ARIS 的 pin 已
+更新到 `c70feb7ab432`、`28dcea7229ef`、`9f30e834d24a`。
+
 本轮状态：AI-Research-SKILLs 的 `research-state.yaml` 已完成第一切片；
 ARA 五层目录已通过 `tools/ccfa/ara_compile.py` 完成 draft compiler 第二切片；
 ARIS proof run-directory + notation/derivation gate 已完成第三切片；
