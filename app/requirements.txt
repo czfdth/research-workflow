@@ -15,4 +15,4 @@ httpx==0.28.1
 
 # Security override: certifi 2026.7.22 has a known vulnerability
 # (pip-audit fails CI). Pinned directly so the lockfile cannot regress.
-certifi==2026.10.18
+certifi==2026.10.23
